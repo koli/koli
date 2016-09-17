@@ -8,6 +8,7 @@ import (
 	"github.com/renstrom/dedent"
 	"github.com/spf13/cobra"
 
+	koliutil "github.com/kolibox/koli/pkg/cli/util"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/meta"
@@ -33,12 +34,12 @@ var (
 )
 
 // NewCmdDelete .
-func NewCmdDelete(f *cmdutil.Factory, out io.Writer) *cobra.Command {
+func NewCmdDelete(f *koliutil.Factory, out io.Writer) *cobra.Command {
 	options := &kubecmd.DeleteOptions{}
 
 	// retrieve a list of handled resources from printer as valid args
 	validArgs, argAliases := []string{}, []string{}
-	p, err := f.Printer(nil, kubectl.PrintOptions{
+	p, err := f.KubeFactory.Printer(nil, kubectl.PrintOptions{
 		ColumnLabels: []string{},
 	})
 	cmdutil.CheckErr(err)
@@ -53,7 +54,7 @@ func NewCmdDelete(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 		Example: deleteExample,
 		Run: func(cmd *cobra.Command, args []string) {
 			cmdutil.CheckErr(cmdutil.ValidateOutputArgs(cmd))
-			err := RunDelete(f, out, cmd, args, options)
+			err := RunDelete(f.KubeFactory, out, cmd, args, options)
 			cmdutil.CheckErr(err)
 		},
 		SuggestFor: []string{"rm", "stop"},

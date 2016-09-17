@@ -1,26 +1,23 @@
 package main
 
 import (
+	"fmt"
 	"os"
 
 	kolicmd "github.com/kolibox/koli/pkg/cli"
-	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
-	"k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	koliutil "github.com/kolibox/koli/pkg/cli/util"
 )
 
 func main() {
-	kubeconfig := "/Users/san/.kube/config"
-	loader := &clientcmd.ClientConfigLoadingRules{ExplicitPath: kubeconfig}
-	loadedConfig, err := loader.Load()
-	_ = err
-	clientConfig := clientcmd.NewNonInteractiveClientConfig(
-		*loadedConfig,
-		loadedConfig.CurrentContext,
-		&clientcmd.ConfigOverrides{},
-		loader,
-	)
+	factory, err := koliutil.NewFactory(nil)
+	if err != nil {
+		fmt.Println(err)
+		os.Exit(1)
+	}
 
-	f := util.NewFactory(clientConfig)
-	cmd := kolicmd.NewKubectlCommand(f, os.Stdin, os.Stdout, os.Stderr)
+	cmd := kolicmd.NewKubectlCommand(factory, os.Stdin, os.Stdout, os.Stderr)
 	cmd.Execute()
+
+	// cmdkube := cmd.NewKubectlCommand(cmdutil.NewFactory(nil), os.Stdin, os.Stdout, os.Stderr)
+	// cmdkube.Execute()
 }

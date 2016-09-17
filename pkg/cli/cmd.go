@@ -5,12 +5,12 @@ import (
 
 	"github.com/spf13/cobra"
 
+	koliutil "github.com/kolibox/koli/pkg/cli/util"
 	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	kubecmd "k8s.io/kubernetes/pkg/kubectl/cmd"
 	cmdconfig "k8s.io/kubernetes/pkg/kubectl/cmd/config"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/rollout"
 	"k8s.io/kubernetes/pkg/kubectl/cmd/templates"
-	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/util/flag"
 )
 
@@ -185,22 +185,26 @@ Use 'git push {{.CommandPath}} master' to deploy to an application.{{end}}
 )
 
 // NewKubectlCommand creates the `kubectl` command and its nested children.
-func NewKubectlCommand(f *cmdutil.Factory, in io.Reader, out, err io.Writer) *cobra.Command {
+func NewKubectlCommand(f *koliutil.Factory, in io.Reader, out, err io.Writer) *cobra.Command {
 	// Parent command to which all subcommands are added.
 	cmds := &cobra.Command{
 		Use:   "koli",
 		Short: "Koli command-line controls your cluster apps",
-		//Long: "Koli command-line controls your cluster apps",
+		// Long: "Koli command-line controls your cluster apps",
 		Run: runHelp,
 		BashCompletionFunction: bashCompletionFunc,
 	}
-	cmds.SetHelpTemplate(helpTemplate)
-	cmds.SetUsageTemplate(usageTemplate)
+	// cmds.SetHelpTemplate(helpTemplate)
+	// cmds.SetUsageTemplate(usageTemplate)
 
+	comm := &koliutil.CommandParams{Factory: f, In: in, Out: out, Err: err}
+
+	// ./koli options (flags)
 	f.BindFlags(cmds.PersistentFlags())
-	//f.BindExternalFlags(cmds.PersistentFlags())
+	f.BindExternalFlags(cmds.PersistentFlags())
 
-	cmds.SetHelpCommand(kubecmd.NewCmdHelp(f, out))
+	// cmds.PersistentFlags().AddFlagSet(globalFlags)
+	// cmds.SetHelpCommand(kubecmd.NewCmdHelp(f, out))
 
 	// From this point and forward we get warnings on flags that contain "_" separators
 	cmds.SetGlobalNormalizationFunc(flag.WarnWordSepNormalizeFunc)
@@ -213,36 +217,26 @@ func NewKubectlCommand(f *cmdutil.Factory, in io.Reader, out, err io.Writer) *co
 				NewCmdDelete(f, out),
 				NewCmdDescribe(f, out, err),
 				NewCmdLabel(f, out),
-				NewCmdGet(f, out, err),
+				NewCmdGet(comm),
 			},
 		},
 		{
 			Message: "Subcommands:\n",
 			Commands: []*cobra.Command{
-				kubecmd.NewCmdLogs(f, out),
+				kubecmd.NewCmdLogs(f.KubeFactory, out),
 				//kubecmd.NewCmdAutoscale(f, out),
-				NewCmdScale(f, out),
-				kubecmd.NewCmdAttach(f, in, out, err),
-				kubecmd.NewCmdExec(f, in, out, err),
-				rollout.NewCmdRollout(f, out),
-				kubecmd.NewCmdPortForward(f, out, err),
+				NewCmdScale(f.KubeFactory, out),
+				kubecmd.NewCmdAttach(f.KubeFactory, in, out, err),
+				kubecmd.NewCmdExec(f.KubeFactory, in, out, err),
+				rollout.NewCmdRollout(f.KubeFactory, out),
+				kubecmd.NewCmdPortForward(f.KubeFactory, out, err),
 			},
 		},
 	}
 	groups.Add(cmds)
+
 	filters := []string{"options"}
 	templates.ActsAsRootCommand(cmds, filters, groups...)
-
-	cmds.AddCommand(cmdconfig.NewCmdConfig(clientcmd.NewDefaultPathOptions(), out))
-	cmds.AddCommand(kubecmd.NewCmdVersion(f, out))
-	cmds.AddCommand(kubecmd.NewCmdCompletion(f, out))
-
-	// cmds.AddCommand(kubecmd.NewCmdPatch(f, out))
-	// cmds.AddCommand(kubecmd.NewCmdEdit(f, out, err))
-	// cmds.AddCommand(kubecmd.NewCmdRollingUpdate(f, out))
-	//kubecmd.NewCmdCreateDeployment
-	// cmds.AddCommand(kubecmd.NewCmdRun(f, in, out, err))
-	// cmds.AddCommand(kubecmd.NewCmdExposeService(f, out))
 
 	if cmds.Flag("namespace") != nil {
 		if cmds.Flag("namespace").Annotations == nil {
@@ -253,6 +247,10 @@ func NewKubectlCommand(f *cmdutil.Factory, in io.Reader, out, err io.Writer) *co
 			"__kubectl_get_namespaces",
 		)
 	}
+
+	cmds.AddCommand(cmdconfig.NewCmdConfig(clientcmd.NewDefaultPathOptions(), out))
+	cmds.AddCommand(kubecmd.NewCmdVersion(f.KubeFactory, out))
+	cmds.AddCommand(kubecmd.NewCmdOptions(out))
 
 	return cmds
 }

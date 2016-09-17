@@ -3,6 +3,7 @@ package cli
 import (
 	"io"
 
+	koliutil "github.com/kolibox/koli/pkg/cli/util"
 	"github.com/spf13/cobra"
 
 	"k8s.io/kubernetes/pkg/kubectl"
@@ -11,7 +12,7 @@ import (
 )
 
 // NewCmdCreate .
-func NewCmdCreate(f *cmdutil.Factory, out io.Writer) *cobra.Command {
+func NewCmdCreate(f *koliutil.Factory, out io.Writer) *cobra.Command {
 	options := &kubecmd.CreateOptions{}
 
 	cmd := &cobra.Command{
@@ -24,7 +25,7 @@ func NewCmdCreate(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 			}
 			cmdutil.CheckErr(kubecmd.ValidateArgs(cmd, args))
 			cmdutil.CheckErr(cmdutil.ValidateOutputArgs(cmd))
-			cmdutil.CheckErr(kubecmd.RunCreate(f, cmd, out, options))
+			cmdutil.CheckErr(kubecmd.RunCreate(f.KubeFactory, cmd, out, options))
 		},
 	}
 

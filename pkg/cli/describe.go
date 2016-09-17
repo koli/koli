@@ -8,6 +8,7 @@ import (
 	"github.com/renstrom/dedent"
 	"github.com/spf13/cobra"
 
+	koliutil "github.com/kolibox/koli/pkg/cli/util"
 	apierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/kubectl"
@@ -37,7 +38,7 @@ var (
 )
 
 // NewCmdDescribe .
-func NewCmdDescribe(f *cmdutil.Factory, out, cmdErr io.Writer) *cobra.Command {
+func NewCmdDescribe(f *koliutil.Factory, out, cmdErr io.Writer) *cobra.Command {
 	options := &DescribeOptions{}
 	describerSettings := &kubectl.DescriberSettings{}
 
@@ -49,7 +50,7 @@ func NewCmdDescribe(f *cmdutil.Factory, out, cmdErr io.Writer) *cobra.Command {
 		Short:   "Show details of a specific resource or group of resources",
 		Example: describeExample,
 		Run: func(cmd *cobra.Command, args []string) {
-			err := RunDescribe(f, out, cmdErr, cmd, args, options, describerSettings)
+			err := RunDescribe(f.KubeFactory, out, cmdErr, cmd, args, options, describerSettings)
 			cmdutil.CheckErr(err)
 		},
 		ValidArgs:  validArgs,
