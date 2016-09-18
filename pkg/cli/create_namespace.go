@@ -54,7 +54,7 @@ func CreateNamespace(f *koliutil.Factory, cmdOut io.Writer, cmd *cobra.Command, 
 	if err != nil {
 		return err
 	}
-	structuredGenerator := &kubectl.NamespaceGeneratorV1{}
+	structuredGenerator := &kubectl.NamespaceGeneratorV1{Name: name}
 
 	mapper, typer := f.KubeFactory.Object(cmdutil.GetIncludeThirdPartyAPIs(cmd))
 	obj, err := structuredGenerator.StructuredGenerate()
@@ -75,6 +75,7 @@ func CreateNamespace(f *koliutil.Factory, cmdOut io.Writer, cmd *cobra.Command, 
 		f.Ctrl.Request.SetSerializer(gvk.GroupVersion(), serializer)
 		ns := koliutil.Namespace{Name: name}
 		data, err := json.Marshal(ns)
+
 		if err != nil {
 			return err
 		}

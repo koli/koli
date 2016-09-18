@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"regexp"
+	"strings"
 
 	koliutil "github.com/kolibox/koli/pkg/cli/util"
 	"github.com/renstrom/dedent"
@@ -24,6 +25,7 @@ type GetOptions struct {
 	Recursive            bool
 	IsNamespaced         bool
 	IsSingleResourceType bool
+	IsResourceSlashed    bool
 
 	Raw string
 }
@@ -47,6 +49,17 @@ var (
 		# List one or more resources by their type and names.
 		koli get deploys/web pods/web-pod-13je7`)
 )
+
+func prefixResources(args []string, prefix string) {
+	for i, arg := range args {
+		resource := strings.Split(arg, "/")
+		if len(resource) > 1 {
+			args[i] = fmt.Sprintf("%s/%s-%s", resource[0], prefix, resource[1])
+		} else {
+			args[i] = fmt.Sprintf("%s-%s", prefix, resource[0])
+		}
+	}
+}
 
 // NewCmdGet creates a command object for the generic "get" action, which
 // retrieves one or more resources from a server.
@@ -80,6 +93,9 @@ func NewCmdGet(comm *koliutil.CommandParams) *cobra.Command {
 			if hasNS {
 				options.IsNamespaced = false
 				options.IsSingleResourceType = true
+				if strings.Contains(args[0], "/") {
+					options.IsResourceSlashed = true
+				}
 				err := RunGet(comm, args, options)
 				cmdutil.CheckErr(err)
 				return
@@ -125,7 +141,7 @@ func NewCmdGet(comm *koliutil.CommandParams) *cobra.Command {
 
 // RunGet implements the generic Get command
 func RunGet(comm *koliutil.CommandParams, args []string, options *GetOptions) error {
-	cmd, f, out, errOut := comm.Cmd, comm.KFactory(), comm.Out, comm.Err
+	cmd, f, out := comm.Cmd, comm.KFactory(), comm.Out
 
 	selector := cmdutil.GetFlagString(cmd, "selector")
 	allNamespaces := cmdutil.GetFlagBool(cmd, "all-namespaces")
@@ -133,30 +149,23 @@ func RunGet(comm *koliutil.CommandParams, args []string, options *GetOptions) er
 
 	mapper, typer := f.Object(cmdutil.GetIncludeThirdPartyAPIs(cmd))
 
-	_, enforceNamespace, err := f.DefaultNamespace() // TODO: remove this
-	cmdNamespace := ""
-	if options.IsNamespaced {
-		cmdNamespace, err = koliutil.DefaultNamespace(comm)
-		if err != nil {
-			return cmdutil.UsageError(cmd,
-				"Could not find a default namespace."+
-					dedent.Dedent(`
+	// _, enforceNamespace, err := f.DefaultNamespace() // TODO: remove this
+	cmdNamespace, err := koliutil.DefaultNamespace(comm, options.IsNamespaced)
+	if err != nil {
+		return cmdutil.UsageError(cmd,
+			"Could not find a default namespace."+
+				dedent.Dedent(`
 
-				You can create a new namespace:
-				>>> koli create namespace <mynamespace>
+			You can create a new namespace:
+			>>> koli create namespace <mynamespace>
 
-				Or configure an existent one:
-				>>> koli set default ns <namespace>
+			Or configure an existent one:
+			>>> koli set default ns <namespace>
 
-				To list all created namespaces:
-				>>> koli get ns
+			To list all created namespaces:
+			>>> koli get ns
 
-				More info: https://kolibox.io/docs/namespaces`))
-		}
-	}
-
-	if allNamespaces {
-		enforceNamespace = false
+			More info: https://kolibox.io/docs/namespaces`))
 	}
 
 	// always show resources when getting by name or filename
@@ -167,16 +176,30 @@ func RunGet(comm *koliutil.CommandParams, args []string, options *GetOptions) er
 	if len(options.Filenames) > 0 || argsHasNames {
 		cmd.Flag("show-all").Value.Set("true")
 	}
-	export := cmdutil.GetFlagBool(cmd, "export")
+
+	if argsHasNames && !options.IsNamespaced {
+		if options.IsResourceSlashed {
+			prefixResources(args, comm.User().ID)
+		} else {
+			prefixResources(args[1:], comm.User().ID)
+		}
+	}
+
+	// TODO: querying namespaces could be insecure
+	// The user could list all the namespaces in the cluster
+	if !options.IsNamespaced && !options.IsResourceSlashed && !argsHasNames {
+		// Override selector!
+		selector = fmt.Sprintf("sys.io/id=%s", comm.User().ID)
+	}
+
+	// export := cmdutil.GetFlagBool(cmd, "export")
 
 	// handle watch separately since we cannot watch multiple resource types
 	isWatch, isWatchOnly := cmdutil.GetFlagBool(cmd, "watch"), cmdutil.GetFlagBool(cmd, "watch-only")
 	if isWatch || isWatchOnly {
 		r := resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), f.Decoder(true)).
-			NamespaceParam(cmdNamespace).DefaultNamespace().AllNamespaces(allNamespaces).
-			FilenameParam(enforceNamespace, options.Recursive, options.Filenames...).
+			NamespaceParam(cmdNamespace).DefaultNamespace().
 			SelectorParam(selector).
-			ExportParam(export).
 			ResourceTypeOrNameArgs(true, args...).
 			SingleResourceType().
 			Latest().
@@ -194,7 +217,7 @@ func RunGet(comm *koliutil.CommandParams, args []string, options *GetOptions) er
 		}
 		info := infos[0]
 		mapping := info.ResourceMapping()
-		printer, err := f.PrinterForMapping(cmd, mapping, allNamespaces)
+		printer, err := f.PrinterForMapping(cmd, mapping, false)
 		if err != nil {
 			return err
 		}
@@ -223,7 +246,7 @@ func RunGet(comm *koliutil.CommandParams, args []string, options *GetOptions) er
 			if err := printer.PrintObj(obj, out); err != nil {
 				return fmt.Errorf("unable to output the provided object: %v", err)
 			}
-			printer.FinishPrint(errOut, mapping.Resource)
+			// printer.FinishPrint(errOut, mapping.Resource)
 		}
 
 		// print watched changes
@@ -240,19 +263,17 @@ func RunGet(comm *koliutil.CommandParams, args []string, options *GetOptions) er
 				return nil
 			}
 			err := printer.PrintObj(e.Object, out)
-			if err == nil {
-				printer.FinishPrint(errOut, mapping.Resource)
-			}
+			// if err == nil {
+			// printer.FinishPrint(errOut, mapping.Resource)
+			// }
 			return err
 		})
 		return nil
 	}
 
 	builder := resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), f.Decoder(true)).
-		NamespaceParam(cmdNamespace).DefaultNamespace().AllNamespaces(allNamespaces).
-		FilenameParam(enforceNamespace, options.Recursive, options.Filenames...).
+		NamespaceParam(cmdNamespace).DefaultNamespace().
 		SelectorParam(selector).
-		ExportParam(export).
 		ResourceTypeOrNameArgs(true, args...).
 		ContinueOnError().
 		Latest().
@@ -296,10 +317,10 @@ func RunGet(comm *koliutil.CommandParams, args []string, options *GetOptions) er
 		if err != nil {
 			return err
 		}
-		res := ""
-		if len(infos) > 0 {
-			res = infos[0].ResourceMapping().Resource
-		}
+		// res := ""
+		// if len(infos) > 0 {
+		// res = infos[0].ResourceMapping().Resource
+		// }
 
 		obj, err := resource.AsVersionedObject(infos, !singular, version, f.JSONEncoder())
 		if err != nil {
@@ -309,7 +330,7 @@ func RunGet(comm *koliutil.CommandParams, args []string, options *GetOptions) er
 		if err := printer.PrintObj(obj, out); err != nil {
 			allErrs = append(allErrs, err)
 		}
-		printer.FinishPrint(errOut, res)
+		// printer.FinishPrint(errOut, res)
 		return utilerrors.NewAggregate(allErrs)
 	}
 
@@ -349,7 +370,7 @@ func RunGet(comm *koliutil.CommandParams, args []string, options *GetOptions) er
 		if printer == nil || lastMapping == nil || mapping == nil || mapping.Resource != lastMapping.Resource {
 			if printer != nil {
 				w.Flush()
-				printer.FinishPrint(errOut, lastMapping.Resource)
+				// printer.FinishPrint(errOut, lastMapping.Resource)
 			}
 			printer, err = f.PrinterForMapping(cmd, mapping, allNamespaces)
 			if err != nil {
@@ -388,9 +409,9 @@ func RunGet(comm *koliutil.CommandParams, args []string, options *GetOptions) er
 		}
 	}
 	w.Flush()
-	if printer != nil {
-		printer.FinishPrint(errOut, lastMapping.Resource)
-	}
+	// if printer != nil {
+	// printer.FinishPrint(errOut, lastMapping.Resource)
+	// }
 	return utilerrors.NewAggregate(allErrs)
 }
 

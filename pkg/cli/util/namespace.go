@@ -10,7 +10,10 @@ import (
 // DefaultNamespace will filter a default namespace based on a label `sys.io/default=true`.
 // Returns an error if none or more than one namespace is found
 // The id is an external unique identifier filter the namespaces using by label `sys.io/id`
-func DefaultNamespace(comm *CommandParams) (string, error) {
+func DefaultNamespace(comm *CommandParams, isNamespaced bool) (string, error) {
+	if !isNamespaced {
+		return "", nil
+	}
 	f := comm.KFactory()
 	flag := comm.Cmd.Flag("namespace")
 	if flag.Value.String() != "" {
