@@ -18,8 +18,8 @@ import (
 	// kubecmd "k8s.io/kubernetes/pkg/kubectl/cmd"
 )
 
-// GetOptions is the start of the data required to perform the operation.  As new fields are added, add them here instead of
-// referencing the cmd.Flags()
+// GetOptions is the start of the data required to perform the operation.
+// As new fields are added, add them here instead of referencing the cmd.Flags()
 type GetOptions struct {
 	Filenames            []string
 	Recursive            bool
@@ -49,17 +49,6 @@ var (
 		# List one or more resources by their type and names.
 		koli get deploys/web pods/web-pod-13je7`)
 )
-
-func prefixResources(args []string, prefix string) {
-	for i, arg := range args {
-		resource := strings.Split(arg, "/")
-		if len(resource) > 1 {
-			args[i] = fmt.Sprintf("%s/%s-%s", resource[0], prefix, resource[1])
-		} else {
-			args[i] = fmt.Sprintf("%s-%s", prefix, resource[0])
-		}
-	}
-}
 
 // NewCmdGet creates a command object for the generic "get" action, which
 // retrieves one or more resources from a server.
@@ -149,8 +138,11 @@ func RunGet(comm *koliutil.CommandParams, args []string, options *GetOptions) er
 
 	mapper, typer := f.Object(cmdutil.GetIncludeThirdPartyAPIs(cmd))
 
-	// _, enforceNamespace, err := f.DefaultNamespace() // TODO: remove this
-	cmdNamespace, err := koliutil.DefaultNamespace(comm, options.IsNamespaced)
+	err := koliutil.SetNamespacePrefix(cmd.Flag("namespace"), comm.User().ID)
+	if err != nil {
+		return err
+	}
+	cmdNamespace, err := comm.Factory.DefaultNamespace(cmd, options.IsNamespaced)
 	if err != nil {
 		return cmdutil.UsageError(cmd,
 			"Could not find a default namespace."+
@@ -179,9 +171,9 @@ func RunGet(comm *koliutil.CommandParams, args []string, options *GetOptions) er
 
 	if argsHasNames && !options.IsNamespaced {
 		if options.IsResourceSlashed {
-			prefixResources(args, comm.User().ID)
+			koliutil.PrefixResourceNames(args, comm.User().ID)
 		} else {
-			prefixResources(args[1:], comm.User().ID)
+			koliutil.PrefixResourceNames(args[1:], comm.User().ID) // args[1:] skip <resourcetype>
 		}
 	}
 
@@ -189,6 +181,7 @@ func RunGet(comm *koliutil.CommandParams, args []string, options *GetOptions) er
 	// The user could list all the namespaces in the cluster
 	if !options.IsNamespaced && !options.IsResourceSlashed && !argsHasNames {
 		// Override selector!
+		// TODO: review! Prefix must be set in this context
 		selector = fmt.Sprintf("sys.io/id=%s", comm.User().ID)
 	}
 
