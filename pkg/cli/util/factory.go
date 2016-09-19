@@ -11,9 +11,11 @@ import (
 	"strings"
 
 	"github.com/imdario/mergo"
+	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"k8s.io/kubernetes/pkg/client/unversioned/clientcmd"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	"k8s.io/kubernetes/pkg/kubectl/resource"
 	kuberuntime "k8s.io/kubernetes/pkg/runtime"
 )
 
@@ -47,6 +49,36 @@ func (f *Factory) BindFlags(flags *pflag.FlagSet) {
 func (f *Factory) BindExternalFlags(flags *pflag.FlagSet) {
 	// any flags defined by external projects (not part of pflags)
 	flags.AddGoFlagSet(flag.CommandLine)
+}
+
+// DefaultNamespace filter a default namespace based on the label 'sys.io/default=true'.
+// Returns an error if none or more than one namespace is found.
+func (f *Factory) DefaultNamespace(cmd *cobra.Command, isNamespaced bool) (string, error) {
+	if !isNamespaced {
+		return "", nil
+	}
+	flag := cmd.Flag("namespace")
+	if flag.Value.String() != "" {
+		return flag.Value.String(), nil
+	}
+	// The client doesn't provide any namespace, need to find a default one
+	mapper, typer := f.KubeFactory.Object(cmdutil.GetIncludeThirdPartyAPIs(cmd))
+	selector := fmt.Sprintf("sys.io/id=%s,sys.io/default=true", f.User.ID)
+	r := resource.NewBuilder(mapper, typer,
+		resource.ClientMapperFunc(f.KubeFactory.ClientForMapping), f.KubeFactory.Decoder(true)).
+		SelectorParam(selector).
+		ResourceTypes([]string{"namespace"}...).
+		Latest().
+		Flatten().
+		Do()
+
+	infos, err := r.Infos()
+	if err != nil {
+		return "", err
+	} else if len(infos) != 1 {
+		return "", fmt.Errorf("Found (%d) namespaces.", len(infos))
+	}
+	return infos[0].Name, nil
 }
 
 // NewFactory creates a factory with the default Kubernetes resources defined
