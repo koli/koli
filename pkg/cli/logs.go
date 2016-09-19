@@ -109,8 +109,11 @@ func (o *LogsOptions) Complete(comm *koliutil.CommandParams, args []string) erro
 	default:
 		return cmdutil.UsageError(cmd, "logs POD [-c CONTAINER]")
 	}
-	var err error
-	koliutil.SetNamespacePrefix(cmd.Flag("namespace"), comm.User().ID)
+
+	err := koliutil.SetNamespacePrefix(cmd.Flag("namespace"), comm.User().ID)
+	if err != nil {
+		return err
+	}
 	o.Namespace, err = comm.Factory.DefaultNamespace(cmd, true)
 	if err != nil {
 		return err
