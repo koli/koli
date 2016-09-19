@@ -7,6 +7,7 @@ import (
 	"github.com/renstrom/dedent"
 	"github.com/spf13/cobra"
 
+	koliutil "github.com/kolibox/koli/pkg/cli/util"
 	"k8s.io/kubernetes/pkg/kubectl"
 	kubecmd "k8s.io/kubernetes/pkg/kubectl/cmd"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
@@ -22,15 +23,15 @@ var (
 )
 
 // NewCmdCreateDeploy is a macro command to create a new deployment
-func NewCmdCreateDeploy(f *cmdutil.Factory, cmdOut io.Writer) *cobra.Command {
+func NewCmdCreateDeploy(f *koliutil.Factory, cmdOut io.Writer) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:     "deploys NAME --image=image [--dry-run]",
-		Aliases: []string{"dep"},
+		Use:     "deploy NAME --image=image [--dry-run]",
+		Aliases: []string{"dep", "deploys"},
 		Short:   "Create a deploy with the specified name.",
 		Long:    deploymentLong,
 		Example: deploymentExample,
 		Run: func(cmd *cobra.Command, args []string) {
-			err := CreateDeploy(f, cmdOut, cmd, args)
+			err := CreateDeploy(f.KubeFactory, cmdOut, cmd, args)
 			cmdutil.CheckErr(err)
 		},
 	}

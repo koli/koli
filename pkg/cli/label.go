@@ -11,6 +11,7 @@ import (
 	"github.com/renstrom/dedent"
 	"github.com/spf13/cobra"
 
+	koliutil "github.com/kolibox/koli/pkg/cli/util"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/kubectl"
@@ -40,12 +41,12 @@ var (
 )
 
 // NewCmdLabel .
-func NewCmdLabel(f *cmdutil.Factory, out io.Writer) *cobra.Command {
+func NewCmdLabel(f *koliutil.Factory, out io.Writer) *cobra.Command {
 	options := &kubecmd.LabelOptions{}
 
 	// retrieve a list of handled resources from printer as valid args
 	validArgs, argAliases := []string{}, []string{}
-	p, err := f.Printer(nil, kubectl.PrintOptions{
+	p, err := f.KubeFactory.Printer(nil, kubectl.PrintOptions{
 		ColumnLabels: []string{},
 	})
 	cmdutil.CheckErr(err)
@@ -59,7 +60,7 @@ func NewCmdLabel(f *cmdutil.Factory, out io.Writer) *cobra.Command {
 		Short:   "Update the labels on a resource",
 		Example: labelExample,
 		Run: func(cmd *cobra.Command, args []string) {
-			err := RunLabel(f, out, cmd, args, options)
+			err := RunLabel(f.KubeFactory, out, cmd, args, options)
 			cmdutil.CheckErr(err)
 		},
 		ValidArgs:  validArgs,
