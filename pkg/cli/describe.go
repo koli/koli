@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 
 	"github.com/renstrom/dedent"
@@ -21,8 +22,10 @@ import (
 // DescribeOptions is the start of the data required to perform the operation.  As new fields are added, add them here instead of
 // referencing the cmd.Flags()
 type DescribeOptions struct {
-	Filenames []string
-	Recursive bool
+	Filenames         []string
+	Recursive         bool
+	IsNamespaced      bool
+	IsResourceSlashed bool
 }
 
 var (
@@ -38,8 +41,8 @@ var (
 )
 
 // NewCmdDescribe .
-func NewCmdDescribe(f *koliutil.Factory, out, cmdErr io.Writer) *cobra.Command {
-	options := &DescribeOptions{}
+func NewCmdDescribe(comm *koliutil.CommandParams) *cobra.Command {
+	options := &DescribeOptions{IsNamespaced: true}
 	describerSettings := &kubectl.DescriberSettings{}
 
 	validArgs := kubectl.DescribableResources()
@@ -50,7 +53,22 @@ func NewCmdDescribe(f *koliutil.Factory, out, cmdErr io.Writer) *cobra.Command {
 		Short:   "Show details of a specific resource or group of resources",
 		Example: describeExample,
 		Run: func(cmd *cobra.Command, args []string) {
-			err := RunDescribe(f.KubeFactory, out, cmdErr, cmd, args, options, describerSettings)
+			if len(args) == 0 {
+				fmt.Fprint(comm.Err, "You must specify the type of resource to describe. ", validResources)
+				cmdutil.CheckErr(cmdutil.UsageError(cmd, "Required resource not specified."))
+			}
+			comm.Cmd = cmd
+			hasNS, _ := regexp.MatchString(`(namespace[s]?|ns)[/]?`, args[0])
+			if hasNS {
+				options.IsNamespaced = false
+				if strings.Contains(args[0], "/") {
+					options.IsResourceSlashed = true
+					koliutil.PrefixResourceNames(args, comm.User().ID)
+				} else {
+					koliutil.PrefixResourceNames(args[1:], comm.User().ID)
+				}
+			}
+			err := RunDescribe(comm, args, options, describerSettings)
 			cmdutil.CheckErr(err)
 		},
 		ValidArgs:  validArgs,
@@ -60,35 +78,41 @@ func NewCmdDescribe(f *koliutil.Factory, out, cmdErr io.Writer) *cobra.Command {
 	kubectl.AddJsonFilenameFlag(cmd, &options.Filenames, usage)
 	cmdutil.AddRecursiveFlag(cmd, &options.Recursive)
 	cmd.Flags().StringP("selector", "l", "", "Selector (label query) to filter on")
-	cmd.Flags().Bool("all-namespaces", false, "If present, list the requested object(s) across all namespaces. Namespace in current context is ignored even if specified with --namespace.")
-	cmd.Flags().BoolVar(&describerSettings.ShowEvents, "show-events", true, "If true, display events related to the described object.")
+
+	//cmd.Flags().BoolVar(&describerSettings.ShowEvents, "show-events", true, "If true, display events related to the described object.")
 	cmdutil.AddInclude3rdPartyFlags(cmd)
 	return cmd
 }
 
 // RunDescribe .
-func RunDescribe(f *cmdutil.Factory, out, cmdErr io.Writer, cmd *cobra.Command, args []string, options *DescribeOptions, describerSettings *kubectl.DescriberSettings) error {
+func RunDescribe(comm *koliutil.CommandParams, args []string, options *DescribeOptions, ds *kubectl.DescriberSettings) error {
+	out, cmd, f := comm.Out, comm.Cmd, comm.KFactory()
 	selector := cmdutil.GetFlagString(cmd, "selector")
-	allNamespaces := cmdutil.GetFlagBool(cmd, "all-namespaces")
-	cmdNamespace, enforceNamespace, err := f.DefaultNamespace()
+
+	err := koliutil.SetNamespacePrefix(cmd.Flag("namespace"), comm.User().ID)
 	if err != nil {
 		return err
 	}
-	if allNamespaces {
-		enforceNamespace = false
+	cmdNamespace, err := comm.Factory.DefaultNamespace(cmd, options.IsNamespaced)
+	if err != nil {
+		return err
 	}
-	if len(args) == 0 && len(options.Filenames) == 0 {
-		fmt.Fprint(cmdErr, "You must specify the type of resource to describe. ", validResources)
-		return cmdutil.UsageError(cmd, "Required resource not specified.")
+
+	// TODO: querying namespaces could be insecure
+	// The user could list all the namespaces in the cluster
+	if !options.IsNamespaced && !options.IsResourceSlashed && len(args) == 1 {
+		// Override selector!
+		// TODO: review! Prefix must be set in this context
+		selector = fmt.Sprintf("sys.io/id=%s", comm.User().ID)
 	}
 
 	mapper, typer := f.Object(cmdutil.GetIncludeThirdPartyAPIs(cmd))
 	r := resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), f.Decoder(true)).
 		ContinueOnError().
-		NamespaceParam(cmdNamespace).DefaultNamespace().AllNamespaces(allNamespaces).
-		FilenameParam(enforceNamespace, options.Recursive, options.Filenames...).
+		NamespaceParam(cmdNamespace).DefaultNamespace().
 		SelectorParam(selector).
 		ResourceTypeOrNameArgs(true, args...).
+		SingleResourceType().
 		Flatten().
 		Do()
 	err = r.Err()
@@ -100,7 +124,7 @@ func RunDescribe(f *cmdutil.Factory, out, cmdErr io.Writer, cmd *cobra.Command, 
 	infos, err := r.Infos()
 	if err != nil {
 		if apierrors.IsNotFound(err) && len(args) == 2 {
-			return DescribeMatchingResources(mapper, typer, f, cmdNamespace, args[0], args[1], describerSettings, out, err)
+			return DescribeMatchingResources(mapper, typer, f, cmdNamespace, args[0], args[1], ds, out, err)
 		}
 		allErrs = append(allErrs, err)
 	}
@@ -113,7 +137,7 @@ func RunDescribe(f *cmdutil.Factory, out, cmdErr io.Writer, cmd *cobra.Command, 
 			allErrs = append(allErrs, err)
 			continue
 		}
-		s, err := describer.Describe(info.Namespace, info.Name, *describerSettings)
+		s, err := describer.Describe(info.Namespace, info.Name, *ds)
 		if err != nil {
 			allErrs = append(allErrs, err)
 			continue
@@ -125,7 +149,6 @@ func RunDescribe(f *cmdutil.Factory, out, cmdErr io.Writer, cmd *cobra.Command, 
 			fmt.Fprintf(out, "\n\n%s", s)
 		}
 	}
-
 	return utilerrors.NewAggregate(allErrs)
 }
 

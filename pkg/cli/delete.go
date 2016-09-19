@@ -3,6 +3,8 @@ package cli
 import (
 	"fmt"
 	"io"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/renstrom/dedent"
@@ -13,10 +15,18 @@ import (
 	"k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/api/meta"
 	"k8s.io/kubernetes/pkg/kubectl"
-	kubecmd "k8s.io/kubernetes/pkg/kubectl/cmd"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	"k8s.io/kubernetes/pkg/kubectl/resource"
 )
+
+// DeleteOptions is the start of the data required to perform the operation.
+// As new fields are added, add them here instead of referencing the cmd.Flags()
+type DeleteOptions struct {
+	Filenames         []string
+	Recursive         bool
+	IsNamespaced      bool
+	IsResourceSlashed bool
+}
 
 var (
 	deleteExample = dedent.Dedent(`
@@ -34,12 +44,12 @@ var (
 )
 
 // NewCmdDelete .
-func NewCmdDelete(f *koliutil.Factory, out io.Writer) *cobra.Command {
-	options := &kubecmd.DeleteOptions{}
+func NewCmdDelete(comm *koliutil.CommandParams) *cobra.Command {
+	options := &DeleteOptions{IsNamespaced: true}
 
 	// retrieve a list of handled resources from printer as valid args
 	validArgs, argAliases := []string{}, []string{}
-	p, err := f.KubeFactory.Printer(nil, kubectl.PrintOptions{
+	p, err := comm.KFactory().Printer(nil, kubectl.PrintOptions{
 		ColumnLabels: []string{},
 	})
 	cmdutil.CheckErr(err)
@@ -53,8 +63,18 @@ func NewCmdDelete(f *koliutil.Factory, out io.Writer) *cobra.Command {
 		Short:   "Delete resources by names",
 		Example: deleteExample,
 		Run: func(cmd *cobra.Command, args []string) {
+			comm.Cmd = cmd
 			cmdutil.CheckErr(cmdutil.ValidateOutputArgs(cmd))
-			err := RunDelete(f.KubeFactory, out, cmd, args, options)
+			hasNS, _ := regexp.MatchString(`(namespace[s]?|ns)[/]?`, args[0])
+			if hasNS {
+				options.IsNamespaced = false
+				if strings.Contains(args[0], "/") {
+					koliutil.PrefixResourceNames(args, comm.User().ID)
+				} else {
+					koliutil.PrefixResourceNames(args[1:], comm.User().ID)
+				}
+			}
+			err := RunDelete(comm, args, options)
 			cmdutil.CheckErr(err)
 		},
 		SuggestFor: []string{"rm", "stop"},
@@ -77,20 +97,24 @@ func NewCmdDelete(f *koliutil.Factory, out io.Writer) *cobra.Command {
 }
 
 // RunDelete .
-func RunDelete(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []string, options *kubecmd.DeleteOptions) error {
-	cmdNamespace, enforceNamespace, err := f.DefaultNamespace()
+func RunDelete(comm *koliutil.CommandParams, args []string, options *DeleteOptions) error {
+	cmd, out := comm.Cmd, comm.Out
+	f := comm.KFactory()
+
+	err := koliutil.SetNamespacePrefix(cmd.Flag("namespace"), comm.User().ID)
 	if err != nil {
 		return err
 	}
-	deleteAll := cmdutil.GetFlagBool(cmd, "all")
+	cmdNamespace, err := comm.Factory.DefaultNamespace(comm.Cmd, options.IsNamespaced)
+	if err != nil {
+		return err
+	}
 	mapper, typer := f.Object(cmdutil.GetIncludeThirdPartyAPIs(cmd))
 	r := resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), f.Decoder(true)).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
-		FilenameParam(enforceNamespace, options.Recursive, options.Filenames...).
-		SelectorParam(cmdutil.GetFlagString(cmd, "selector")).
-		SelectAllParam(deleteAll).
 		ResourceTypeOrNameArgs(false, args...).RequireObject(false).
+		SingleResourceType().
 		Flatten().
 		Do()
 	err = r.Err()
@@ -99,17 +123,6 @@ func RunDelete(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []str
 	}
 
 	ignoreNotFound := cmdutil.GetFlagBool(cmd, "ignore-not-found")
-	if deleteAll {
-		f := cmd.Flags().Lookup("ignore-not-found")
-		// The flag should never be missing
-		if f == nil {
-			return fmt.Errorf("missing --ignore-not-found flag")
-		}
-		// If the user didn't explicitly set the option, default to ignoring NotFound errors when used with --all
-		if !f.Changed {
-			ignoreNotFound = true
-		}
-	}
 
 	gracePeriod := cmdutil.GetFlagInt(cmd, "grace-period")
 	if cmdutil.GetFlagBool(cmd, "now") {
@@ -122,13 +135,20 @@ func RunDelete(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []str
 	shortOutput := cmdutil.GetFlagString(cmd, "output") == "name"
 	// By default use a reaper to delete all related resources.
 	if cmdutil.GetFlagBool(cmd, "cascade") {
-		return ReapResult(r, f, out, cmdutil.GetFlagBool(cmd, "cascade"), ignoreNotFound, cmdutil.GetFlagDuration(cmd, "timeout"), gracePeriod, shortOutput, mapper, false)
+		return ReapResult(r, f, out, cmdutil.GetFlagBool(cmd, "cascade"),
+			ignoreNotFound, cmdutil.GetFlagDuration(cmd, "timeout"),
+			gracePeriod, shortOutput, mapper, false)
 	}
 	return DeleteResult(r, out, ignoreNotFound, shortOutput, mapper)
 }
 
 // ReapResult .
-func ReapResult(r *resource.Result, f *cmdutil.Factory, out io.Writer, isDefaultDelete, ignoreNotFound bool, timeout time.Duration, gracePeriod int, shortOutput bool, mapper meta.RESTMapper, quiet bool) error {
+func ReapResult(r *resource.Result,
+	f *cmdutil.Factory,
+	out io.Writer, isDefaultDelete, ignoreNotFound bool,
+	timeout time.Duration, gracePeriod int,
+	shortOutput bool,
+	mapper meta.RESTMapper, quiet bool) error {
 	found := 0
 	if ignoreNotFound {
 		r = r.IgnoreErrors(errors.IsNotFound)
