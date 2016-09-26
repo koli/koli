@@ -11,6 +11,13 @@ import (
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 )
 
+const (
+	// PrefixLabel is a domain name to prefix system labels
+	PrefixLabel = "sys.io"
+	// GitRemoteName is the default name of git remotes
+	GitRemoteName = "koli"
+)
+
 // CommandParams wraps parameters required in commands
 type CommandParams struct {
 	Factory *Factory

@@ -22,11 +22,12 @@ import (
 // Factory provides abstractions that allow the Kubectl command to be extended across multiple types
 // of resources and different API sets.
 type Factory struct {
-	KubeFactory *cmdutil.Factory
-	User        *UserMeta
-	Ctrl        *Controller
-	Serializer  kuberuntime.NegotiatedSerializer
-	flags       *pflag.FlagSet
+	KubeFactory   *cmdutil.Factory
+	User          *UserMeta
+	Ctrl          *Controller
+	CrafterRemote string
+	Serializer    kuberuntime.NegotiatedSerializer
+	flags         *pflag.FlagSet
 }
 
 // BindFlags adds any flags that are common to all kubectl sub commands.
@@ -51,7 +52,7 @@ func (f *Factory) BindExternalFlags(flags *pflag.FlagSet) {
 	flags.AddGoFlagSet(flag.CommandLine)
 }
 
-// DefaultNamespace filter a default namespace based on the label 'sys.io/default=true'.
+// DefaultNamespace filter a default namespace based on the label '<koliutil.PrefixLabel>/default=true'.
 // Returns an error if none or more than one namespace is found.
 func (f *Factory) DefaultNamespace(cmd *cobra.Command, isNamespaced bool) (string, error) {
 	if !isNamespaced {
@@ -63,7 +64,7 @@ func (f *Factory) DefaultNamespace(cmd *cobra.Command, isNamespaced bool) (strin
 	}
 	// The client doesn't provide any namespace, need to find a default one
 	mapper, typer := f.KubeFactory.Object(cmdutil.GetIncludeThirdPartyAPIs(cmd))
-	selector := fmt.Sprintf("sys.io/id=%s,sys.io/default=true", f.User.ID)
+	selector := fmt.Sprintf("%s/id=%s,%s/default=true", PrefixLabel, f.User.ID, PrefixLabel)
 	r := resource.NewBuilder(mapper, typer,
 		resource.ClientMapperFunc(f.KubeFactory.ClientForMapping), f.KubeFactory.Decoder(true)).
 		SelectorParam(selector).
@@ -81,6 +82,28 @@ func (f *Factory) DefaultNamespace(cmd *cobra.Command, isNamespaced bool) (strin
 	return infos[0].Name, nil
 }
 
+// RepositoryExists verifies if a repository already exists on deployments
+func (f *Factory) RepositoryExists(cmd *cobra.Command, repository, namespace string) (bool, error) {
+	// The client doesn't provide any namespace, need to find a default one
+	mapper, typer := f.KubeFactory.Object(cmdutil.GetIncludeThirdPartyAPIs(cmd))
+	selector := fmt.Sprintf("%s/repo=%s", PrefixLabel, repository)
+	r := resource.NewBuilder(mapper, typer,
+		resource.ClientMapperFunc(f.KubeFactory.ClientForMapping), f.KubeFactory.Decoder(true)).
+		SelectorParam(selector).
+		NamespaceParam(namespace).
+		ResourceTypes([]string{"deployment"}...).
+		Latest().
+		Flatten().
+		Do()
+
+	infos, err := r.Infos()
+	if err != nil {
+		return false, fmt.Errorf("could not verify existent repositories (%s)", err)
+	}
+
+	return len(infos) >= 1, nil
+}
+
 // NewFactory creates a factory with the default Kubernetes resources defined
 func NewFactory(optionalClientConfig clientcmd.ClientConfig) (*Factory, error) {
 	flags := pflag.NewFlagSet("", pflag.ContinueOnError)
@@ -91,6 +114,7 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) (*Factory, error) {
 		clientConfig = DefaultClientConfig(flags)
 	}
 	kfactory := cmdutil.NewFactory(clientConfig)
+
 	cfg, err := clientConfig.ClientConfig()
 	if cfg.BearerToken == "" {
 		return nil, errors.New("bearer token is empty")
@@ -108,18 +132,20 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) (*Factory, error) {
 		Path: "/",
 	}
 
-	c := NewController(url, "")
-	c.Request.SetHeader("Authorization", fmt.Sprintf("Bearer %s", cfg.BearerToken))
+	crafterRemote := "http://crafter-orion.kolibox.io:7080" // TODO: hard-coded
+	controller := NewController(url, "")
+	controller.Request.SetHeader("Authorization", fmt.Sprintf("Bearer %s", cfg.BearerToken))
 	plataform := path.Join(runtime.GOOS, runtime.GOARCH)
 	userAgent := "koli/v0.1.0 (%s) [kubectl/v1.4.0]"
-	c.Request.SetHeader("User-Agent", fmt.Sprintf(userAgent, plataform))
+	controller.Request.SetHeader("User-Agent", fmt.Sprintf(userAgent, plataform))
 
 	return &Factory{
-		KubeFactory: kfactory,
-		User:        UserConfig(nil),
-		Ctrl:        c,
-		Serializer:  cfg.NegotiatedSerializer,
-		flags:       flags,
+		KubeFactory:   kfactory,
+		User:          UserConfig(nil),
+		Ctrl:          controller,
+		CrafterRemote: crafterRemote,
+		Serializer:    cfg.NegotiatedSerializer,
+		flags:         flags,
 	}, nil
 }
 

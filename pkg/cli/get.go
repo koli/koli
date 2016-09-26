@@ -182,7 +182,7 @@ func RunGet(comm *koliutil.CommandParams, args []string, options *GetOptions) er
 	if !options.IsNamespaced && !options.IsResourceSlashed && !argsHasNames {
 		// Override selector!
 		// TODO: review! Prefix must be set in this context
-		selector = fmt.Sprintf("sys.io/id=%s", comm.User().ID)
+		selector = fmt.Sprintf("%s/id=%s", koliutil.PrefixLabel, comm.User().ID)
 	}
 
 	// export := cmdutil.GetFlagBool(cmd, "export")
@@ -373,6 +373,9 @@ func RunGet(comm *koliutil.CommandParams, args []string, options *GetOptions) er
 			lastMapping = mapping
 		}
 		if resourcePrinter, found := printer.(*kubectl.HumanReadablePrinter); found {
+			// Override HumanReadablePrinter.deploymentColumns
+			resourcePrinter.Handler(koliutil.DeploymentColumns, koliutil.PrintDeployment)
+
 			resourceName := resourcePrinter.GetResourceKind()
 			if mapping != nil {
 				if resourceName == "" {
