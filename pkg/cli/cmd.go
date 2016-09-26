@@ -15,6 +15,7 @@ import (
 )
 
 const (
+	deployImage = "quay.io/koli/slugrunner:v0.1.0-beta" // TODO: hard-coded
 	// PossibleResourceTypes help description
 	PossibleResourceTypes = `Possible resource types include (case insensitive): 
 pods (aka 'po'), deployments (aka 'deploy'), events (aka 'ev'), stacks, 
@@ -213,7 +214,7 @@ func NewKubectlCommand(f *koliutil.Factory, in io.Reader, out, err io.Writer) *c
 		{
 			Message: "Primary commands, use 'koli [command] -h/--help' to learn more:\n",
 			Commands: []*cobra.Command{
-				NewCmdCreate(f, out),
+				NewCmdCreate(comm),
 				NewCmdDelete(comm),
 				NewCmdDescribe(comm),
 				// NewCmdLabel(f, out),
