@@ -60,9 +60,12 @@ func NewCmdCreateDeploy(comm *koliutil.CommandParams) *cobra.Command {
 
 // CreateDeploy implements the behavior to run the create deploy command
 func CreateDeploy(comm *koliutil.CommandParams, args []string) error {
-	git := koliutil.NewGitExec(cmdutil.GetFlagString(comm.Cmd, "repository"), comm.Factory.CrafterRemote)
+	git, err := koliutil.NewGitExec(cmdutil.GetFlagString(comm.Cmd, "repository"), comm.Factory.CrafterRemote)
+	if err != nil {
+		return err
+	}
 
-	repository, err := git.TopLevelRepository()
+	repository, err := git.GetTopLevelRepository()
 	if err != nil {
 		return cmdutil.UsageError(comm.Cmd,
 			err.Error()+
@@ -108,7 +111,7 @@ func CreateDeploy(comm *koliutil.CommandParams, args []string) error {
 			More info: https://kolibox.io/docs/deploys#repositories`))
 	}
 
-	if err := git.AddRemote(namespace, name); err != nil {
+	if err := git.AddRemote(namespace, repository); err != nil {
 		return cmdutil.UsageError(comm.Cmd, fmt.Sprintf("couldn't add remote (%s)", err))
 	}
 
@@ -122,7 +125,6 @@ func CreateDeploy(comm *koliutil.CommandParams, args []string) error {
 		Name:             name,
 		Paused:           true,
 		Repository:       repository,
-		Release:          "v0",
 		ComputeResources: computeResources,
 	}
 	obj, err := generator.StructuredGenerate()
