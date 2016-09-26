@@ -79,6 +79,8 @@ func NewCmdDescribe(comm *koliutil.CommandParams) *cobra.Command {
 	cmdutil.AddRecursiveFlag(cmd, &options.Recursive)
 	cmd.Flags().StringP("selector", "l", "", "Selector (label query) to filter on")
 
+	// show-events. Always true
+	describerSettings.ShowEvents = true
 	//cmd.Flags().BoolVar(&describerSettings.ShowEvents, "show-events", true, "If true, display events related to the described object.")
 	cmdutil.AddInclude3rdPartyFlags(cmd)
 	return cmd
@@ -103,7 +105,7 @@ func RunDescribe(comm *koliutil.CommandParams, args []string, options *DescribeO
 	if !options.IsNamespaced && !options.IsResourceSlashed && len(args) == 1 {
 		// Override selector!
 		// TODO: review! Prefix must be set in this context
-		selector = fmt.Sprintf("sys.io/id=%s", comm.User().ID)
+		selector = fmt.Sprintf("%s/id=%s", koliutil.PrefixLabel, comm.User().ID)
 	}
 
 	mapper, typer := f.Object(cmdutil.GetIncludeThirdPartyAPIs(cmd))
