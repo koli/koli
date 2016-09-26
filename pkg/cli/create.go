@@ -1,8 +1,6 @@
 package cli
 
 import (
-	"io"
-
 	koliutil "github.com/kolibox/koli/pkg/cli/util"
 	"github.com/spf13/cobra"
 
@@ -12,7 +10,7 @@ import (
 )
 
 // NewCmdCreate .
-func NewCmdCreate(f *koliutil.Factory, out io.Writer) *cobra.Command {
+func NewCmdCreate(comm *koliutil.CommandParams) *cobra.Command {
 	options := &kubecmd.CreateOptions{}
 
 	cmd := &cobra.Command{
@@ -25,7 +23,7 @@ func NewCmdCreate(f *koliutil.Factory, out io.Writer) *cobra.Command {
 			}
 			cmdutil.CheckErr(kubecmd.ValidateArgs(cmd, args))
 			cmdutil.CheckErr(cmdutil.ValidateOutputArgs(cmd))
-			cmdutil.CheckErr(kubecmd.RunCreate(f.KubeFactory, cmd, out, options))
+			// cmdutil.CheckErr(kubecmd.RunCreate(f.KubeFactory, cmd, out, options))
 		},
 	}
 
@@ -40,11 +38,11 @@ func NewCmdCreate(f *koliutil.Factory, out io.Writer) *cobra.Command {
 	cmdutil.AddInclude3rdPartyFlags(cmd)
 
 	// create subcommands
-	cmd.AddCommand(NewCmdCreateNamespace(f, out))
+	cmd.AddCommand(NewCmdCreateNamespace(comm.Factory, comm.Out))
 	//cmd.AddCommand(kubecmd.NewCmdCreateSecret(f, out))
 	//cmd.AddCommand(kubecmd.NewCmdCreateConfigMap(f, out))
 	//cmd.AddCommand(kubecmd.NewCmdCreateServiceAccount(f, out))
 	//cmd.AddCommand(kubecmd.NewCmdCreateService(f, out))
-	cmd.AddCommand(NewCmdCreateDeploy(f, out))
+	cmd.AddCommand(NewCmdCreateDeploy(comm))
 	return cmd
 }
