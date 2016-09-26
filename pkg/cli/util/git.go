@@ -5,16 +5,21 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 )
 
 // NewGitExec creates a new gitExec object
-func NewGitExec(repositoryPath, remoteAddr string) *GitExec {
+func NewGitExec(repositoryPath, remoteAddr string) (g *GitExec, err error) {
+	if repositoryPath == "" {
+		repositoryPath, err = os.Getwd()
+		if err != nil {
+			return nil, fmt.Errorf("could not get the current dir (%s)", err)
+		}
+	}
 	return &GitExec{
 		repositoryPath: repositoryPath,
 		remoteAddr:     remoteAddr,
-	}
+	}, nil
 }
 
 // GitExec interact with the 'git' command to retrieve and add info
@@ -34,21 +39,14 @@ func (g *GitExec) AddRemote(namespace, deployName string) error {
 	cmd.Dir = g.repositoryPath
 	cmd.Run()
 
-	addr := filepath.Join(g.remoteAddr, deployName)
-	cmd = exec.Command("git", "remote", "add", GitRemoteName, addr)
+	gitRemoteAddr := fmt.Sprintf("%s/%s/%s", g.remoteAddr, namespace, deployName)
+	cmd = exec.Command("git", "remote", "add", GitRemoteName, gitRemoteAddr)
 	cmd.Dir = g.repositoryPath
 	return cmd.Run()
 }
 
-// TopLevelRepository sets the RepositoryPath with the current directory if it's empty
-// and also returns the top level basename of a git repository
-func (g *GitExec) TopLevelRepository() (repository string, err error) {
-	if g.repositoryPath == "" {
-		g.repositoryPath, err = os.Getwd()
-		if err != nil {
-			return "", fmt.Errorf("could not get the current dir (%s)", err)
-		}
-	}
+// GetTopLevelRepository returns the top level basename of a git repository
+func (g *GitExec) GetTopLevelRepository() (repository string, err error) {
 	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
 	cmd.Dir = g.repositoryPath
 	output, err := cmd.Output()
