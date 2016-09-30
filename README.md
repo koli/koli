@@ -113,6 +113,13 @@ kubectl config set-context koli --cluster orion --user koli
 kubectl config use-context koli
 ```
 
+Once you done with kubectl you must insert crafter hostname in your `/etc/hosts`
+
+```bash
+#/etc/hosts
+192.168.99.100 crafter-orion.kolibox.io 
+```
+
 After that you can start interacting with the `koli` command line
 
 ```bash
