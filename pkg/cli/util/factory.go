@@ -8,7 +8,7 @@ import (
 	"os"
 	"path"
 	"runtime"
-	"strings"
+	"regexp"
 
 	"github.com/imdario/mergo"
 	"github.com/spf13/cobra"
@@ -123,12 +123,15 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) (*Factory, error) {
 		return nil, err
 	}
 
-	host := strings.TrimPrefix(strings.TrimPrefix(cfg.Host, "https://"), "http://")
-	_ = host
+	ipRegexp := "\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}"
+	proxyHost := regexp.MustCompile(ipRegexp).FindStringSubmatch(cfg.Host)[0]
+	if proxyHost == "" {
+		return nil, errors.New("host not found, check your kubeconfig")
+	}
 	url := &url.URL{
 		Scheme: "http",
 		// Host:   host,
-		Host: "192.168.99.100:7080",
+		Host: fmt.Sprintf("%s:%s", proxyHost, "7080"),
 		Path: "/",
 	}
 
