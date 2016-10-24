@@ -7,8 +7,8 @@ import (
 	"net/url"
 	"os"
 	"path"
-	"runtime"
 	"regexp"
+	"runtime"
 
 	"github.com/imdario/mergo"
 	"github.com/spf13/cobra"
@@ -26,6 +26,7 @@ type Factory struct {
 	User          *UserMeta
 	Ctrl          *Controller
 	CrafterRemote string
+	BearerToken   string
 	Serializer    kuberuntime.NegotiatedSerializer
 	flags         *pflag.FlagSet
 }
@@ -126,16 +127,16 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) (*Factory, error) {
 	ipRegexp := "\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}\\.\\d{1,3}"
 	proxyHost := regexp.MustCompile(ipRegexp).FindStringSubmatch(cfg.Host)[0]
 	if proxyHost == "" {
-		return nil, errors.New("host not found, check your kubeconfig")
+		return nil, errors.New("host not found, check your config")
 	}
 	url := &url.URL{
 		Scheme: "http",
 		// Host:   host,
-		Host: fmt.Sprintf("%s:%s", proxyHost, "7080"),
+		Host: fmt.Sprintf("%s:%s", proxyHost, "30080"),
 		Path: "/",
 	}
 
-	crafterRemote := "http://crafter-orion.kolibox.io:7080" // TODO: hard-coded
+	crafterRemote := "http://crafter-orion.kolibox.io:30080" // TODO: hard-coded
 	controller := NewController(url, "")
 	controller.Request.SetHeader("Authorization", fmt.Sprintf("Bearer %s", cfg.BearerToken))
 	plataform := path.Join(runtime.GOOS, runtime.GOARCH)
@@ -144,9 +145,9 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) (*Factory, error) {
 
 	return &Factory{
 		KubeFactory:   kfactory,
-		User:          UserConfig(nil),
 		Ctrl:          controller,
 		CrafterRemote: crafterRemote,
+		BearerToken:   cfg.BearerToken,
 		Serializer:    cfg.NegotiatedSerializer,
 		flags:         flags,
 	}, nil

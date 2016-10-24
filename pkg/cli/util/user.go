@@ -8,8 +8,8 @@ import (
 
 // DefaultComputeResources http://kubernetes.io/docs/admin/resourcequota/#compute-resource-quota
 type DefaultComputeResources struct {
-	CPU    string
-	Memory string
+	CPU    string `json:"cpu"`
+	Memory string `json:"memory"`
 }
 
 // DefaultResourceQuota http://kubernetes.io/docs/admin/resourcequota/#object-count-quota
@@ -27,10 +27,10 @@ type DefaultResourceQuota struct {
 
 // UserMeta .
 type UserMeta struct {
-	ID               string
-	Owner            string
-	ObjectResources  DefaultResourceQuota
-	ComputeResources DefaultComputeResources
+	ID               string                  `json:"id"`
+	Username         string                  `json:"username"`
+	ObjectResources  DefaultResourceQuota    `json:"objectresources"`
+	ComputeResources DefaultComputeResources `json:"computeresources"`
 }
 
 // Objects joins the DefaultResourceQuota attributes into a comma
@@ -53,8 +53,8 @@ func (u *UserMeta) Objects() string {
 func UserConfig(clientConfig clientcmd.ClientConfig) *UserMeta {
 	// TODO: Parse the config file and extract it from a JWT Token
 	return &UserMeta{
-		ID:    "21",
-		Owner: "sandromello",
+		ID:       "21",
+		Username: "sandromello",
 		// A POD born with default compute resources
 		ComputeResources: DefaultComputeResources{
 			CPU:    "0.2",

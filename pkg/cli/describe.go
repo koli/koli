@@ -58,7 +58,7 @@ func NewCmdDescribe(comm *koliutil.CommandParams) *cobra.Command {
 				cmdutil.CheckErr(cmdutil.UsageError(cmd, "Required resource not specified."))
 			}
 			comm.Cmd = cmd
-			hasNS, _ := regexp.MatchString(`(namespace[s]?|ns)[/]?`, args[0])
+			hasNS, _ := regexp.MatchString(`^(namespace[s]?|ns)[/]?`, args[0])
 			if hasNS {
 				options.IsNamespaced = false
 				if strings.Contains(args[0], "/") {

@@ -1,8 +1,14 @@
 package cli
 
 import (
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
 	"io"
+	"os"
+	"strings"
 
+	"github.com/renstrom/dedent"
 	"github.com/spf13/cobra"
 
 	koliutil "github.com/kolibox/koli/pkg/cli/util"
@@ -187,18 +193,43 @@ Use 'git push {{.CommandPath}} master' to deploy to an application.{{end}}
 
 // NewKubectlCommand creates the `kubectl` command and its nested children.
 func NewKubectlCommand(f *koliutil.Factory, in io.Reader, out, err io.Writer) *cobra.Command {
+	comm := &koliutil.CommandParams{Factory: f, In: in, Out: out, Err: err}
 	// Parent command to which all subcommands are added.
 	cmds := &cobra.Command{
 		Use:   "koli",
 		Short: "Koli command-line controls your cluster apps",
 		// Long: "Koli command-line controls your cluster apps",
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			// TODO: Find other way for implementing this
+			for _, name := range [...]string{"config", "version", "login"} {
+				if cmd.Name() == name || cmd.Parent().Name() == name {
+					return // don't check token on those commands
+				}
+			}
+			tokenParts := strings.Split(comm.Factory.BearerToken, ".")
+			if len(tokenParts) != 3 { // http://jwt.io/
+				fmt.Fprintln(out, "error: it's not a jwt token")
+				preRunHelp(out)
+			}
+
+			userRawMeta, err := decodeSegment(tokenParts[1])
+			if err != nil {
+				fmt.Fprintf(out, "error: couldn't decode token (%s)\n", err)
+				preRunHelp(out)
+			}
+			userMeta := &koliutil.UserMeta{}
+			if err := json.Unmarshal(userRawMeta, userMeta); err != nil {
+				fmt.Fprintf(out, "error: couldn't unmarshal user metadata (%s)\n", err)
+				preRunHelp(out)
+			}
+			comm.Factory.User = userMeta
+		},
 		Run: runHelp,
+
 		BashCompletionFunction: bashCompletionFunc,
 	}
 	// cmds.SetHelpTemplate(helpTemplate)
 	// cmds.SetUsageTemplate(usageTemplate)
-
-	comm := &koliutil.CommandParams{Factory: f, In: in, Out: out, Err: err}
 
 	// ./koli options (flags)
 	f.BindFlags(cmds.PersistentFlags())
@@ -210,10 +241,14 @@ func NewKubectlCommand(f *koliutil.Factory, in io.Reader, out, err io.Writer) *c
 	// From this point and forward we get warnings on flags that contain "_" separators
 	cmds.SetGlobalNormalizationFunc(flag.WarnWordSepNormalizeFunc)
 
+	// TODO: Change to ".koli"" config path
+	pathOptions := clientcmd.NewDefaultPathOptions()
+
 	groups := templates.CommandGroups{
 		{
 			Message: "Primary commands, use 'koli [command] -h/--help' to learn more:\n",
 			Commands: []*cobra.Command{
+				NewCmdLogin(comm, pathOptions),
 				NewCmdCreate(comm),
 				NewCmdDelete(comm),
 				NewCmdDescribe(comm),
@@ -249,13 +284,33 @@ func NewKubectlCommand(f *koliutil.Factory, in io.Reader, out, err io.Writer) *c
 		)
 	}
 
-	cmds.AddCommand(cmdconfig.NewCmdConfig(clientcmd.NewDefaultPathOptions(), out))
+	cmds.AddCommand(cmdconfig.NewCmdConfig(pathOptions, out))
 	cmds.AddCommand(kubecmd.NewCmdVersion(f.KubeFactory, out))
 	cmds.AddCommand(kubecmd.NewCmdOptions(out))
 
 	return cmds
 }
 
+// Decode JWT specific base64url encoding with padding stripped
+func decodeSegment(seg string) ([]byte, error) {
+	if l := len(seg) % 4; l > 0 {
+		seg += strings.Repeat("=", 4-l)
+	}
+	return base64.URLEncoding.DecodeString(seg)
+}
+
 func runHelp(cmd *cobra.Command, args []string) {
 	cmd.Help()
+}
+
+func preRunHelp(out io.Writer) {
+	fmt.Fprintln(out, dedent.Dedent(`
+        Try to log in again
+        >>> koli login
+
+        Or maybe you changed your context
+        >>> koli config use-context <your-context>
+
+        More info: https://kolibox.io/docs/authentication`))
+	os.Exit(1)
 }
