@@ -57,6 +57,7 @@ func NewCmdDelete(comm *koliutil.CommandParams) *cobra.Command {
 		validArgs = p.HandledResources()
 		argAliases = kubectl.ResourceAliases(validArgs)
 	}
+	validArgs = append(validArgs, "link", "links")
 
 	cmd := &cobra.Command{
 		Use:     "delete ([TYPE [(NAME | -l label)])",
@@ -65,7 +66,7 @@ func NewCmdDelete(comm *koliutil.CommandParams) *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			comm.Cmd = cmd
 			cmdutil.CheckErr(cmdutil.ValidateOutputArgs(cmd))
-			hasNS, _ := regexp.MatchString(`(namespace[s]?|ns)[/]?`, args[0])
+			hasNS, _ := regexp.MatchString(`^(namespace[s]?|ns)[/]?`, args[0])
 			if hasNS {
 				options.IsNamespaced = false
 				if strings.Contains(args[0], "/") {
@@ -74,7 +75,16 @@ func NewCmdDelete(comm *koliutil.CommandParams) *cobra.Command {
 					koliutil.PrefixResourceNames(args[1:], comm.User().ID)
 				}
 			}
-			err := RunDelete(comm, args, options)
+			if args[0] == "addons" || args[0] == "addon" {
+				args[0] = "deployments"
+				cmd.Flag("namespace").Value.Set("addons")
+			}
+			var err error
+			if args[0] == "links" || args[0] == "link" {
+				err = runCtrlDelete(comm, args)
+			} else {
+				err = RunDelete(comm, args, options)
+			}
 			cmdutil.CheckErr(err)
 		},
 		SuggestFor: []string{"rm", "stop"},
@@ -94,6 +104,35 @@ func NewCmdDelete(comm *koliutil.CommandParams) *cobra.Command {
 	cmdutil.AddOutputFlagsForMutation(cmd)
 	cmdutil.AddInclude3rdPartyFlags(cmd)
 	return cmd
+}
+
+func runCtrlDelete(comm *koliutil.CommandParams, args []string) error {
+	err := koliutil.SetNamespacePrefix(comm.Cmd.Flag("namespace"), comm.User().ID)
+	if err != nil {
+		return err
+	}
+	cmdNamespace, err := comm.Factory.DefaultNamespace(comm.Cmd, true)
+	if err != nil {
+		return err
+	}
+	result := comm.Controller().Request.DELETE().
+		Resource("namespaces").
+		Name(cmdNamespace).
+		SubResource("links").
+		Suffix(args[1]).
+		Do()
+
+	if result.StatusCode() == 401 {
+		return fmt.Errorf("wrong credentials")
+		// return errors.New("wrong credentials")
+	}
+
+	if result.StatusCode() != 204 {
+		obj, err := result.Raw()
+		return fmt.Errorf("unknown error (%s) (%s)", string(obj), err)
+	}
+	fmt.Printf("link %s deleted successfully\n", args[1])
+	return nil
 }
 
 // RunDelete .

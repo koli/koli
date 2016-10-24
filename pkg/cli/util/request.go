@@ -64,6 +64,16 @@ func (r *Request) Name(resourceName string) *Request {
 	return r
 }
 
+// Suffix appends segments to the end of the path. These items will be placed after the prefix and optional
+// Namespace, Resource, or Name sections.
+func (r *Request) Suffix(segments ...string) *Request {
+	if r.err != nil {
+		return r
+	}
+	r.subpath = path.Join(r.subpath, path.Join(segments...))
+	return r
+}
+
 // Resource sets the resource to access (<resource>/[ns/<namespace>/]<name>)
 func (r *Request) Resource(resource string) *Request {
 	if r.err != nil {

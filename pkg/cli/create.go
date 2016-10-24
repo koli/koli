@@ -39,10 +39,12 @@ func NewCmdCreate(comm *koliutil.CommandParams) *cobra.Command {
 
 	// create subcommands
 	cmd.AddCommand(NewCmdCreateNamespace(comm.Factory, comm.Out))
+	cmd.AddCommand(NewCmdCreateDeploy(comm))
+	cmd.AddCommand(NewCmdCreateAddOn(comm))
+	cmd.AddCommand(NewCmdCreateLinks(comm))
 	//cmd.AddCommand(kubecmd.NewCmdCreateSecret(f, out))
 	//cmd.AddCommand(kubecmd.NewCmdCreateConfigMap(f, out))
 	//cmd.AddCommand(kubecmd.NewCmdCreateServiceAccount(f, out))
 	//cmd.AddCommand(kubecmd.NewCmdCreateService(f, out))
-	cmd.AddCommand(NewCmdCreateDeploy(comm))
 	return cmd
 }

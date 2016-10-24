@@ -1,7 +1,10 @@
 package cli
 
 import (
+	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"regexp"
 	"strings"
 
@@ -30,7 +33,19 @@ type GetOptions struct {
 	Raw string
 }
 
+// Link represents a controller resource
+type Link struct {
+	Name          string `json:"name"`
+	ServiceDNS    string `json:"service_dns"`
+	NetworkPolicy string `json:"networkpolicy"`
+	Port          int    `json:"port"`
+	Service       string `json:"service"`
+	Status        string `json:"status"`
+}
+
 var (
+	linkColumns = []string{"NAME", "STATUS", "PORT", "NETWORK-POLICY", "SERVICE", "SERVICE-DNS"}
+
 	getLong = dedent.Dedent(`
 		Display one or many resources.
 
@@ -65,6 +80,7 @@ func NewCmdGet(comm *koliutil.CommandParams) *cobra.Command {
 		validArgs = p.HandledResources()
 		argAliases = kubectl.ResourceAliases(validArgs)
 	}
+	validArgs = append(validArgs, "link", "links")
 
 	cmd := &cobra.Command{
 		Use:     "get [(-o|--output=)json|yaml|wide] (TYPE [NAME | -l label] | TYPE/NAME ...) [flags]",
@@ -78,7 +94,7 @@ func NewCmdGet(comm *koliutil.CommandParams) *cobra.Command {
 				cmdutil.CheckErr(cmdutil.UsageError(cmd, "Required resource not specified."))
 			}
 			// Match namespace resource: 'resourcetype' or 'resourcetype/'
-			hasNS, _ := regexp.MatchString(`(namespace[s]?|ns)[/]?`, args[0])
+			hasNS, _ := regexp.MatchString(`^(namespace[s]?|ns)[/]?`, args[0])
 			if hasNS {
 				options.IsNamespaced = false
 				options.IsSingleResourceType = true
@@ -93,12 +109,21 @@ func NewCmdGet(comm *koliutil.CommandParams) *cobra.Command {
 				// Match namespace resource: 'resourcetype/'.
 				// Prevent the user querying multiple resources with namespaces.
 				// E.G.: $ command get svc/default ns/default
-				hasNS, _ = regexp.MatchString(`(namespace[s]?|ns)/`, arg)
+				hasNS, _ = regexp.MatchString(`^(namespace[s]?|ns)/`, arg)
 				if hasNS {
 					cmdutil.CheckErr(cmdutil.UsageError(cmd, "Could not query multiple resources with namespaces."))
 				}
 			}
-			err = RunGet(comm, args, options)
+			var err error
+			if args[0] == "link" || args[0] == "links" {
+				if len(args) > 2 {
+					cmdutil.CheckErr(cmdutil.UsageError(cmd, "Cannot has more than two arguments."))
+				}
+				err = runCtrlGet(comm, args)
+			} else {
+				err = RunGet(comm, args, options)
+			}
+
 			cmdutil.CheckErr(err)
 		},
 		SuggestFor: []string{"list", "ps"},
@@ -126,6 +151,88 @@ func NewCmdGet(comm *koliutil.CommandParams) *cobra.Command {
 	cmdutil.AddRecursiveFlag(cmd, &options.Recursive)
 	cmdutil.AddInclude3rdPartyFlags(cmd)
 	return cmd
+}
+
+func runCtrlGet(comm *koliutil.CommandParams, args []string) error {
+	if len(args) == 1 {
+		// List all links from the namespace
+	}
+	err := koliutil.SetNamespacePrefix(comm.Cmd.Flag("namespace"), comm.User().ID)
+	if err != nil {
+		return err
+	}
+	cmdNamespace, err := comm.Factory.DefaultNamespace(comm.Cmd, true)
+	if err != nil {
+		return cmdutil.UsageError(comm.Cmd,
+			"Could not find a default namespace."+
+				dedent.Dedent(`
+
+			You can create a new namespace:
+			>>> koli create namespace <mynamespace>
+
+			Or configure an existent one:
+			>>> koli set default ns <namespace>
+
+			To list all created namespaces:
+			>>> koli get ns
+
+			More info: https://kolibox.io/docs/namespaces`))
+	}
+	request := comm.Controller().Request.GET().
+		Resource("namespaces").
+		Name(cmdNamespace).
+		SubResource("links")
+	if len(args) == 2 {
+		request.Suffix(args[1])
+	}
+	result := request.Do()
+	if result.StatusCode() == 401 {
+		return errors.New("wrong credentials")
+	} else if result.StatusCode() != 200 {
+		return fmt.Errorf("failed retrieving link(s) (%d)", result.StatusCode())
+	}
+	data, err := result.Raw()
+	if err != nil {
+		return err
+	}
+
+	w := kubectl.GetNewTabWriter(comm.Out)
+	defer w.Flush()
+
+	if len(args) == 1 {
+		var links []Link
+
+		err = json.Unmarshal(data, &links)
+		if err != nil {
+			return err
+		}
+
+		if len(links) > 0 {
+			printColumnNames(w, linkColumns)
+		}
+		for _, l := range links {
+			fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\t%s\n",
+				l.Name, strings.Title(l.Status), l.Port, strings.Title(l.NetworkPolicy), strings.Title(l.Service), l.ServiceDNS)
+		}
+	} else {
+		printColumnNames(w, linkColumns)
+		var l Link
+		err = json.Unmarshal(data, &l)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(w, "%s\t%s\t%d\t%s\t%s\t%s\n",
+			l.Name, strings.Title(l.Status), l.Port, strings.Title(l.NetworkPolicy), strings.Title(l.Service), l.ServiceDNS)
+	}
+
+	return nil
+}
+
+func printColumnNames(out io.Writer, names []string) {
+	for _, name := range names {
+		fmt.Fprintf(out, "%v\t", name)
+	}
+	fmt.Fprint(out, "\n")
 }
 
 // RunGet implements the generic Get command
