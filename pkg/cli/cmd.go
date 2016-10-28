@@ -285,7 +285,7 @@ func NewKubectlCommand(f *koliutil.Factory, in io.Reader, out, err io.Writer) *c
 	}
 
 	cmds.AddCommand(cmdconfig.NewCmdConfig(pathOptions, out))
-	cmds.AddCommand(kubecmd.NewCmdVersion(f.KubeFactory, out))
+	cmds.AddCommand(NewCmdVersion(f.KubeFactory, out))
 	cmds.AddCommand(kubecmd.NewCmdOptions(out))
 
 	return cmds
