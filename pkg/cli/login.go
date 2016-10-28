@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
+	"path/filepath"
 	"strings"
 
+	"github.com/dickeyxxx/netrc"
 	koliutil "github.com/kolibox/koli/pkg/cli/util"
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh/terminal"
@@ -41,6 +44,31 @@ func NewCmdLogin(comm *koliutil.CommandParams, pathOptions *clientcmd.PathOption
 	return cmd
 }
 
+func setLocalGitCredentials(gitHost, token string) error {
+	usr, err := user.Current()
+	if err != nil {
+		return fmt.Errorf("failed retrieving user home path (%s)", err)
+	}
+	netrcPath := filepath.Join(usr.HomeDir, ".netrc")
+	if _, err := os.Stat(netrcPath); os.IsNotExist(err) {
+		n := netrc.Netrc{Path: netrcPath}
+		n.AddMachine(gitHost, "dunno", token)
+		return n.Save()
+	}
+	n, err := netrc.Parse(netrcPath)
+	if err != nil {
+		return fmt.Errorf("failed parsing .netrc file (%s)", err)
+	}
+	machine := n.Machine(gitHost)
+	if machine == nil {
+		// The username does not matter for the platform
+		n.AddMachine(gitHost, "dunno", token)
+		return n.Save()
+	}
+	machine.Set("password", token)
+	return n.Save()
+}
+
 func isSignIn(controller *koliutil.Controller, currentContext string) error {
 	username, password := credentials()
 	data, err := json.Marshal(authData{Username: username, Password: password})
@@ -68,6 +96,12 @@ func isSignIn(controller *koliutil.Controller, currentContext string) error {
 	cmd := exec.Command("koli", "config", "set-credentials", currentContext, "--token", response["token"].(string))
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("error: couldn't configure credentials (%s)", err)
+	}
+	// TODO: remove hard-coded host
+	err = setLocalGitCredentials("crafter-orion.kolibox.io", response["token"].(string))
+	if err != nil {
+		fmt.Println("")
+		return err
 	}
 	fmt.Println(" done.")
 	return nil
