@@ -2,3 +2,4 @@ package: github.com/kolibox/koli
 import:
 - package: k8s.io/kubernetes
   version: ~v1.4.0-beta.0
+- package: github.com/dickeyxxx/netrc
