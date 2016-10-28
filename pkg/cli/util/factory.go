@@ -139,9 +139,9 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) (*Factory, error) {
 	crafterRemote := "http://crafter-orion.kolibox.io:30080" // TODO: hard-coded
 	controller := NewController(url, "")
 	controller.Request.SetHeader("Authorization", fmt.Sprintf("Bearer %s", cfg.BearerToken))
-	plataform := path.Join(runtime.GOOS, runtime.GOARCH)
+	platform := path.Join(runtime.GOOS, runtime.GOARCH)
 	userAgent := "koli/v0.1.0 (%s) [kubectl/v1.4.0]"
-	controller.Request.SetHeader("User-Agent", fmt.Sprintf(userAgent, plataform))
+	controller.Request.SetHeader("User-Agent", fmt.Sprintf(userAgent, platform))
 
 	return &Factory{
 		KubeFactory:   kfactory,
