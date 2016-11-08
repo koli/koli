@@ -5,8 +5,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"net/url"
 	"os"
 	"os/exec"
+	"os/user"
+	"path/filepath"
 	"strings"
 
 	koliutil "github.com/kolibox/koli/pkg/cli/util"
@@ -34,14 +38,28 @@ func NewCmdLogin(comm *koliutil.CommandParams, pathOptions *clientcmd.PathOption
 			cfg, err := pathOptions.GetStartingConfig()
 
 			cmdutil.CheckErr(err)
-			err = isSignIn(comm.Controller(), cfg.CurrentContext)
+			err = isSignIn(comm.Controller(), cfg.CurrentContext, comm.Factory.CrafterRemote)
 			cmdutil.CheckErr(err)
 		},
 	}
 	return cmd
 }
 
-func isSignIn(controller *koliutil.Controller, currentContext string) error {
+func setLocalGitCredentials(addr *url.URL, token string) error {
+	usr, err := user.Current()
+	if err != nil {
+		return fmt.Errorf("failed retrieving user home path (%s)", err)
+	}
+	// TODO: mustn't assume that the user will not use .git-credentials to ...
+	// ... store different credentials.
+	gitCredentialsPath := filepath.Join(usr.HomeDir, ".git-credentials")
+	// <PROTOCOL SCHEME>://<USER>:<PASSWORD>@<HOST>:<PORT>
+	data := []byte(fmt.Sprintf("%s://:%s@%s", addr.Scheme, token, url.QueryEscape(addr.Host)))
+	// gitCredentialsData := []byte(fmt.Sprintf("http://:%s@%s", token, gitHost))
+	return ioutil.WriteFile(gitCredentialsPath, data, 0600)
+}
+
+func isSignIn(controller *koliutil.Controller, currentContext string, remoteAddr *url.URL) error {
 	username, password := credentials()
 	data, err := json.Marshal(authData{Username: username, Password: password})
 	if err != nil {
@@ -68,6 +86,11 @@ func isSignIn(controller *koliutil.Controller, currentContext string) error {
 	cmd := exec.Command("koli", "config", "set-credentials", currentContext, "--token", response["token"].(string))
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("error: couldn't configure credentials (%s)", err)
+	}
+	err = setLocalGitCredentials(remoteAddr, response["token"].(string))
+	if err != nil {
+		fmt.Println("")
+		return err
 	}
 	fmt.Println(" done.")
 	return nil

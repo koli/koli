@@ -22,10 +22,10 @@ import (
 // Factory provides abstractions that allow the Kubectl command to be extended across multiple types
 // of resources and different API sets.
 type Factory struct {
-	KubeFactory   *cmdutil.Factory
+	KubeFactory   cmdutil.Factory
 	User          *UserMeta
 	Ctrl          *Controller
-	CrafterRemote string
+	CrafterRemote *url.URL
 	BearerToken   string
 	Serializer    kuberuntime.NegotiatedSerializer
 	flags         *pflag.FlagSet
@@ -64,7 +64,8 @@ func (f *Factory) DefaultNamespace(cmd *cobra.Command, isNamespaced bool) (strin
 		return flag.Value.String(), nil
 	}
 	// The client doesn't provide any namespace, need to find a default one
-	mapper, typer := f.KubeFactory.Object(cmdutil.GetIncludeThirdPartyAPIs(cmd))
+	// mapper, typer := f.KubeFactory.Object(cmdutil.GetIncludeThirdPartyAPIs(cmd))
+	mapper, typer := f.KubeFactory.Object()
 	selector := fmt.Sprintf("%s/id=%s,%s/default=true", PrefixLabel, f.User.ID, PrefixLabel)
 	r := resource.NewBuilder(mapper, typer,
 		resource.ClientMapperFunc(f.KubeFactory.ClientForMapping), f.KubeFactory.Decoder(true)).
@@ -86,7 +87,7 @@ func (f *Factory) DefaultNamespace(cmd *cobra.Command, isNamespaced bool) (strin
 // RepositoryExists verifies if a repository already exists on deployments
 func (f *Factory) RepositoryExists(cmd *cobra.Command, repository, namespace string) (bool, error) {
 	// The client doesn't provide any namespace, need to find a default one
-	mapper, typer := f.KubeFactory.Object(cmdutil.GetIncludeThirdPartyAPIs(cmd))
+	mapper, typer := f.KubeFactory.Object()
 	selector := fmt.Sprintf("%s/repo=%s", PrefixLabel, repository)
 	r := resource.NewBuilder(mapper, typer,
 		resource.ClientMapperFunc(f.KubeFactory.ClientForMapping), f.KubeFactory.Decoder(true)).
@@ -115,11 +116,8 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) (*Factory, error) {
 		clientConfig = DefaultClientConfig(flags)
 	}
 	kfactory := cmdutil.NewFactory(clientConfig)
-
 	cfg, err := clientConfig.ClientConfig()
-	if cfg.BearerToken == "" {
-		return nil, errors.New("bearer token is empty")
-	}
+	// TODO: issue an warning if the cfg.BearerToken is empty
 	if err != nil {
 		return nil, err
 	}
@@ -129,24 +127,23 @@ func NewFactory(optionalClientConfig clientcmd.ClientConfig) (*Factory, error) {
 	if proxyHost == "" {
 		return nil, errors.New("host not found, check your config")
 	}
-	url := &url.URL{
+	ctrlURL := &url.URL{
 		Scheme: "http",
-		// Host:   host,
-		Host: fmt.Sprintf("%s:%s", proxyHost, "30080"),
-		Path: "/",
+		Host:   fmt.Sprintf("%s:%s", proxyHost, "30080"),
+		Path:   "/",
 	}
 
-	crafterRemote := "http://crafter-orion.kolibox.io:30080" // TODO: hard-coded
-	controller := NewController(url, "")
+	controller := NewController(ctrlURL, "")
 	controller.Request.SetHeader("Authorization", fmt.Sprintf("Bearer %s", cfg.BearerToken))
-	plataform := path.Join(runtime.GOOS, runtime.GOARCH)
+	platform := path.Join(runtime.GOOS, runtime.GOARCH)
 	userAgent := "koli/v0.1.0 (%s) [kubectl/v1.4.0]"
-	controller.Request.SetHeader("User-Agent", fmt.Sprintf(userAgent, plataform))
+	controller.Request.SetHeader("User-Agent", fmt.Sprintf(userAgent, platform))
 
 	return &Factory{
-		KubeFactory:   kfactory,
-		Ctrl:          controller,
-		CrafterRemote: crafterRemote,
+		KubeFactory: kfactory,
+		Ctrl:        controller,
+		// TODO: hard-coded
+		CrafterRemote: &url.URL{Scheme: "http", Host: "crafter-orion.kolibox.io:30080"},
 		BearerToken:   cfg.BearerToken,
 		Serializer:    cfg.NegotiatedSerializer,
 		flags:         flags,
@@ -160,7 +157,7 @@ func DefaultClientConfig(flags *pflag.FlagSet) clientcmd.ClientConfig {
 
 	overrides := &clientcmd.ConfigOverrides{}
 	// use the standard defaults for this client config
-	mergo.Merge(&overrides.ClusterDefaults, clientcmd.DefaultCluster)
+	mergo.Merge(&overrides.ClusterDefaults, clientcmd.ClusterDefaults)
 
 	flagNames := clientcmd.RecommendedConfigOverrideFlags("")
 	// short flagnames are disabled by default.  These are here for compatibility with existing scripts

@@ -111,8 +111,13 @@ func CreateDeploy(comm *koliutil.CommandParams, args []string) error {
 			More info: https://kolibox.io/docs/deploys#repositories`))
 	}
 
+	// repository is used as identifier for the deployment
 	if err := git.AddRemote(namespace, repository); err != nil {
-		return cmdutil.UsageError(comm.Cmd, fmt.Sprintf("couldn't add remote (%s)", err))
+		return cmdutil.UsageError(comm.Cmd, fmt.Sprintf("failed adding remote (%s)", err))
+	}
+
+	if err := git.AddCredentials(); err != nil {
+		return cmdutil.UsageError(comm.Cmd, fmt.Sprintf("failed adding remote (%s)", err))
 	}
 
 	computeResources := api.ResourceList{
@@ -131,7 +136,7 @@ func CreateDeploy(comm *koliutil.CommandParams, args []string) error {
 	if err != nil {
 		return err
 	}
-	mapper, typer := comm.KFactory().Object(cmdutil.GetIncludeThirdPartyAPIs(comm.Cmd))
+	mapper, typer := comm.KFactory().Object()
 	gvks, _, err := typer.ObjectKinds(obj)
 	if err != nil {
 		return err
@@ -166,7 +171,7 @@ func CreateDeploy(comm *koliutil.CommandParams, args []string) error {
 
 	outputFormat := cmdutil.GetFlagString(comm.Cmd, "output")
 	if useShortOutput := outputFormat == "name"; useShortOutput || len(outputFormat) == 0 {
-		cmdutil.PrintSuccess(mapper, useShortOutput, comm.Out, mapping.Resource, name, "created")
+		cmdutil.PrintSuccess(mapper, useShortOutput, comm.Out, mapping.Resource, name, false, "created")
 		return nil
 	}
 

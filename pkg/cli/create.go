@@ -7,11 +7,12 @@ import (
 	"k8s.io/kubernetes/pkg/kubectl"
 	kubecmd "k8s.io/kubernetes/pkg/kubectl/cmd"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
+	"k8s.io/kubernetes/pkg/kubectl/resource"
 )
 
 // NewCmdCreate .
 func NewCmdCreate(comm *koliutil.CommandParams) *cobra.Command {
-	options := &kubecmd.CreateOptions{}
+	options := &resource.FilenameOptions{}
 
 	cmd := &cobra.Command{
 		Use:   "create [subcommand]",
@@ -31,7 +32,6 @@ func NewCmdCreate(comm *koliutil.CommandParams) *cobra.Command {
 	kubectl.AddJsonFilenameFlag(cmd, &options.Filenames, usage)
 	cmd.MarkFlagRequired("filename")
 	cmdutil.AddValidateFlags(cmd)
-	cmdutil.AddRecursiveFlag(cmd, &options.Recursive)
 	cmdutil.AddOutputFlagsForMutation(cmd)
 	cmdutil.AddApplyAnnotationFlags(cmd)
 	cmdutil.AddRecordFlag(cmd)

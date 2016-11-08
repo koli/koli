@@ -76,7 +76,6 @@ func NewCmdDescribe(comm *koliutil.CommandParams) *cobra.Command {
 	}
 	usage := "Filename, directory, or URL to a file containing the resource to describe"
 	kubectl.AddJsonFilenameFlag(cmd, &options.Filenames, usage)
-	cmdutil.AddRecursiveFlag(cmd, &options.Recursive)
 	cmd.Flags().StringP("selector", "l", "", "Selector (label query) to filter on")
 
 	// show-events. Always true
@@ -108,7 +107,7 @@ func RunDescribe(comm *koliutil.CommandParams, args []string, options *DescribeO
 		selector = fmt.Sprintf("%s/id=%s", koliutil.PrefixLabel, comm.User().ID)
 	}
 
-	mapper, typer := f.Object(cmdutil.GetIncludeThirdPartyAPIs(cmd))
+	mapper, typer := f.Object()
 	r := resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), f.Decoder(true)).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
@@ -155,7 +154,7 @@ func RunDescribe(comm *koliutil.CommandParams, args []string, options *DescribeO
 }
 
 // DescribeMatchingResources .
-func DescribeMatchingResources(mapper meta.RESTMapper, typer runtime.ObjectTyper, f *cmdutil.Factory, namespace, rsrc, prefix string, describerSettings *kubectl.DescriberSettings, out io.Writer, originalError error) error {
+func DescribeMatchingResources(mapper meta.RESTMapper, typer runtime.ObjectTyper, f cmdutil.Factory, namespace, rsrc, prefix string, describerSettings *kubectl.DescriberSettings, out io.Writer, originalError error) error {
 	r := resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), f.Decoder(true)).
 		NamespaceParam(namespace).DefaultNamespace().
 		ResourceTypeOrNameArgs(true, rsrc).

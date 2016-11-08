@@ -93,7 +93,6 @@ func NewCmdDelete(comm *koliutil.CommandParams) *cobra.Command {
 	}
 	usage := "Filename, directory, or URL to a file containing the resource to delete."
 	kubectl.AddJsonFilenameFlag(cmd, &options.Filenames, usage)
-	cmdutil.AddRecursiveFlag(cmd, &options.Recursive)
 	cmd.Flags().StringP("selector", "l", "", "Selector (label query) to filter on.")
 	cmd.Flags().Bool("all", false, "[-all] to select all the specified resources.")
 	cmd.Flags().Bool("ignore-not-found", false, "Treat \"resource not found\" as a successful delete. Defaults to \"true\" when --all is specified.")
@@ -148,7 +147,7 @@ func RunDelete(comm *koliutil.CommandParams, args []string, options *DeleteOptio
 	if err != nil {
 		return err
 	}
-	mapper, typer := f.Object(cmdutil.GetIncludeThirdPartyAPIs(cmd))
+	mapper, typer := f.Object()
 	r := resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), f.Decoder(true)).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
@@ -183,7 +182,7 @@ func RunDelete(comm *koliutil.CommandParams, args []string, options *DeleteOptio
 
 // ReapResult .
 func ReapResult(r *resource.Result,
-	f *cmdutil.Factory,
+	f cmdutil.Factory,
 	out io.Writer, isDefaultDelete, ignoreNotFound bool,
 	timeout time.Duration, gracePeriod int,
 	shortOutput bool,
@@ -213,7 +212,7 @@ func ReapResult(r *resource.Result,
 			return cmdutil.AddSourceToErr("stopping", info.Source, err)
 		}
 		if !quiet {
-			cmdutil.PrintSuccess(mapper, shortOutput, out, info.Mapping.Resource, info.Name, "deleted")
+			cmdutil.PrintSuccess(mapper, shortOutput, out, info.Mapping.Resource, info.Name, false, "deleted")
 		}
 		return nil
 	})
@@ -252,6 +251,6 @@ func deleteResource(info *resource.Info, out io.Writer, shortOutput bool, mapper
 	if err := resource.NewHelper(info.Client, info.Mapping).Delete(info.Namespace, info.Name); err != nil {
 		return cmdutil.AddSourceToErr("deleting", info.Source, err)
 	}
-	cmdutil.PrintSuccess(mapper, shortOutput, out, info.Mapping.Resource, info.Name, "deleted")
+	cmdutil.PrintSuccess(mapper, shortOutput, out, info.Mapping.Resource, info.Name, false, "deleted")
 	return nil
 }

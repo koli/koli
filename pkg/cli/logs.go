@@ -148,7 +148,7 @@ func (o *LogsOptions) Complete(comm *koliutil.CommandParams, args []string) erro
 	o.ClientMapper = resource.ClientMapperFunc(f.ClientForMapping)
 	o.Out = out
 
-	mapper, typer := f.Object(cmdutil.GetIncludeThirdPartyAPIs(cmd))
+	mapper, typer := f.Object()
 	decoder := f.Decoder(true)
 	if o.Object == nil {
 		infos, err := resource.NewBuilder(mapper, typer, o.ClientMapper, decoder).

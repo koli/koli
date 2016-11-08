@@ -13,7 +13,7 @@ import (
 	"k8s.io/kubernetes/pkg/kubectl"
 	kubecmd "k8s.io/kubernetes/pkg/kubectl/cmd"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"k8s.io/kubernetes/pkg/registry/thirdpartyresourcedata"
+	"k8s.io/kubernetes/pkg/registry/extensions/thirdpartyresourcedata"
 )
 
 var (
@@ -56,7 +56,7 @@ func CreateNamespace(f *koliutil.Factory, cmdOut io.Writer, cmd *cobra.Command, 
 	}
 	structuredGenerator := &kubectl.NamespaceGeneratorV1{Name: name}
 
-	mapper, typer := f.KubeFactory.Object(cmdutil.GetIncludeThirdPartyAPIs(cmd))
+	mapper, typer := f.KubeFactory.Object()
 	obj, err := structuredGenerator.StructuredGenerate()
 	gvks, _, err := typer.ObjectKinds(obj)
 	if err != nil {
@@ -87,7 +87,7 @@ func CreateNamespace(f *koliutil.Factory, cmdOut io.Writer, cmd *cobra.Command, 
 
 	outputFormat := cmdutil.GetFlagString(cmd, "output")
 	if useShortOutput := outputFormat == "name"; useShortOutput || len(outputFormat) == 0 {
-		cmdutil.PrintSuccess(mapper, useShortOutput, cmdOut, mapping.Resource, name, "created")
+		cmdutil.PrintSuccess(mapper, useShortOutput, cmdOut, mapping.Resource, name, false, "created")
 		return nil
 	}
 

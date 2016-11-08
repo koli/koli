@@ -29,7 +29,7 @@ type CommandParams struct {
 }
 
 // KFactory returns a cmdutil.Factory pointer
-func (c *CommandParams) KFactory() *cmdutil.Factory {
+func (c *CommandParams) KFactory() cmdutil.Factory {
 	return c.Factory.KubeFactory
 }
 

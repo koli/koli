@@ -11,8 +11,8 @@ import (
 
 	koliutil "github.com/kolibox/koli/pkg/cli/util"
 	"k8s.io/kubernetes/pkg/api"
+	coreclient "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset/typed/core/internalversion"
 	"k8s.io/kubernetes/pkg/client/restclient"
-	client "k8s.io/kubernetes/pkg/client/unversioned"
 	"k8s.io/kubernetes/pkg/client/unversioned/remotecommand"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
 	remotecommandserver "k8s.io/kubernetes/pkg/kubelet/server/remotecommand"
@@ -95,9 +95,9 @@ type AttachOptions struct {
 
 	Pod *api.Pod
 
-	Attach RemoteAttach
-	Client *client.Client
-	Config *restclient.Config
+	Attach    RemoteAttach
+	PodClient coreclient.PodsGetter
+	Config    *restclient.Config
 }
 
 // Complete verifies command line arguments and loads data from the command environment
@@ -126,11 +126,11 @@ func (p *AttachOptions) Complete(comm *koliutil.CommandParams, argsIn []string) 
 	}
 	p.Config = config
 
-	client, err := comm.KFactory().Client()
+	clientset, err := comm.KFactory().ClientSet()
 	if err != nil {
 		return err
 	}
-	p.Client = client
+	p.PodClient = clientset
 
 	if p.CommandName == "" {
 		p.CommandName = comm.Cmd.CommandPath()
@@ -148,7 +148,7 @@ func (p *AttachOptions) Validate() error {
 	if p.Out == nil || p.Err == nil {
 		allErrs = append(allErrs, fmt.Errorf("both output and error output must be provided"))
 	}
-	if p.Attach == nil || p.Client == nil || p.Config == nil {
+	if p.Attach == nil || p.PodClient == nil || p.Config == nil {
 		allErrs = append(allErrs, fmt.Errorf("client, client config, and attach must be provided"))
 	}
 	return utilerrors.NewAggregate(allErrs)
@@ -157,7 +157,7 @@ func (p *AttachOptions) Validate() error {
 // Run executes a validated remote execution against a pod.
 func (p *AttachOptions) Run() error {
 	if p.Pod == nil {
-		pod, err := p.Client.Pods(p.Namespace).Get(p.PodName)
+		pod, err := p.PodClient.Pods(p.Namespace).Get(p.PodName)
 		if err != nil {
 			return err
 		}
@@ -217,8 +217,13 @@ func (p *AttachOptions) Run() error {
 			fmt.Fprintln(stderr, "If you don't see a command prompt, try pressing enter.")
 		}
 
+		restClient, err := restclient.RESTClientFor(p.Config)
+		if err != nil {
+			return err
+		}
+
 		// TODO: consider abstracting into a client invocation or client helper
-		req := p.Client.RESTClient.Post().
+		req := restClient.Post().
 			Resource("pods").
 			Name(pod.Name).
 			Namespace(pod.Namespace).

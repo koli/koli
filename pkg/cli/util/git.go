@@ -3,13 +3,15 @@ package util
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
 // NewGitExec creates a new gitExec object
-func NewGitExec(repositoryPath, remoteAddr string) (g *GitExec, err error) {
+func NewGitExec(repositoryPath string, remoteAddr *url.URL) (g *GitExec, err error) {
 	if repositoryPath == "" {
 		repositoryPath, err = os.Getwd()
 		if err != nil {
@@ -25,7 +27,7 @@ func NewGitExec(repositoryPath, remoteAddr string) (g *GitExec, err error) {
 // GitExec interact with the 'git' command to retrieve and add info
 type GitExec struct {
 	repositoryPath string
-	remoteAddr     string
+	remoteAddr     *url.URL
 }
 
 // GetRepositoryPath returns the repositoryPath
@@ -39,8 +41,17 @@ func (g *GitExec) AddRemote(namespace, deployName string) error {
 	cmd.Dir = g.repositoryPath
 	cmd.Run()
 
-	gitRemoteAddr := fmt.Sprintf("%s/%s/%s", g.remoteAddr, namespace, deployName)
-	cmd = exec.Command("git", "remote", "add", GitRemoteName, gitRemoteAddr)
+	g.remoteAddr.Path = filepath.Join(namespace, deployName)
+	cmd = exec.Command("git", "remote", "add", GitRemoteName, g.remoteAddr.String())
+	cmd.Dir = g.repositoryPath
+	return cmd.Run()
+}
+
+// AddCredentials create a new credential section in a local .git/config file
+// More info: https://git-scm.com/docs/git-credential-store
+func (g *GitExec) AddCredentials() error {
+	// git config --replace-all credential.helper store
+	cmd := exec.Command("git", "config", "--replace-all", "credential.helper", "store")
 	cmd.Dir = g.repositoryPath
 	return cmd.Run()
 }
