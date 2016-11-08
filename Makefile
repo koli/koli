@@ -17,6 +17,7 @@ info:
 	@echo "DATE:             ${DATE}"
 
 build:
+	mkdir -p ./build
 	go build -ldflags ${LDFLAGS} -o build/koli-${GITVERSION} github.com/kolibox/koli/cmd
 
 .PHONY: build
