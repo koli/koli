@@ -264,7 +264,7 @@ func NewKubectlCommand(f *koliutil.Factory, in io.Reader, out, err io.Writer) *c
 				NewCmdScale(comm),
 				NewCmdAttach(comm),
 				NewCmdExec(comm),
-				rollout.NewCmdRollout(f.KubeFactory, out),
+				rollout.NewCmdRollout(f.KubeFactory, out, comm.Err),
 				NewCmdPortForward(comm),
 			},
 		},
@@ -284,7 +284,7 @@ func NewKubectlCommand(f *koliutil.Factory, in io.Reader, out, err io.Writer) *c
 		)
 	}
 
-	cmds.AddCommand(cmdconfig.NewCmdConfig(pathOptions, out))
+	cmds.AddCommand(cmdconfig.NewCmdConfig(pathOptions, out, comm.Err))
 	cmds.AddCommand(NewCmdVersion(f.KubeFactory, out))
 	cmds.AddCommand(kubecmd.NewCmdOptions(out))
 

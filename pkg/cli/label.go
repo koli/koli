@@ -73,7 +73,6 @@ func NewCmdLabel(f *koliutil.Factory, out io.Writer) *cobra.Command {
 	cmd.Flags().String("resource-version", "", "If non-empty, the labels update will only succeed if this is the current resource-version for the object. Only valid when specifying a single resource.")
 	usage := "Filename, directory, or URL to a file identifying the resource to update the labels"
 	kubectl.AddJsonFilenameFlag(cmd, &options.Filenames, usage)
-	cmdutil.AddRecursiveFlag(cmd, &options.Recursive)
 	cmdutil.AddDryRunFlag(cmd)
 	cmdutil.AddRecordFlag(cmd)
 	cmdutil.AddInclude3rdPartyFlags(cmd)
@@ -149,7 +148,7 @@ func labelFunc(obj runtime.Object, overwrite bool, resourceVersion string, label
 }
 
 // RunLabel .
-func RunLabel(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []string, options *kubecmd.LabelOptions) error {
+func RunLabel(f cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []string, options *kubecmd.LabelOptions) error {
 	resources, labelArgs, err := cmdutil.GetResourcesAndPairs(args, "label")
 	if err != nil {
 		return err
@@ -166,7 +165,8 @@ func RunLabel(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []stri
 	overwrite := cmdutil.GetFlagBool(cmd, "overwrite")
 	resourceVersion := cmdutil.GetFlagString(cmd, "resource-version")
 
-	cmdNamespace, enforceNamespace, err := f.DefaultNamespace()
+	// cmdNamespace, enforceNamespace, err := f.DefaultNamespace()
+	cmdNamespace, _, err := f.DefaultNamespace()
 	if err != nil {
 		return err
 	}
@@ -175,11 +175,11 @@ func RunLabel(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []stri
 	if err != nil {
 		return cmdutil.UsageError(cmd, err.Error())
 	}
-	mapper, typer := f.Object(cmdutil.GetIncludeThirdPartyAPIs(cmd))
+	mapper, typer := f.Object()
 	b := resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), f.Decoder(true)).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
-		FilenameParam(enforceNamespace, options.Recursive, options.Filenames...).
+		// FilenameParam(enforceNamespace, options.Recursive, options.Filenames...).
 		SelectorParam(selector).
 		ResourceTypeOrNameArgs(all, resources...).
 		Flatten().
@@ -271,7 +271,7 @@ func RunLabel(f *cmdutil.Factory, out io.Writer, cmd *cobra.Command, args []stri
 		if outputFormat != "" {
 			return f.PrintObject(cmd, mapper, outputObj, out)
 		}
-		cmdutil.PrintSuccess(mapper, false, out, info.Mapping.Resource, info.Name, dataChangeMsg)
+		cmdutil.PrintSuccess(mapper, false, out, info.Mapping.Resource, info.Name, false, dataChangeMsg)
 		return nil
 	})
 }

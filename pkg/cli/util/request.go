@@ -147,22 +147,16 @@ func (r *Request) SetHostHeader(host string) *Request {
 
 // SetSerializer adds a new serializer
 func (r *Request) SetSerializer(gv unversioned.GroupVersion, ns runtime.NegotiatedSerializer) *Request {
-	serializer, _ := ns.SerializerForMediaType(runtime.ContentTypeJSON, nil)
-	streamingSerializer, _ := ns.StreamingSerializerForMediaType(runtime.ContentTypeJSON, nil)
-
-	internalVersion := unversioned.GroupVersion{
-		Group:   gv.Group,
-		Version: gv.Version,
-		//Version: runtime.APIVersionInternal,
-	}
+	info, _ := runtime.SerializerInfoForMediaType(ns.SupportedMediaTypes(), runtime.ContentTypeJSON)
+	internalVersion := unversioned.GroupVersion{Group: gv.Group, Version: gv.Version}
 
 	r.serializers = restclient.Serializers{
 		//Encoder: ns.EncoderForVersion(serializer, *testapi.Default.GroupVersion()),
 		//Decoder: ns.DecoderToVersion(serializer, internalVersion),
-		Encoder:             api.Codecs.EncoderForVersion(serializer, gv),
-		Decoder:             ns.DecoderToVersion(serializer, internalVersion),
-		StreamingSerializer: streamingSerializer,
-		Framer:              streamingSerializer.Framer,
+		Encoder:             api.Codecs.EncoderForVersion(info.Serializer, gv),
+		Decoder:             ns.DecoderToVersion(info.Serializer, internalVersion),
+		StreamingSerializer: info.StreamSerializer,
+		Framer:              info.StreamSerializer.Framer,
 	}
 	return r
 }

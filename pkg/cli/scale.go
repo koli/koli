@@ -61,7 +61,6 @@ func NewCmdScale(comm *koliutil.CommandParams) *cobra.Command {
 
 	usage := "Filename, directory, or URL to a file identifying the resource to set a new size"
 	kubectl.AddJsonFilenameFlag(cmd, &options.Filenames, usage)
-	cmdutil.AddRecursiveFlag(cmd, &options.Recursive)
 	return cmd
 }
 
@@ -82,7 +81,7 @@ func RunScale(comm *koliutil.CommandParams, args []string, shortOutput bool, opt
 		return err
 	}
 
-	mapper, typer := f.Object(cmdutil.GetIncludeThirdPartyAPIs(cmd))
+	mapper, typer := f.Object()
 	r := resource.NewBuilder(mapper, typer, resource.ClientMapperFunc(f.ClientForMapping), f.Decoder(true)).
 		ContinueOnError().
 		NamespaceParam(cmdNamespace).DefaultNamespace().
@@ -149,7 +148,7 @@ func RunScale(comm *koliutil.CommandParams, args []string, shortOutput bool, opt
 			}
 		}
 		counter++
-		cmdutil.PrintSuccess(mapper, shortOutput, out, info.Mapping.Resource, info.Name, "scaled")
+		cmdutil.PrintSuccess(mapper, shortOutput, out, info.Mapping.Resource, info.Name, false, "scaled")
 		return nil
 	})
 	if err != nil {

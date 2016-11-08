@@ -19,6 +19,7 @@ import (
 	utilerrors "k8s.io/kubernetes/pkg/util/errors"
 	"k8s.io/kubernetes/pkg/watch"
 	// kubecmd "k8s.io/kubernetes/pkg/kubectl/cmd"
+	"k8s.io/kubernetes/pkg/util/interrupt"
 )
 
 // GetOptions is the start of the data required to perform the operation.
@@ -148,7 +149,6 @@ func NewCmdGet(comm *koliutil.CommandParams) *cobra.Command {
 	cmd.Flags().Bool("export", false, "If true, use 'export' for the resources.  Exported resources are stripped of cluster-specific information.")
 	usage := "Filename, directory, or URL to a file identifying the resource to get from a server."
 	kubectl.AddJsonFilenameFlag(cmd, &options.Filenames, usage)
-	cmdutil.AddRecursiveFlag(cmd, &options.Recursive)
 	cmdutil.AddInclude3rdPartyFlags(cmd)
 	return cmd
 }
@@ -243,7 +243,8 @@ func RunGet(comm *koliutil.CommandParams, args []string, options *GetOptions) er
 	allNamespaces := cmdutil.GetFlagBool(cmd, "all-namespaces")
 	showKind := cmdutil.GetFlagBool(cmd, "show-kind")
 
-	mapper, typer := f.Object(cmdutil.GetIncludeThirdPartyAPIs(cmd))
+	filterOpts := f.DefaultResourceFilterOptions(cmd, allNamespaces)
+	mapper, typer := f.Object()
 
 	err := koliutil.SetNamespacePrefix(cmd.Flag("namespace"), comm.User().ID)
 	if err != nil {
@@ -341,7 +342,8 @@ func RunGet(comm *koliutil.CommandParams, args []string, options *GetOptions) er
 			}
 		}
 
-		// print the current object
+		// print the current objecj
+		filteredResourceCount := 0
 		if !isWatchOnly {
 			if err := printer.PrintObj(obj, out); err != nil {
 				return fmt.Errorf("unable to output the provided object: %v", err)
@@ -356,16 +358,23 @@ func RunGet(comm *koliutil.CommandParams, args []string, options *GetOptions) er
 		}
 
 		first := true
-		kubectl.WatchLoop(w, func(e watch.Event) error {
-			if !isList && first {
-				// drop the initial watch event in the single resource case
-				first = false
-				return nil
-			}
-			err := printer.PrintObj(e.Object, out)
-			// if err == nil {
-			// printer.FinishPrint(errOut, mapping.Resource)
-			// }
+		filteredResourceCount = 0
+		intr := interrupt.New(nil, w.Stop)
+		intr.Run(func() error {
+			_, err := watch.Until(0, w, func(e watch.Event) (bool, error) {
+				if !isList && first {
+					// drop the initial watch event in the single resource case
+					first = false
+					return false, nil
+				}
+				err := printer.PrintObj(e.Object, out)
+				if err != nil {
+					return false, err
+				}
+				filteredResourceCount++
+				cmdutil.PrintFilterCount(filteredResourceCount, mapping.Resource, filterOpts)
+				return false, nil
+			})
 			return err
 		})
 		return nil

@@ -9,7 +9,7 @@ import (
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	kubecmd "k8s.io/kubernetes/pkg/kubectl/cmd"
 	cmdutil "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"k8s.io/kubernetes/pkg/registry/thirdpartyresourcedata"
+	"k8s.io/kubernetes/pkg/registry/extensions/thirdpartyresourcedata"
 
 	"github.com/spf13/cobra"
 )
@@ -36,7 +36,7 @@ func createAddOn(comm *koliutil.CommandParams, args []string) error {
 		return err
 	}
 
-	mapper, _ := comm.KFactory().Object(cmdutil.GetIncludeThirdPartyAPIs(comm.Cmd))
+	mapper, _ := comm.KFactory().Object()
 	gvk := unversioned.GroupVersionKind{
 		Group:   "extensions",
 		Kind:    "Deployment",
@@ -69,7 +69,7 @@ func createAddOn(comm *koliutil.CommandParams, args []string) error {
 
 	outputFormat := cmdutil.GetFlagString(comm.Cmd, "output")
 	if useShortOutput := outputFormat == "name"; useShortOutput || len(outputFormat) == 0 {
-		cmdutil.PrintSuccess(mapper, useShortOutput, comm.Out, mapping.Resource, name, "created")
+		cmdutil.PrintSuccess(mapper, useShortOutput, comm.Out, mapping.Resource, name, false, "created")
 		return nil
 	}
 	return comm.KFactory().PrintObject(comm.Cmd, mapper, obj, comm.Out)
