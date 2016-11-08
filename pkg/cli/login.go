@@ -5,13 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io/ioutil"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/user"
 	"path/filepath"
 	"strings"
 
-	"github.com/dickeyxxx/netrc"
 	koliutil "github.com/kolibox/koli/pkg/cli/util"
 	"github.com/spf13/cobra"
 	"golang.org/x/crypto/ssh/terminal"
@@ -37,39 +38,28 @@ func NewCmdLogin(comm *koliutil.CommandParams, pathOptions *clientcmd.PathOption
 			cfg, err := pathOptions.GetStartingConfig()
 
 			cmdutil.CheckErr(err)
-			err = isSignIn(comm.Controller(), cfg.CurrentContext)
+			err = isSignIn(comm.Controller(), cfg.CurrentContext, comm.Factory.CrafterRemote)
 			cmdutil.CheckErr(err)
 		},
 	}
 	return cmd
 }
 
-func setLocalGitCredentials(gitHost, token string) error {
+func setLocalGitCredentials(addr *url.URL, token string) error {
 	usr, err := user.Current()
 	if err != nil {
 		return fmt.Errorf("failed retrieving user home path (%s)", err)
 	}
-	netrcPath := filepath.Join(usr.HomeDir, ".netrc")
-	if _, err := os.Stat(netrcPath); os.IsNotExist(err) {
-		n := netrc.Netrc{Path: netrcPath}
-		n.AddMachine(gitHost, "dunno", token)
-		return n.Save()
-	}
-	n, err := netrc.Parse(netrcPath)
-	if err != nil {
-		return fmt.Errorf("failed parsing .netrc file (%s)", err)
-	}
-	machine := n.Machine(gitHost)
-	if machine == nil {
-		// The username does not matter for the platform
-		n.AddMachine(gitHost, "dunno", token)
-		return n.Save()
-	}
-	machine.Set("password", token)
-	return n.Save()
+	// TODO: mustn't assume that the user will not use .git-credentials to ...
+	// ... store different credentials.
+	gitCredentialsPath := filepath.Join(usr.HomeDir, ".git-credentials")
+	// <PROTOCOL SCHEME>://<USER>:<PASSWORD>@<HOST>:<PORT>
+	data := []byte(fmt.Sprintf("%s://:%s@%s", addr.Scheme, token, url.QueryEscape(addr.Host)))
+	// gitCredentialsData := []byte(fmt.Sprintf("http://:%s@%s", token, gitHost))
+	return ioutil.WriteFile(gitCredentialsPath, data, 0600)
 }
 
-func isSignIn(controller *koliutil.Controller, currentContext string) error {
+func isSignIn(controller *koliutil.Controller, currentContext string, remoteAddr *url.URL) error {
 	username, password := credentials()
 	data, err := json.Marshal(authData{Username: username, Password: password})
 	if err != nil {
@@ -97,8 +87,7 @@ func isSignIn(controller *koliutil.Controller, currentContext string) error {
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("error: couldn't configure credentials (%s)", err)
 	}
-	// TODO: remove hard-coded host
-	err = setLocalGitCredentials("crafter-orion.kolibox.io", response["token"].(string))
+	err = setLocalGitCredentials(remoteAddr, response["token"].(string))
 	if err != nil {
 		fmt.Println("")
 		return err
