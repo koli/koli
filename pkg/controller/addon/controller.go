@@ -1,14 +1,12 @@
 package addon
 
 import (
-	"bytes"
 	"fmt"
 	"net/http"
 	"net/url"
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/kolibox/koli/pkg/controller/util"
 	"github.com/kolibox/koli/pkg/spec"
 
 	"k8s.io/client-go/1.5/kubernetes"
@@ -17,7 +15,6 @@ import (
 	"k8s.io/client-go/1.5/pkg/api/v1"
 	"k8s.io/client-go/1.5/pkg/apis/apps/v1alpha1"
 	extensions "k8s.io/client-go/1.5/pkg/apis/extensions/v1beta1"
-	"k8s.io/client-go/1.5/pkg/labels"
 	utilruntime "k8s.io/client-go/1.5/pkg/util/runtime"
 	"k8s.io/client-go/1.5/pkg/util/wait"
 	"k8s.io/client-go/1.5/rest"
@@ -120,11 +117,6 @@ func (c *Operator) Run(workers int, stopc <-chan struct{}) error {
 			addon := a.(*spec.Addon)
 			glog.Infof("CREATE ADDON: (%s/%s), spec.type (%s)", addon.Namespace, addon.Name, addon.Spec.Type)
 			c.enqueueAddon(addon)
-			// if err := c.createDeployment(addon); err != nil && !apierrors.IsAlreadyExists(err) {
-			// 	glog.Infof("got an ERROR (%s) requeueing!", err)
-
-			// 	// runtime.HandleError(fmt.Errorf("error creating deployment: %s", err))
-			// }
 		},
 		DeleteFunc: func(a interface{}) {
 			addon := a.(*spec.Addon)
@@ -161,13 +153,6 @@ func (c *Operator) Run(workers int, stopc <-chan struct{}) error {
 				return
 			}
 
-			// TODO: Deleting a deployment first update the replica size to 0
-			// This behavior difficulties tracking when a delete is issued, for now
-			// we consider updating the replicas to 0 a delete behavior
-			// if *act.Spec.Replicas == 0 && act.Spec.Paused {
-			// 	return
-			// }
-
 			glog.Infof("updateDeployment: (%s/%s)", act.Namespace, act.Name)
 			if addon := c.addonForDeployment(act); addon != nil {
 				c.enqueueAddon(addon)
@@ -181,7 +166,6 @@ func (c *Operator) Run(workers int, stopc <-chan struct{}) error {
 		go wait.Until(c.runWorker, time.Second, stopc)
 	}
 
-	// go c.runWorker()
 	go c.addonInf.Run(stopc)
 	go c.psetInf.Run(stopc)
 
@@ -200,20 +184,6 @@ func (c *Operator) enqueueAddon(addon *spec.Addon) {
 	c.queue.add(addon)
 }
 
-func (c *Operator) enqueueAddonIf(f func(p *spec.Addon) bool) {
-	cache.ListAll(c.addonInf.GetStore(), labels.Everything(), func(o interface{}) {
-		if f(o.(*spec.Addon)) {
-			c.enqueueAddon(o.(*spec.Addon))
-		}
-	})
-}
-
-func (c *Operator) enqueueAll() {
-	cache.ListAll(c.addonInf.GetStore(), labels.Everything(), func(o interface{}) {
-		c.enqueueAddon(o.(*spec.Addon))
-	})
-}
-
 // runWorker runs a worker thread that just dequeues items, processes them, and marks them done.
 // It enforces that the syncHandler is never invoked concurrently with the same key.
 func (c *Operator) runWorker() {
@@ -222,14 +192,20 @@ func (c *Operator) runWorker() {
 		if !ok {
 			return
 		}
-		if err := c.reconcile(a); err != nil {
+		// Get the app based on its type
+		app, err := a.GetApp(c.kclient, c.addonInf, c.psetInf)
+		if err != nil {
+			// If an add-on is provided without a known type
+			utilruntime.HandleError(err)
+		}
+		if err := c.reconcile(app); err != nil {
 			utilruntime.HandleError(err)
 		}
 	}
 }
 
-func (c *Operator) reconcile(addon *spec.Addon) error {
-	key, err := keyFunc(addon)
+func (c *Operator) reconcile(app spec.AddonInterface) error {
+	key, err := keyFunc(app.GetAddon())
 	if err != nil {
 		return err
 	}
@@ -247,23 +223,22 @@ func (c *Operator) reconcile(addon *spec.Addon) error {
 		// Let's rely on the index key matching that of the created configmap and replica
 		// set for now. This does not work if we delete addon resources as the
 		// controller is not running – that could be solved via garbage collection later.
+		//
 		// TODO(san): Maybe deleting a petset on controller is not appropriate.
 		// See the controller kubernetes implementation of a Deployment controller and how
 		// the kubectl deals removing those kind of resources.
-		// glog.Infof("deployment has been deleted %v", key)
 		glog.Infof("deleting deployment (%v) ...", key)
-		return c.deleteAddon(addon)
+		return app.DeleteApp()
 	}
 
-	if err := c.createConfig(addon); err != nil {
+	if err := app.CreateConfigMap(); err != nil {
 		return err
 	}
 
-	psetClient := c.kclient.Apps().PetSets(addon.Namespace)
 	// Ensure we have a replica set running
 	psetQ := &v1alpha1.PetSet{}
-	psetQ.Namespace = addon.Namespace
-	psetQ.Name = addon.Name
+	psetQ.Namespace = app.GetAddon().Namespace
+	psetQ.Name = app.GetAddon().Name
 
 	obj, exists, err := c.psetInf.GetStore().Get(psetQ)
 	if err != nil {
@@ -271,15 +246,12 @@ func (c *Operator) reconcile(addon *spec.Addon) error {
 	}
 
 	if !exists {
-		if _, err := psetClient.Create(makePetSet(addon, nil)); err != nil {
+		if err := app.CreatePetSet(); err != nil {
 			return fmt.Errorf("failed creating petset (%s)", err)
 		}
 		return nil
 	}
-	if _, err := psetClient.Update(makePetSet(addon, obj.(*v1alpha1.PetSet))); err != nil {
-		return err
-	}
-	return nil
+	return app.UpdatePetSet(obj.(*v1alpha1.PetSet))
 }
 
 func (c *Operator) addonForDeployment(p *v1alpha1.PetSet) *spec.Addon {
@@ -301,83 +273,6 @@ func (c *Operator) addonForDeployment(p *v1alpha1.PetSet) *spec.Addon {
 	return a.(*spec.Addon)
 }
 
-func (c *Operator) deleteAddon(a *spec.Addon) error {
-	// Update the replica count to 0 and wait for all pods to be deleted.
-	psetClient := c.kclient.Apps().PetSets(a.Namespace)
-	key, err := keyFunc(a)
-	if err != nil {
-		return err
-	}
-	obj, _, err := c.psetInf.GetStore().GetByKey(key)
-	if err != nil {
-		return err
-	}
-	// Deep-copy otherwise we are mutating our cache.
-	oldPset, err := util.PetSetDeepCopy(obj.(*v1alpha1.PetSet))
-	if err != nil {
-		return err
-	}
-	zero := int32(0)
-	oldPset.Spec.Replicas = &zero
-
-	if _, err := psetClient.Update(oldPset); err != nil {
-		return err
-	}
-
-	selector, err := labels.Parse("sys.io/type=addon,sys.io/app=" + a.Name)
-	if err != nil {
-		return err
-	}
-	podClient := c.kclient.Core().Pods(a.Namespace)
-
-	// TODO: temprorary solution until Deployment status provides necessary info to know
-	// whether scale-down completed.
-	for {
-		pods, err := podClient.List(api.ListOptions{LabelSelector: selector})
-		if err != nil {
-			return err
-		}
-
-		if len(pods.Items) == 0 {
-			break
-		}
-		time.Sleep(50 * time.Millisecond)
-	}
-	// Deployment scaled down, we can delete it.
-	return psetClient.Delete(a.Name, nil)
-}
-
-func (c *Operator) createConfig(a *spec.Addon) error {
-	// Update config map based on the most recent configuration.
-	var buf bytes.Buffer
-	if err := rediscfgTmpl.Execute(&buf, nil); err != nil {
-		return err
-	}
-	var cm *v1.ConfigMap
-	cm = &v1.ConfigMap{
-		ObjectMeta: v1.ObjectMeta{
-			Name:   a.Name,
-			Labels: map[string]string{"sys.io/app": a.Name},
-		},
-		Data: map[string]string{
-			fmt.Sprintf("%s.conf", a.Name): buf.String(),
-		},
-	}
-	if a.Spec.BaseImage == "memcached" {
-		cm = makeEmptyConfig(a.Name)
-	}
-
-	cmClient := c.kclient.Core().ConfigMaps(a.Namespace)
-
-	_, err := cmClient.Get(a.Name)
-	if apierrors.IsNotFound(err) {
-		_, err = cmClient.Create(cm)
-	} else if err == nil {
-		_, err = cmClient.Update(cm)
-	}
-	return err
-}
-
 func (c *Operator) createTPRs() error {
 	tprs := []*extensions.ThirdPartyResource{
 		{
@@ -395,7 +290,7 @@ func (c *Operator) createTPRs() error {
 		if _, err := tprClient.Create(tpr); err != nil && !apierrors.IsAlreadyExists(err) {
 			return err
 		}
-		glog.Info("TPR created ", tpr.Name)
+		glog.Infof("Third Party Resource '%s' provisioned", tpr.Name)
 	}
 
 	// We have to wait for the TPRs to be ready. Otherwise the initial watch may fail.
