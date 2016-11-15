@@ -25,10 +25,9 @@ const (
 
 // Redis add-on in memory key value store database
 type Redis struct {
-	client   *kubernetes.Clientset
-	addon    *Addon
-	addonInf cache.SharedIndexInformer
-	psetInf  cache.SharedIndexInformer
+	client  *kubernetes.Clientset
+	addon   *Addon
+	psetInf cache.SharedIndexInformer
 }
 
 // CreateConfigMap generates a ConfigMap with a redis default configuration

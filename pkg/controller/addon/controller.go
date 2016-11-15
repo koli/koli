@@ -193,7 +193,7 @@ func (c *Operator) runWorker() {
 			return
 		}
 		// Get the app based on its type
-		app, err := a.GetApp(c.kclient, c.addonInf, c.psetInf)
+		app, err := a.GetApp(c.kclient, c.psetInf)
 		if err != nil {
 			// If an add-on is provided without a known type
 			utilruntime.HandleError(err)
