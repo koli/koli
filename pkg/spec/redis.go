@@ -58,11 +58,6 @@ func (r *Redis) CreateConfigMap() error {
 	return err
 }
 
-// CreateService expose a redis app
-func (r *Redis) CreateService() error {
-	return nil
-}
-
 func (r *Redis) getConfigTemplate() (string, error) {
 	redisCfg := dedent.Dedent(`# https://raw.githubusercontent.com/antirez/redis/3.2/redis.conf
 	# put your config parameters below, mind the indentation!
@@ -168,6 +163,9 @@ func (r *Redis) DeleteApp() error {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+	// TODO: must be garbaged collected
+	r.client.Core().ConfigMaps(r.addon.Namespace).Delete(r.addon.Name, nil)
+	r.client.Core().Services(r.addon.Namespace).Delete(r.addon.Name, nil)
 	// Deployment scaled down, we can delete it.
 	return psetClient.Delete(r.addon.Name, nil)
 }

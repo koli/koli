@@ -223,16 +223,18 @@ func (c *Operator) reconcile(app spec.AddonInterface) error {
 		// Let's rely on the index key matching that of the created configmap and replica
 		// set for now. This does not work if we delete addon resources as the
 		// controller is not running – that could be solved via garbage collection later.
-		//
-		// TODO(san): Maybe deleting a petset on controller is not appropriate.
-		// See the controller kubernetes implementation of a Deployment controller and how
-		// the kubectl deals removing those kind of resources.
 		glog.Infof("deleting deployment (%v) ...", key)
 		return app.DeleteApp()
 	}
 
 	if err := app.CreateConfigMap(); err != nil {
 		return err
+	}
+
+	// expose the app
+	svc := spec.MakePetSetService(app.GetAddon())
+	if _, err := c.kclient.Core().Services(app.GetAddon().Namespace).Create(svc); err != nil {
+		return fmt.Errorf("failed creating service (%s)", err)
 	}
 
 	// Ensure we have a replica set running

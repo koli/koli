@@ -25,11 +25,6 @@ func (m *Memcached) CreateConfigMap() error {
 	return nil
 }
 
-// CreateService expose a memcached app
-func (m *Memcached) CreateService() error {
-	return nil
-}
-
 // CreatePetSet add a new memcached PetSet
 func (m *Memcached) CreatePetSet() error {
 	labels := map[string]string{
@@ -99,6 +94,9 @@ func (m *Memcached) DeleteApp() error {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+	// TODO: must be garbaged collected
+	m.client.Core().ConfigMaps(m.addon.Namespace).Delete(m.addon.Name, nil)
+	m.client.Core().Services(m.addon.Namespace).Delete(m.addon.Name, nil)
 	// Deployment scaled down, we can delete it.
 	return psetClient.Delete(m.addon.Name, nil)
 }

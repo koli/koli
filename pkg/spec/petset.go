@@ -3,6 +3,7 @@ package spec
 import (
 	"k8s.io/client-go/1.5/pkg/api/v1"
 	"k8s.io/client-go/1.5/pkg/apis/apps/v1alpha1"
+	"k8s.io/client-go/1.5/pkg/util/intstr"
 )
 
 // VolumeSpec facilitate passing definitions
@@ -23,6 +24,32 @@ func makePetSet(addon *Addon, old *v1alpha1.PetSet, labels map[string]string, ar
 		petset.Annotations = old.Annotations
 	}
 	return petset
+}
+
+// MakePetSetService generates a &v1.Service
+func MakePetSetService(addon *Addon) *v1.Service {
+	svc := &v1.Service{
+		ObjectMeta: v1.ObjectMeta{
+			Name: addon.Name,
+			Labels: map[string]string{
+				"sys.io/app": addon.Name,
+			},
+		},
+		Spec: v1.ServiceSpec{
+			ClusterIP: "None", // headless service
+			Ports: []v1.ServicePort{
+				{
+					Name:       addon.Spec.Type,
+					Port:       addon.Spec.Port,
+					TargetPort: intstr.FromString("addon"),
+				},
+			},
+			Selector: map[string]string{
+				"sys.io/app": addon.Name,
+			},
+		},
+	}
+	return svc
 }
 
 // getPetSetSpec returns a generic PetSetSpec

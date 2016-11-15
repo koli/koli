@@ -71,7 +71,6 @@ type AddonSpec struct {
 // AddonInterface represents the implementation of generic apps
 type AddonInterface interface {
 	CreateConfigMap() error
-	CreateService() error
 	CreatePetSet() error
 	UpdatePetSet(old *v1alpha1.PetSet) error
 	DeleteApp() error

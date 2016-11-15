@@ -58,11 +58,6 @@ func (m *MySQL) CreateConfigMap() error {
 	return err
 }
 
-// CreateService expose a mySQL app
-func (m *MySQL) CreateService() error {
-	return nil
-}
-
 func (m *MySQL) getConfigTemplate() (string, error) {
 	mysqlCfg := dedent.Dedent(`# https://koli.io/docs/addons
 	[mysqld]
@@ -149,7 +144,7 @@ func (m *MySQL) DeleteApp() error {
 		return err
 	}
 
-	selector, err := m.GetSelector()
+	selector, err := m.getSelector()
 	if err != nil {
 		return err
 	}
@@ -168,6 +163,9 @@ func (m *MySQL) DeleteApp() error {
 		}
 		time.Sleep(50 * time.Millisecond)
 	}
+	// TODO: must be garbaged collected
+	m.client.Core().ConfigMaps(m.addon.Namespace).Delete(m.addon.Name, nil)
+	m.client.Core().Services(m.addon.Namespace).Delete(m.addon.Name, nil)
 	// Deployment scaled down, we can delete it.
 	return psetClient.Delete(m.addon.Name, nil)
 }
@@ -177,7 +175,7 @@ func (m *MySQL) GetAddon() *Addon {
 	return m.addon
 }
 
-// GetSelector retrieves the a selector for the redis app based on its name
-func (m *MySQL) GetSelector() (labels.Selector, error) {
+// getSelector retrieves the a selector for the redis app based on its name
+func (m *MySQL) getSelector() (labels.Selector, error) {
 	return labels.Parse("sys.io/type=addon,sys.io/app=" + m.addon.Name)
 }
