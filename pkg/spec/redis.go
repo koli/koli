@@ -19,8 +19,8 @@ import (
 )
 
 const (
-	appConfPath     = "/opt/redis.conf"
-	appConfFileName = "redis.conf"
+	redisConfFileName = "redis.conf"
+	redisConfFilePath = "/opt/" + redisConfFileName
 )
 
 // Redis add-on in memory key value store database
@@ -44,7 +44,7 @@ func (r *Redis) CreateConfigMap() error {
 			Labels: map[string]string{"sys.io/app": r.addon.Name},
 		},
 		Data: map[string]string{
-			appConfFileName: redisConfig,
+			redisConfFileName: redisConfig,
 		},
 	}
 
@@ -72,10 +72,6 @@ func (r *Redis) getConfigTemplate() (string, error) {
 		return "", err
 	}
 	return buf.String(), nil
-	//return template.Must(template.New("config").Parse(`# https://raw.githubusercontent.com/antirez/redis/3.2/redis.conf
-	// # put your config parameters below, mind the indentation!
-	// databases 1
-	// `))
 }
 
 func (r *Redis) makeVolumes() *VolumeSpec {
@@ -109,7 +105,7 @@ func (r *Redis) CreatePetSet() error {
 		"sys.io/type": "addon",
 		"sys.io/app":  r.addon.Name,
 	}
-	petset := makePetSet(r.addon, nil, labels, []string{appConfPath}, r.makeVolumes())
+	petset := makePetSet(r.addon, nil, labels, []string{redisConfFilePath}, r.makeVolumes())
 	if _, err := r.client.Apps().PetSets(r.addon.Namespace).Create(petset); err != nil {
 		return fmt.Errorf("failed creating petset (%s)", err)
 	}
@@ -122,7 +118,7 @@ func (r *Redis) UpdatePetSet(old *v1alpha1.PetSet) error {
 		"sys.io/type": "addon",
 		"sys.io/app":  r.addon.Name,
 	}
-	petset := makePetSet(r.addon, old, labels, []string{appConfPath}, r.makeVolumes())
+	petset := makePetSet(r.addon, old, labels, []string{redisConfFilePath}, r.makeVolumes())
 	if _, err := r.client.Apps().PetSets(r.addon.Namespace).Update(petset); err != nil {
 		return fmt.Errorf("failed creating petset (%s)", err)
 	}
