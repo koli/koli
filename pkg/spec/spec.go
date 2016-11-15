@@ -41,17 +41,20 @@ func (a *Addon) GetReplicas() *int32 {
 }
 
 // GetApp retrieves the type of the add-on
-func (a *Addon) GetApp(c *kubernetes.Clientset, addonInf, psetInf cache.SharedIndexInformer) (AddonInterface, error) {
+func (a *Addon) GetApp(c *kubernetes.Clientset, psetInf cache.SharedIndexInformer) (AddonInterface, error) {
 	switch a.Spec.Type {
 	case redis:
 		return &Redis{
-			client:   c,
-			addon:    a,
-			addonInf: addonInf,
-			psetInf:  psetInf,
+			client:  c,
+			addon:   a,
+			psetInf: psetInf,
 		}, nil
 	case memcached:
-		// return false, nil
+		return &Memcached{
+			client:  c,
+			addon:   a,
+			psetInf: psetInf,
+		}, nil
 	case mySQL:
 		// sa
 	}
