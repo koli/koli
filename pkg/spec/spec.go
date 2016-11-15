@@ -10,13 +10,6 @@ import (
 	"k8s.io/client-go/1.5/tools/cache"
 )
 
-// The add-ons types implemented so far
-const (
-	redis     = "redis"
-	memcached = "memcached"
-	mySQL     = "mysql"
-)
-
 // Addon defines integration with external resources
 type Addon struct {
 	unversioned.TypeMeta `json:",inline"`
@@ -43,20 +36,14 @@ func (a *Addon) GetReplicas() *int32 {
 // GetApp retrieves the type of the add-on
 func (a *Addon) GetApp(c *kubernetes.Clientset, psetInf cache.SharedIndexInformer) (AddonInterface, error) {
 	switch a.Spec.Type {
-	case redis:
-		return &Redis{
-			client:  c,
-			addon:   a,
-			psetInf: psetInf,
-		}, nil
-	case memcached:
-		return &Memcached{
-			client:  c,
-			addon:   a,
-			psetInf: psetInf,
-		}, nil
-	case mySQL:
-		// sa
+	case "redis":
+		return &Redis{client: c, addon: a, psetInf: psetInf}, nil
+	case "memcached":
+		return &Memcached{client: c, addon: a, psetInf: psetInf}, nil
+	case "mysql":
+		return &MySQL{client: c, addon: a, psetInf: psetInf}, nil
+	default:
+		// Generic add-on
 	}
 	return nil, fmt.Errorf("invalid add-on type (%s)", a.Spec.Type)
 }
