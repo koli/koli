@@ -7,7 +7,12 @@ import (
 	"k8s.io/client-go/1.5/pkg/api/unversioned"
 	"k8s.io/client-go/1.5/pkg/api/v1"
 	"k8s.io/client-go/1.5/pkg/apis/apps/v1alpha1"
+	"k8s.io/client-go/1.5/pkg/labels"
 	"k8s.io/client-go/1.5/tools/cache"
+)
+
+const (
+	koliLabelPrefix = "sys.io"
 )
 
 // Addon defines integration with external resources
@@ -75,4 +80,55 @@ type AddonInterface interface {
 	UpdatePetSet(old *v1alpha1.PetSet) error
 	DeleteApp() error
 	GetAddon() *Addon
+}
+
+// DefaultComputeResources http://kubernetes.io/docs/admin/resourcequota/#compute-resource-quota
+type DefaultComputeResources struct {
+	CPU    string `json:"cpu"`
+	Memory string `json:"memory"`
+}
+
+// DefaultResourceQuota http://kubernetes.io/docs/admin/resourcequota/#object-count-quota
+type DefaultResourceQuota struct {
+	ConfigMaps             string
+	PersistentVolumeClaims string
+	Pods                   string
+	ReplicationController  string
+	ResourceQuotas         string
+	Services               string
+	ServicesLoadBalancers  string
+	ServicesNodePorts      string
+	Secrets                string
+}
+
+// User identifies a user on the platform
+type User struct {
+	ID               string                  `json:"id"`
+	Username         string                  `json:"username"`
+	Organization     string                  `json:"org"`
+	Customer         string                  `json:"customer"`
+	ObjectResources  DefaultResourceQuota    `json:"objectresources"`
+	ComputeResources DefaultComputeResources `json:"computeresources"`
+}
+
+// Label wraps a labels.Set
+type Label struct {
+	labels.Set
+}
+
+// Remove a key from the labels.Set using a pre-defined prefix
+func (l *Label) Remove(key string) {
+	delete(l.Set, fmt.Sprintf("%s/%s", koliLabelPrefix, key))
+}
+
+// Add values to a labels.Set using a pre-defined prefix
+func (l *Label) Add(mapLabels map[string]string) {
+	for key, value := range mapLabels {
+		l.Set[fmt.Sprintf("%s/%s", koliLabelPrefix, key)] = value
+	}
+}
+
+// NewLabel generates a new *spec.Label
+func NewLabel() *Label {
+	return &Label{Set: map[string]string{}}
 }
