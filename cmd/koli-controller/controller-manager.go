@@ -56,9 +56,9 @@ func startControllers(stop <-chan struct{}) error {
 	}
 
 	// Create required third party resources
-	// controller.CreateAddonTPRs(cfg.Host, client)
-	// controller.CreateServicePlan3PRs(cfg.Host, client)
-	// controller.CreateServicePlanStatus3PRs(cfg.Host, client)
+	controller.CreateAddonTPRs(cfg.Host, client)
+	controller.CreateServicePlan3PRs(cfg.Host, client)
+	controller.CreateServicePlanStatus3PRs(cfg.Host, client)
 
 	sysClient, err := clientset.NewSysRESTClient(cfg)
 	if err != nil {
@@ -68,16 +68,16 @@ func startControllers(stop <-chan struct{}) error {
 	sharedInformers := informers.NewSharedInformerFactory(client, 30*time.Second)
 
 	// TODO: should we use the same client instance??
-	// go controller.NewAddonController(
-	// 	sharedInformers.Addons().Informer(sysClient),
-	// 	sharedInformers.PetSets().Informer(),
-	// 	client,
-	// ).Run(1, wait.NeverStop)
+	go controller.NewAddonController(
+		sharedInformers.Addons().Informer(sysClient),
+		sharedInformers.PetSets().Informer(),
+		client,
+	).Run(1, wait.NeverStop)
 
-	// go controller.NewNamespaceController(
-	// 	sharedInformers.Namespaces().Informer(),
-	// 	client,
-	// ).Run(1, wait.NeverStop)
+	go controller.NewNamespaceController(
+		sharedInformers.Namespaces().Informer(),
+		client,
+	).Run(1, wait.NeverStop)
 
 	go controller.NewServicePlanController(
 		sharedInformers.ServicePlans().Informer(sysClient),
