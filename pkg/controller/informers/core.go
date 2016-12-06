@@ -1,42 +1,22 @@
 package informers
 
 import (
-	"encoding/json"
 	"reflect"
 
+	"github.com/kolibox/koli/pkg/clientset"
 	"github.com/kolibox/koli/pkg/spec"
+
 	"k8s.io/client-go/1.5/pkg/api"
 	"k8s.io/client-go/1.5/pkg/api/v1"
 	"k8s.io/client-go/1.5/pkg/apis/apps/v1alpha1"
 	"k8s.io/client-go/1.5/pkg/runtime"
 	"k8s.io/client-go/1.5/pkg/watch"
-	"k8s.io/client-go/1.5/rest"
 	"k8s.io/client-go/1.5/tools/cache"
 )
 
-type sysDecoder struct {
-	dec   *json.Decoder
-	close func() error
-}
-
-func (d *sysDecoder) Close() {
-	d.close()
-}
-
-func (d *sysDecoder) Decode() (action watch.EventType, object runtime.Object, err error) {
-	var e struct {
-		Type   watch.EventType
-		Object spec.Addon
-	}
-	if err := d.dec.Decode(&e); err != nil {
-		return watch.Error, nil, err
-	}
-	return e.Type, &e.Object, nil
-}
-
 // AddonInformer is a type of SharedIndexInformer which watches and lists all addons.
 type AddonInformer interface {
-	Informer(client *rest.RESTClient) cache.SharedIndexInformer
+	Informer(client *clientset.CoreClient) cache.SharedIndexInformer
 	// Lister() *cache.ListWatch
 }
 
@@ -44,7 +24,7 @@ type addonInformer struct {
 	*sharedInformerFactory
 }
 
-func (f *addonInformer) Informer(client *rest.RESTClient) cache.SharedIndexInformer {
+func (f *addonInformer) Informer(sysClient *clientset.CoreClient) cache.SharedIndexInformer {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
@@ -57,37 +37,49 @@ func (f *addonInformer) Informer(client *rest.RESTClient) cache.SharedIndexInfor
 	informer = cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options api.ListOptions) (runtime.Object, error) {
-				req := client.Get().
-					Namespace(api.NamespaceAll).
-					Resource("addons").
-					// VersionedParams(&options, api.ParameterCodec)
-					FieldsSelectorParam(nil)
-
-				b, err := req.DoRaw()
-				if err != nil {
-					return nil, err
-				}
-				var p spec.AddonList
-				return &p, json.Unmarshal(b, &p)
+				return sysClient.Addon(api.NamespaceAll).List(&options)
 			},
 			WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
-				r, err := client.Get().
-					Prefix("watch").
-					Namespace(api.NamespaceAll).
-					Resource("addons").
-					// VersionedParams(&options, api.ParameterCodec).
-					FieldsSelectorParam(nil).
-					Stream()
-				if err != nil {
-					return nil, err
-				}
-				return watch.NewStreamWatcher(&sysDecoder{
-					dec:   json.NewDecoder(r),
-					close: r.Close,
-				}), nil
+				return sysClient.Addon(api.NamespaceAll).Watch(&options)
 			},
 		},
 		&spec.Addon{},
+		f.defaultResync,
+		cache.Indexers{},
+	)
+	f.informers[informerType] = informer
+	return informer
+}
+
+// ServicePlanInformer is a type of SharedIndexInformer which watches and lists all service plans.
+type ServicePlanInformer interface {
+	Informer(sysClient *clientset.CoreClient) cache.SharedIndexInformer
+}
+
+type servicePlanInformer struct {
+	*sharedInformerFactory
+}
+
+func (f *servicePlanInformer) Informer(sysClient *clientset.CoreClient) cache.SharedIndexInformer {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+
+	informerType := reflect.TypeOf(&spec.ServicePlan{})
+	informer, exists := f.informers[informerType]
+	if exists {
+		return informer
+	}
+
+	informer = cache.NewSharedIndexInformer(
+		&cache.ListWatch{
+			ListFunc: func(options api.ListOptions) (runtime.Object, error) {
+				return sysClient.ServicePlan(api.NamespaceAll).List(&options)
+			},
+			WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
+				return sysClient.ServicePlan(api.NamespaceAll).Watch(&options)
+			},
+		},
+		&spec.ServicePlan{},
 		f.defaultResync,
 		cache.Indexers{},
 	)

@@ -4,22 +4,22 @@ import (
 	"fmt"
 
 	"k8s.io/client-go/1.5/kubernetes"
-	"k8s.io/client-go/1.5/pkg/api/unversioned"
-	"k8s.io/client-go/1.5/pkg/api/v1"
 	"k8s.io/client-go/1.5/pkg/apis/apps/v1alpha1"
 	"k8s.io/client-go/1.5/pkg/labels"
 	"k8s.io/client-go/1.5/tools/cache"
 )
 
 const (
-	koliLabelPrefix = "sys.io"
+	koliLabelPrefix = "koli.io"
 )
 
-// Addon defines integration with external resources
-type Addon struct {
-	unversioned.TypeMeta `json:",inline"`
-	v1.ObjectMeta        `json:"metadata,omitempty"`
-	Spec                 AddonSpec `json:"spec"`
+// AddonInterface represents the implementation of generic apps
+type AddonInterface interface {
+	CreateConfigMap() error
+	CreatePetSet() error
+	UpdatePetSet(old *v1alpha1.PetSet) error
+	DeleteApp() error
+	GetAddon() *Addon
 }
 
 // GetImage gets the BaseImage + Version
@@ -53,64 +53,6 @@ func (a *Addon) GetApp(c *kubernetes.Clientset, psetInf cache.SharedIndexInforme
 	return nil, fmt.Errorf("invalid add-on type (%s)", a.Spec.Type)
 }
 
-// AddonList is a list of Addons.
-type AddonList struct {
-	unversioned.TypeMeta `json:",inline"`
-	unversioned.ListMeta `json:"metadata,omitempty"`
-
-	Items []*Addon `json:"items"`
-}
-
-// AddonSpec holds specification parameters of an addon
-type AddonSpec struct {
-	Type      string      `json:"type"`
-	BaseImage string      `json:"baseImage"`
-	Version   string      `json:"version"`
-	Replicas  int32       `json:"replicas"`
-	Port      int32       `json:"port"`
-	Env       []v1.EnvVar `json:"env"`
-	// More info: http://releases.k8s.io/HEAD/docs/user-guide/containers.md#containers-and-commands
-	Args []string `json:"args,omitempty"`
-}
-
-// AddonInterface represents the implementation of generic apps
-type AddonInterface interface {
-	CreateConfigMap() error
-	CreatePetSet() error
-	UpdatePetSet(old *v1alpha1.PetSet) error
-	DeleteApp() error
-	GetAddon() *Addon
-}
-
-// DefaultComputeResources http://kubernetes.io/docs/admin/resourcequota/#compute-resource-quota
-type DefaultComputeResources struct {
-	CPU    string `json:"cpu"`
-	Memory string `json:"memory"`
-}
-
-// DefaultResourceQuota http://kubernetes.io/docs/admin/resourcequota/#object-count-quota
-type DefaultResourceQuota struct {
-	ConfigMaps             string
-	PersistentVolumeClaims string
-	Pods                   string
-	ReplicationController  string
-	ResourceQuotas         string
-	Services               string
-	ServicesLoadBalancers  string
-	ServicesNodePorts      string
-	Secrets                string
-}
-
-// User identifies a user on the platform
-type User struct {
-	ID               string                  `json:"id"`
-	Username         string                  `json:"username"`
-	Organization     string                  `json:"org"`
-	Customer         string                  `json:"customer"`
-	ObjectResources  DefaultResourceQuota    `json:"objectresources"`
-	ComputeResources DefaultComputeResources `json:"computeresources"`
-}
-
 // Label wraps a labels.Set
 type Label struct {
 	labels.Set
@@ -122,10 +64,11 @@ func (l *Label) Remove(key string) {
 }
 
 // Add values to a labels.Set using a pre-defined prefix
-func (l *Label) Add(mapLabels map[string]string) {
+func (l *Label) Add(mapLabels map[string]string) *Label {
 	for key, value := range mapLabels {
 		l.Set[fmt.Sprintf("%s/%s", koliLabelPrefix, key)] = value
 	}
+	return l
 }
 
 // NewLabel generates a new *spec.Label

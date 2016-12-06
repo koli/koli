@@ -2,7 +2,6 @@ package controller
 
 import (
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/golang/glog"
@@ -30,7 +29,6 @@ type AddonController struct {
 	psetInf  cache.SharedIndexInformer
 
 	queue *queue
-	host  string
 }
 
 // NewAddonController creates a new addon controller
@@ -129,8 +127,6 @@ func (c *AddonController) deletePetSet(a interface{}) {
 	}
 }
 
-var keyFunc = cache.DeletionHandlingMetaNamespaceKeyFunc
-
 func (c *AddonController) enqueueAddon(addon *spec.Addon) {
 	c.queue.add(addon)
 }
@@ -228,8 +224,8 @@ func (c *AddonController) addonForDeployment(p *v1alpha1.PetSet) *spec.Addon {
 	return a.(*spec.Addon)
 }
 
-// CreateTPRs generates the third party resource required for interacting with addons
-func CreateTPRs(host string, kclient *kubernetes.Clientset) error {
+// CreateAddonTPRs generates the third party resource required for interacting with addons
+func CreateAddonTPRs(host string, kclient *kubernetes.Clientset) error {
 	tprs := []*extensions.ThirdPartyResource{
 		{
 			ObjectMeta: v1.ObjectMeta{
@@ -250,20 +246,5 @@ func CreateTPRs(host string, kclient *kubernetes.Clientset) error {
 	}
 
 	// We have to wait for the TPRs to be ready. Otherwise the initial watch may fail.
-	return wait.Poll(3*time.Second, 30*time.Second, func() (bool, error) {
-		resp, err := kclient.CoreClient.Client.Get(host + "/apis/sys.koli.io/v1alpha1/addons")
-		if err != nil {
-			return false, err
-		}
-		defer resp.Body.Close()
-
-		switch resp.StatusCode {
-		case http.StatusOK:
-			return true, nil
-		case http.StatusNotFound: // not set up yet. wait.
-			return false, nil
-		default:
-			return false, fmt.Errorf("invalid status code: %v", resp.Status)
-		}
-	})
+	return watch3PRs(host, "/apis/sys.koli.io/v1alpha1/addons", kclient)
 }

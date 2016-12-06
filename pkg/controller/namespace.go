@@ -20,7 +20,7 @@ import (
 	"k8s.io/client-go/1.5/tools/cache"
 )
 
-// NamespaceController .
+// NamespaceController controller
 type NamespaceController struct {
 	kclient *kubernetes.Clientset
 	nsInf   cache.SharedIndexInformer
@@ -158,8 +158,7 @@ func (c *NamespaceController) reconcile(ns *v1.Namespace) error {
 	// TODO: create a network policy allowing traffic between pods in the same namespace
 	// TODO: hard-coded quota for namespaces
 
-	label := spec.NewLabel()
-	label.Add(map[string]string{
+	label := spec.NewLabel().Add(map[string]string{
 		"default":  "true",
 		"customer": u.Customer,
 		"org":      u.Organization,
