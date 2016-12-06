@@ -16,6 +16,7 @@ type SharedInformerFactory interface {
 	Start(stopCh <-chan struct{})
 
 	Addons() AddonInformer
+	ServicePlans() ServicePlanInformer
 	PetSets() PetSetInformer
 	Namespaces() NamespaceInformer
 }
@@ -57,6 +58,11 @@ func (f *sharedInformerFactory) Start(stopCh <-chan struct{}) {
 // Addons returns a SharedIndexInformer that lists and watches all addons
 func (f *sharedInformerFactory) Addons() AddonInformer {
 	return &addonInformer{sharedInformerFactory: f}
+}
+
+// ServicePlans returns a SharedIndexInformer that lists and watches all service plans
+func (f *sharedInformerFactory) ServicePlans() ServicePlanInformer {
+	return &servicePlanInformer{sharedInformerFactory: f}
 }
 
 // PetSets returns a SharedIndexInformer that lists and watchs all petsets
