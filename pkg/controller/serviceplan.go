@@ -61,14 +61,14 @@ func (c *ServicePlanController) Run(workers int, stopc <-chan struct{}) {
 
 	glog.Info("Starting ServicePlan controller...")
 
+	if !cache.WaitForCacheSync(stopc, c.spInf.HasSynced) {
+		return
+	}
+
 	for i := 0; i < workers; i++ {
 		// runWorker will loop until "something bad" happens.
 		// The .Until will then rekick the worker after one second
 		go wait.Until(c.runWorker, time.Second, stopc)
-	}
-
-	if !cache.WaitForCacheSync(stopc, c.spInf.HasSynced) {
-		return
 	}
 
 	// wait until we're told to stop
@@ -96,20 +96,20 @@ func (c *ServicePlanController) reconcile(sp *spec.ServicePlan) error {
 		return err
 	}
 
-	glog.Infof("RECONCILE: %s", key)
 	_, exists, err := c.spInf.GetStore().GetByKey(key)
 	if err != nil {
 		return err
 	}
 
+	logHeader := fmt.Sprintf("%s/%s", sp.Namespace, sp.Name)
 	if sp.Namespace == systemNamespace {
-		glog.Info("cluster plan, ignoring ...")
+		glog.Infof("%s - cluster plan, ignoring ...", logHeader)
 		// TODO: rules for cluster service plans
 		return nil
 	}
 
 	if !exists {
-		glog.Infof("removing status for '%s'", key)
+		glog.Infof("%s - removing status for '%s'", logHeader, key)
 		// TODO: We should not rely on this behavior because is not reliable
 		// the proper way to deal with this is garbage collecting orphan resources
 		if err := c.sysClient.ServicePlanStatus(sp.Namespace).Delete(sp.Name, nil); err != nil {
@@ -152,20 +152,20 @@ func (c *ServicePlanController) reconcile(sp *spec.ServicePlan) error {
 
 	if !exists {
 		if _, err := c.sysClient.ServicePlanStatus(sp.Namespace).Create(status); err != nil {
-			glog.Warningf("failed generating status for '%s': %s", key, err)
+			glog.Warningf("%s - failed generating status: %s", logHeader, err)
 		}
 		return nil
 	}
 
 	if _, err := c.sysClient.ServicePlanStatus(sp.Namespace).Update(status); err != nil {
-		glog.Warningf("failed update status for '%s': %s", key, err)
+		glog.Warningf("%s - failed updating status: %s", logHeader, err)
 	}
 	return nil
 }
 
 func (c *ServicePlanController) addServicePlan(sp interface{}) {
 	splan := sp.(*spec.ServicePlan)
-	glog.Infof("ADD: %s/%s", splan.Namespace, splan.Name)
+	glog.Infof("add-service-plan - %s/%s", splan.Namespace, splan.Name)
 	c.queue.add(sp.(*spec.ServicePlan))
 }
 
@@ -173,10 +173,8 @@ func (c *ServicePlanController) updateServicePlan(o, n interface{}) {
 	old := o.(*spec.ServicePlan)
 	new := n.(*spec.ServicePlan)
 
-	if old.ResourceVersion == new.ResourceVersion {
-		glog.Infof("UPDATE: resource version match for '%s/%s'", new.Namespace, new.Name)
-	} else {
-		glog.Infof("UPDATE: new version for %s/%s", new.Namespace, new.Name)
+	if old.ResourceVersion != new.ResourceVersion {
+		glog.Infof("update-service-plan - %s/%s - new resource, queueing ...", new.Namespace, new.Name)
 	}
 
 	c.queue.add(new)
@@ -184,7 +182,7 @@ func (c *ServicePlanController) updateServicePlan(o, n interface{}) {
 
 func (c *ServicePlanController) deleteServicePlan(sp interface{}) {
 	splan := sp.(*spec.ServicePlan)
-	glog.Infof("DELETE: %s/%s", splan.Namespace, splan.Name)
+	glog.Infof("delete-service-plan - %s/%s", splan.Namespace, splan.Name)
 	c.queue.add(splan)
 }
 

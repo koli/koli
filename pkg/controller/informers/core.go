@@ -9,6 +9,7 @@ import (
 	"k8s.io/client-go/1.5/pkg/api"
 	"k8s.io/client-go/1.5/pkg/api/v1"
 	"k8s.io/client-go/1.5/pkg/apis/apps/v1alpha1"
+	extensions "k8s.io/client-go/1.5/pkg/apis/extensions/v1beta1"
 	"k8s.io/client-go/1.5/pkg/runtime"
 	"k8s.io/client-go/1.5/pkg/watch"
 	"k8s.io/client-go/1.5/tools/cache"
@@ -82,6 +83,34 @@ func (f *servicePlanInformer) Informer(sysClient *clientset.CoreClient) cache.Sh
 		&spec.ServicePlan{},
 		f.defaultResync,
 		cache.Indexers{},
+	)
+	f.informers[informerType] = informer
+	return informer
+}
+
+// DeploymentInformer is a type of SharedIndexInformer which watches and lists all its resources
+type DeploymentInformer interface {
+	Informer() cache.SharedIndexInformer
+	// Lister() *cache.ListWatch
+}
+
+type deploymentInformer struct {
+	*sharedInformerFactory
+}
+
+func (f *deploymentInformer) Informer() cache.SharedIndexInformer {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+
+	informerType := reflect.TypeOf(&extensions.Deployment{})
+	informer, exists := f.informers[informerType]
+	if exists {
+		return informer
+	}
+
+	informer = cache.NewSharedIndexInformer(
+		cache.NewListWatchFromClient(f.client.Extensions().GetRESTClient(), "deployments", api.NamespaceAll, nil),
+		&extensions.Deployment{}, f.defaultResync, cache.Indexers{},
 	)
 	f.informers[informerType] = informer
 	return informer

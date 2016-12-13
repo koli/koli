@@ -10,7 +10,8 @@ import (
 )
 
 const (
-	koliLabelPrefix = "koli.io"
+	// KoliPrefixValue is used for creating annotations and labels
+	KoliPrefixValue = "koli.io"
 )
 
 // AddonInterface represents the implementation of generic apps
@@ -56,22 +57,37 @@ func (a *Addon) GetApp(c *kubernetes.Clientset, psetInf cache.SharedIndexInforme
 // Label wraps a labels.Set
 type Label struct {
 	labels.Set
+	Prefix string
 }
 
 // Remove a key from the labels.Set using a pre-defined prefix
 func (l *Label) Remove(key string) {
-	delete(l.Set, fmt.Sprintf("%s/%s", koliLabelPrefix, key))
+	delete(l.Set, fmt.Sprintf("%s/%s", KoliPrefixValue, key))
 }
 
 // Add values to a labels.Set using a pre-defined prefix
 func (l *Label) Add(mapLabels map[string]string) *Label {
 	for key, value := range mapLabels {
-		l.Set[fmt.Sprintf("%s/%s", koliLabelPrefix, key)] = value
+		l.Set[fmt.Sprintf("%s/%s", l.Prefix, key)] = value
 	}
 	return l
 }
 
-// NewLabel generates a new *spec.Label
-func NewLabel() *Label {
-	return &Label{Set: map[string]string{}}
+// NewLabel generates a new *spec.Label, if a prefix isn't provided
+// it will use the the default one: spec.KoliPrefixValue.
+func NewLabel(prefixS ...string) *Label {
+	var prefix string
+	if len(prefixS) == 0 {
+		prefix = KoliPrefixValue
+	}
+	if prefix == "" {
+		// Default prefix if it's empty
+		prefix = prefixS[0]
+	}
+	return &Label{Set: map[string]string{}, Prefix: prefix}
+}
+
+// KoliPrefix returns a value with the default prefix - spec.KoliPrefix
+func KoliPrefix(value string) string {
+	return fmt.Sprintf("%s/%s", KoliPrefixValue, value)
 }

@@ -62,17 +62,14 @@ func (c *AddonController) Run(workers int, stopc <-chan struct{}) {
 
 	glog.Info("Starting addon controller...")
 
+	if !cache.WaitForCacheSync(stopc, c.addonInf.HasSynced, c.psetInf.HasSynced) {
+		return
+	}
+
 	for i := 0; i < workers; i++ {
 		// runWorker will loop until "something bad" happens.
 		// The .Until will then rekick the worker after one second
 		go wait.Until(c.runWorker, time.Second, stopc)
-	}
-
-	// go c.addonInf.Run(stopc)
-	// go c.psetInf.Run(stopc)
-
-	if !cache.WaitForCacheSync(stopc, c.addonInf.HasSynced, c.psetInf.HasSynced) {
-		return
 	}
 
 	// wait until we're told to stop

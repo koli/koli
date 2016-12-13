@@ -85,6 +85,13 @@ func startControllers(stop <-chan struct{}) error {
 		sysClient,
 	).Run(1, wait.NeverStop)
 
+	go controller.NewResourceAllocatorCtrl(
+		sharedInformers.Deployments().Informer(),
+		sharedInformers.ServicePlans().Informer(sysClient),
+		client,
+		sysClient,
+	).Run(1, wait.NeverStop)
+
 	sharedInformers.Start(stop)
 
 	select {} // block forever
