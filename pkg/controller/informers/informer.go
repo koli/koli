@@ -19,6 +19,7 @@ type SharedInformerFactory interface {
 	ServicePlans() ServicePlanInformer
 	PetSets() PetSetInformer
 	Namespaces() NamespaceInformer
+	Deployments() DeploymentInformer
 }
 
 type sharedInformerFactory struct {
@@ -63,6 +64,11 @@ func (f *sharedInformerFactory) Addons() AddonInformer {
 // ServicePlans returns a SharedIndexInformer that lists and watches all service plans
 func (f *sharedInformerFactory) ServicePlans() ServicePlanInformer {
 	return &servicePlanInformer{sharedInformerFactory: f}
+}
+
+// Deployments returns a SharedIndexInformer that lists and watchs its resources
+func (f *sharedInformerFactory) Deployments() DeploymentInformer {
+	return &deploymentInformer{sharedInformerFactory: f}
 }
 
 // PetSets returns a SharedIndexInformer that lists and watchs all petsets

@@ -71,6 +71,7 @@ func startControllers(stop <-chan struct{}) error {
 	go controller.NewAddonController(
 		sharedInformers.Addons().Informer(sysClient),
 		sharedInformers.PetSets().Informer(),
+		sharedInformers.ServicePlans().Informer(sysClient),
 		client,
 	).Run(1, wait.NeverStop)
 
@@ -80,6 +81,13 @@ func startControllers(stop <-chan struct{}) error {
 	).Run(1, wait.NeverStop)
 
 	go controller.NewServicePlanController(
+		sharedInformers.ServicePlans().Informer(sysClient),
+		client,
+		sysClient,
+	).Run(1, wait.NeverStop)
+
+	go controller.NewResourceAllocatorCtrl(
+		sharedInformers.Deployments().Informer(),
 		sharedInformers.ServicePlans().Informer(sysClient),
 		client,
 		sysClient,

@@ -55,7 +55,7 @@ func NewNamespaceController(nsInformer cache.SharedIndexInformer, client *kubern
 
 func (c *NamespaceController) addNamespace(n interface{}) {
 	new := n.(*v1.Namespace)
-	glog.Infof("addNamespace: %s", new.Name)
+	glog.Infof("add-namespace - %s(%s)", new.Name, new.ResourceVersion)
 	c.queue.add(new)
 }
 
@@ -74,13 +74,13 @@ func (c *NamespaceController) updateNamespace(o, n interface{}) {
 		return
 	}
 
-	glog.Infof("updateNamespace: %s", new.Name)
+	glog.Infof("update-namespace - %s(%s)", new.Name, new.ResourceVersion)
 	c.queue.add(new)
 }
 
 func (c *NamespaceController) deleteNamespace(n interface{}) {
 	ns := n.(*v1.Namespace)
-	glog.Infof("deleteNamespace: %s", ns.Name)
+	glog.Infof("delete-namespace - %s(%s)", ns.Name, ns.ResourceVersion)
 }
 
 // Run the controller.
@@ -90,7 +90,11 @@ func (c *NamespaceController) Run(workers int, stopc <-chan struct{}) {
 	// make sure the work queue is shutdown which will trigger workers to end
 	defer c.queue.close()
 
-	glog.Info("Starting namespace controller...")
+	glog.Info("Starting Namespace Controller...")
+
+	if !cache.WaitForCacheSync(stopc, c.nsInf.HasSynced) {
+		return
+	}
 
 	for i := 0; i < workers; i++ {
 		// runWorker will loop until "something bad" happens.
@@ -98,13 +102,9 @@ func (c *NamespaceController) Run(workers int, stopc <-chan struct{}) {
 		go wait.Until(c.runWorker, time.Second, stopc)
 	}
 
-	if !cache.WaitForCacheSync(stopc, c.nsInf.HasSynced) {
-		return
-	}
-
 	// wait until we're told to stop
 	<-stopc
-	glog.Info("shutting down namespace controller")
+	glog.Info("Shutting down Namespace Controller")
 }
 
 // var keyFunc = cache.DeletionHandlingMetaNamespaceKeyFunc
@@ -125,14 +125,16 @@ func (c *NamespaceController) runWorker() {
 
 func (c *NamespaceController) reconcile(ns *v1.Namespace) error {
 	user := ns.Annotations["sys.io/identity"]
+
+	logHeader := fmt.Sprintf("%s(%s)", ns.Name, ns.ResourceVersion)
 	if user == "" {
-		glog.Infof("empty identity (%s), ignoring...", ns.Name)
+		glog.Infof("%s - empty identity, ignoring...", logHeader)
 		return nil
 	}
 
 	u := &spec.User{}
 	if err := json.Unmarshal([]byte(user), u); err != nil {
-		return fmt.Errorf("failed decoding user (%s)", err)
+		return fmt.Errorf("%s - failed decoding user (%s)", logHeader, err)
 	}
 
 	// validate if the namespace is correct
@@ -146,7 +148,7 @@ func (c *NamespaceController) reconcile(ns *v1.Namespace) error {
 	}
 
 	if !exists {
-		glog.Infof("namespace %s doesn't exists", ns.Name)
+		glog.Infof("%s - namespace doesn't exists", logHeader)
 		return nil
 	}
 
@@ -166,36 +168,36 @@ func (c *NamespaceController) reconcile(ns *v1.Namespace) error {
 
 	// try to update the default namespace for the user
 	if !exists || ns.Status.Phase == v1.NamespaceTerminating {
-		glog.Infof("namespace %s doesn't exist, repairing ...", ns.Name)
+		glog.Infof("%s - namespace doesn't exist, repairing ...", logHeader)
 		label.Remove("default")
 		nss, err := c.kclient.Core().Namespaces().List(api.ListOptions{LabelSelector: label.AsSelector()})
 		if err != nil {
-			return fmt.Errorf("failed retrieving list of namespaces (%s)", err)
+			return fmt.Errorf("%s - failed retrieving list of namespaces (%s)", logHeader, err)
 		}
 		// Updates only if there's one namespace
 		if len(nss.Items) == 1 {
 			n, err := util.NamespaceDeepCopy(&nss.Items[0])
 			if err != nil {
-				return fmt.Errorf("failed creating a namespace copy (%s)", err)
+				return fmt.Errorf("%s - failed creating a namespace copy (%s)", logHeader, err)
 			}
 			n.Labels["sys.io/default"] = "true"
 
 			if _, err := c.kclient.Core().Namespaces().Update(n); err != nil {
-				return fmt.Errorf("failed updating a default namespace (%s)", err)
+				return fmt.Errorf("%s - failed updating a default namespace (%s)", logHeader, err)
 			}
-			glog.Infof("default namespace update (%s/%s)", n.Name, u.Username)
+			glog.Infof("%s - default namespace updated for user '%s'", logHeader, u.Username)
 		}
 		return nil
 	}
 
 	nsCopy, err := util.NamespaceDeepCopy(ns)
 	if err != nil {
-		return fmt.Errorf("failed copying namespace %s (%s)", ns.Name, err)
+		return fmt.Errorf("%s - failed copying namespace: %s", logHeader, err)
 	}
 
 	nss, err := c.kclient.Core().Namespaces().List(api.ListOptions{LabelSelector: label.AsSelector()})
 	if err != nil {
-		return fmt.Errorf("failed listing namespaces (%s)", err)
+		return fmt.Errorf("%s - failed listing namespaces: %s", logHeader, err)
 	}
 	// Remove the key 'default' because a default namespace already exists for this customer
 	if len(nss.Items) > 0 {
@@ -207,7 +209,7 @@ func (c *NamespaceController) reconcile(ns *v1.Namespace) error {
 	nsCopy.Labels = label.Set
 
 	if _, err := c.kclient.Core().Namespaces().Update(nsCopy); err != nil {
-		return fmt.Errorf("failed updating namespace %s (%s)", ns.Name, err)
+		return fmt.Errorf("%s - failed updating namespace: %s", logHeader, err)
 	}
 
 	// TODO: requeue on errors?
