@@ -47,9 +47,17 @@ func NewResourceAllocatorCtrl(dpInf, spInf cache.SharedIndexInformer,
 	})
 
 	c.spInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.addServicePlan,
+		// No-op function
+		AddFunc: func(obj interface{}) {
+			sp := obj.(*spec.ServicePlan)
+			glog.Infof("add-service-plan(%s) - %s/%s", sp.ResourceVersion, sp.Namespace, sp.Name)
+		},
+		// No-op function
+		DeleteFunc: func(obj interface{}) {
+			sp := obj.(*spec.ServicePlan)
+			glog.Infof("delete-service-plan: %s/%s", sp.Namespace, sp.Name)
+		},
 		UpdateFunc: c.updateServicePlan,
-		DeleteFunc: c.deleteServicePlan,
 	})
 	return c
 }
@@ -76,26 +84,12 @@ func (c *ResourceAllocatorCtrl) updateDeployment(o, n interface{}) {
 		c.queue.add(new)
 		return
 	}
-	// msg := "update-deployment meta-gen(%d/%d) obs-gen(%d/%d) - %s/%s"
-	// glog.Infof(msg, old.Generation, new.Generation, old.Status.ObservedGeneration, new.Status.ObservedGeneration, new.Namespace, new.Name)
-
 	// updating a deployment triggers this function serveral times.
 	// a deployment must be queued only when every generation status is synchronized -
 	// when the generation and ObservedGeneration are equal for each resource object (new and old)
 	if old.Generation == new.Generation && old.Status.ObservedGeneration == statusGen {
 		glog.Infof("update-deployment(%d) - %s/%s - resource on sync, queueing ...", statusGen, new.Namespace, new.Name)
 		c.queue.add(new)
-	}
-}
-
-func (c *ResourceAllocatorCtrl) addServicePlan(s interface{}) {
-	sp := s.(*spec.ServicePlan)
-	glog.Infof("add-service-plan: %s/%s", sp.Namespace, sp.Name)
-	// TODO: ensure that exists only one default service plan for the namespace
-	if sp.Labels["koli.io/default"] == "true" && sp.Namespace != systemNamespace {
-		// TODO: enqueue all deployments because the user changed the
-		// default service plan on his scope.
-		c.enqueueForNamespace(sp.Namespace)
 	}
 }
 
@@ -110,15 +104,6 @@ func (c *ResourceAllocatorCtrl) updateServicePlan(o, n interface{}) {
 	// When a user associates a Service Plan to a new one
 	if !reflect.DeepEqual(old.Labels, new.Labels) && new.Namespace != systemNamespace {
 		c.enqueueForNamespace(new.Namespace)
-	}
-}
-
-func (c *ResourceAllocatorCtrl) deleteServicePlan(s interface{}) {
-	sp := s.(*spec.ServicePlan)
-	glog.Infof("delete-service-plan: %s/%s", sp.Namespace, sp.Name)
-
-	if sp.Namespace != systemNamespace {
-		c.enqueueForNamespace(sp.Namespace)
 	}
 }
 
@@ -187,6 +172,13 @@ func (c *ResourceAllocatorCtrl) reconcile(d *extensions.Deployment) error {
 	}
 
 	logHeader := fmt.Sprintf("%s/%s(%d)", d.Namespace, d.Name, d.Status.ObservedGeneration)
+
+	bns, err := util.NewBrokerNamespace(d.Namespace)
+	if err != nil {
+		// Skip only because it's not a valid namespace to process
+		glog.Warningf("%s - %s. skipping ...", logHeader, err)
+		return nil
+	}
 	if d.DeletionTimestamp != nil {
 		glog.Infof("%s - marked for deletion, skipping ...", logHeader)
 		return nil
@@ -202,7 +194,7 @@ func (c *ResourceAllocatorCtrl) reconcile(d *extensions.Deployment) error {
 			// it will not handle multiple results
 			// TODO: check for nil
 			splan := obj.(*spec.ServicePlan)
-			if splan.Namespace == d.Namespace {
+			if splan.Namespace == bns.GetBrokerNamespace() {
 				planName = splan.Labels[clusterPlanPrefix]
 			}
 		})
@@ -253,8 +245,8 @@ func (c *ResourceAllocatorCtrl) reconcile(d *extensions.Deployment) error {
 
 	klabel := spec.NewLabel().Add(map[string]string{"clusterplan": planName})
 	if !reflect.DeepEqual(containers[0].Resources, sp.Spec.Resources) {
-		// TODO: Enforce allocation because the resources doesn't match
-		glog.Infof("%s - enforcing allocation with SP '%s'", logHeader, sp.Name)
+		// Enforce allocation because the resources doesn't match
+		glog.Infof("%s - enforcing allocation with Service Plan '%s'", logHeader, sp.Name)
 		containers[0].Resources.Requests = sp.Spec.Resources.Requests
 		containers[0].Resources.Limits = sp.Spec.Resources.Limits
 		newD.Labels = klabel.Set

@@ -4,6 +4,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/kolibox/koli/pkg/spec"
 	"k8s.io/client-go/1.5/pkg/api/v1"
+	"k8s.io/client-go/1.5/pkg/apis/apps/v1alpha1"
 	extensions "k8s.io/client-go/1.5/pkg/apis/extensions/v1beta1"
 )
 
@@ -11,6 +12,7 @@ type queue struct {
 	addonch chan *spec.Addon
 	spch    chan *spec.ServicePlan
 	dpch    chan *extensions.Deployment
+	psch    chan *v1alpha1.PetSet
 	nsch    chan *v1.Namespace
 }
 
@@ -19,6 +21,7 @@ func newQueue(size int) *queue {
 		addonch: make(chan *spec.Addon, size),
 		spch:    make(chan *spec.ServicePlan, size),
 		dpch:    make(chan *extensions.Deployment),
+		psch:    make(chan *v1alpha1.PetSet),
 		nsch:    make(chan *v1.Namespace, size),
 	}
 }
@@ -31,6 +34,8 @@ func (q *queue) add(o interface{}) {
 		q.spch <- o.(*spec.ServicePlan)
 	case *extensions.Deployment:
 		q.dpch <- o.(*extensions.Deployment)
+	case *v1alpha1.PetSet:
+		q.psch <- o.(*v1alpha1.PetSet)
 	case *v1.Namespace:
 		q.nsch <- o.(*v1.Namespace)
 	default:
@@ -41,6 +46,7 @@ func (q *queue) close() {
 	close(q.addonch)
 	close(q.spch)
 	close(q.dpch)
+	close(q.psch)
 	close(q.nsch)
 }
 
@@ -54,6 +60,9 @@ func (q *queue) pop(o interface{}) (interface{}, bool) {
 		return obj, ok
 	case *extensions.Deployment:
 		obj, ok := <-q.dpch
+		return obj, ok
+	case *v1alpha1.PetSet:
+		obj, ok := <-q.psch
 		return obj, ok
 	case *v1.Namespace:
 		obj, ok := <-q.nsch

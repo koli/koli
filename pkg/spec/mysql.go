@@ -95,12 +95,15 @@ func (m *MySQL) makeVolumes() *VolumeSpec {
 }
 
 // CreatePetSet add a new mySQL PetSet
-func (m *MySQL) CreatePetSet() error {
+func (m *MySQL) CreatePetSet(sp *ServicePlan) error {
 	labels := map[string]string{
 		"sys.io/type": "addon",
 		"sys.io/app":  m.addon.Name,
 	}
 	petset := makePetSet(m.addon, nil, labels, nil, m.makeVolumes())
+	petset.Spec.Template.Spec.Containers[0].Resources.Limits = sp.Spec.Resources.Limits
+	petset.Spec.Template.Spec.Containers[0].Resources.Requests = sp.Spec.Resources.Requests
+	petset.Labels = NewLabel().Add(map[string]string{"clusterplan": sp.Name}).Set
 	if _, err := m.client.Apps().PetSets(m.addon.Namespace).Create(petset); err != nil {
 		return fmt.Errorf("failed creating petset (%s)", err)
 	}
@@ -108,12 +111,16 @@ func (m *MySQL) CreatePetSet() error {
 }
 
 // UpdatePetSet update a mySQL PetSet
-func (m *MySQL) UpdatePetSet(old *v1alpha1.PetSet) error {
+func (m *MySQL) UpdatePetSet(old *v1alpha1.PetSet, sp *ServicePlan) error {
 	labels := map[string]string{
 		"sys.io/type": "addon",
 		"sys.io/app":  m.addon.Name,
 	}
 	petset := makePetSet(m.addon, old, labels, nil, m.makeVolumes())
+	petset.Spec.Template.Spec.Containers[0].Resources.Limits = sp.Spec.Resources.Limits
+	petset.Spec.Template.Spec.Containers[0].Resources.Requests = sp.Spec.Resources.Requests
+	petset.SetLabels(NewLabel().Add(map[string]string{"clusterplan": sp.Name}).Set)
+
 	if _, err := m.client.Apps().PetSets(m.addon.Namespace).Update(petset); err != nil {
 		return fmt.Errorf("failed creating petset (%s)", err)
 	}

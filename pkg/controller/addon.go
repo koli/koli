@@ -6,12 +6,14 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/kolibox/koli/pkg/spec"
+	"github.com/kolibox/koli/pkg/util"
 
 	"k8s.io/client-go/1.5/kubernetes"
 	apierrors "k8s.io/client-go/1.5/pkg/api/errors"
 	"k8s.io/client-go/1.5/pkg/api/v1"
 	"k8s.io/client-go/1.5/pkg/apis/apps/v1alpha1"
 	extensions "k8s.io/client-go/1.5/pkg/apis/extensions/v1beta1"
+	"k8s.io/client-go/1.5/pkg/labels"
 	utilruntime "k8s.io/client-go/1.5/pkg/util/runtime"
 	"k8s.io/client-go/1.5/pkg/util/wait"
 	"k8s.io/client-go/1.5/tools/cache"
@@ -26,17 +28,19 @@ type AddonController struct {
 	kclient *kubernetes.Clientset
 
 	addonInf cache.SharedIndexInformer
+	spInf    cache.SharedIndexInformer
 	psetInf  cache.SharedIndexInformer
 
 	queue *queue
 }
 
 // NewAddonController creates a new addon controller
-func NewAddonController(addonInformer, psetInformer cache.SharedIndexInformer, client *kubernetes.Clientset) *AddonController {
+func NewAddonController(addonInformer, psetInformer, spInformer cache.SharedIndexInformer, client *kubernetes.Clientset) *AddonController {
 	ac := &AddonController{
 		kclient:  client,
 		addonInf: addonInformer,
 		psetInf:  psetInformer,
+		spInf:    spInformer,
 		queue:    newQueue(200),
 	}
 
@@ -50,6 +54,11 @@ func NewAddonController(addonInformer, psetInformer cache.SharedIndexInformer, c
 		UpdateFunc: ac.updatePetSet,
 		DeleteFunc: ac.deletePetSet,
 	})
+
+	// ac.spInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	// 	UpdateFunc: ac.updateServicePlan,
+	// })
+
 	return ac
 }
 
@@ -60,9 +69,9 @@ func (c *AddonController) Run(workers int, stopc <-chan struct{}) {
 	// make sure the work queue is shutdown which will trigger workers to end
 	defer c.queue.close()
 
-	glog.Info("Starting addon controller...")
+	glog.Info("Starting Addon Controller...")
 
-	if !cache.WaitForCacheSync(stopc, c.addonInf.HasSynced, c.psetInf.HasSynced) {
+	if !cache.WaitForCacheSync(stopc, c.addonInf.HasSynced, c.psetInf.HasSynced, c.spInf.HasSynced) {
 		return
 	}
 
@@ -74,7 +83,31 @@ func (c *AddonController) Run(workers int, stopc <-chan struct{}) {
 
 	// wait until we're told to stop
 	<-stopc
-	glog.Info("shutting down addon controller")
+	glog.Info("shutting down Addon Controller")
+}
+
+// func (c *AddonController) updateServicePlan(o, n interface{}) {
+// 	old := o.(*spec.ServicePlan)
+// 	new := n.(*spec.ServicePlan)
+
+// 	if old.ResourceVersion == new.ResourceVersion {
+// 		return
+// 	}
+
+// 	// When a user associates a Service Plan to a new one
+// 	if !reflect.DeepEqual(old.Labels, new.Labels) && new.Namespace != systemNamespace {
+// 		c.enqueueForNamespace(new.Namespace)
+// 	}
+// }
+
+// enqueueForNamespace enqueues all Deployments object keys that belong to the given namespace.
+func (c *AddonController) enqueueForNamespace(namespace string) {
+	cache.ListAll(c.psetInf.GetStore(), labels.Everything(), func(obj interface{}) {
+		d := obj.(*v1alpha1.PetSet)
+		if d.Namespace == namespace {
+			c.queue.add(d)
+		}
+	})
 }
 
 func (c *AddonController) addAddon(a interface{}) {
@@ -154,6 +187,15 @@ func (c *AddonController) reconcile(app spec.AddonInterface) error {
 		return err
 	}
 
+	addon := app.GetAddon()
+	logHeader := fmt.Sprintf("%s/%s(%s)", addon.Namespace, addon.Name, addon.ResourceVersion)
+	bns, err := util.NewBrokerNamespace(addon.Namespace)
+	if err != nil {
+		// Skip only because it's not a valid namespace to process
+		glog.Warningf("%s - %s. skipping ...", logHeader, err)
+		return nil
+	}
+
 	_, exists, err := c.addonInf.GetStore().GetByKey(key)
 	if err != nil {
 		return err
@@ -167,7 +209,7 @@ func (c *AddonController) reconcile(app spec.AddonInterface) error {
 		// Let's rely on the index key matching that of the created configmap and replica
 		// set for now. This does not work if we delete addon resources as the
 		// controller is not running – that could be solved via garbage collection later.
-		glog.Infof("deleting deployment (%v) ...", key)
+		glog.Infof("%s - deleting deployment (%v) ...", logHeader, key)
 		return app.DeleteApp()
 	}
 
@@ -178,28 +220,81 @@ func (c *AddonController) reconcile(app spec.AddonInterface) error {
 	}
 
 	// expose the app
-	svc := spec.MakePetSetService(app.GetAddon())
-	if _, err := c.kclient.Core().Services(app.GetAddon().Namespace).Create(svc); err != nil && !apierrors.IsAlreadyExists(err) {
+	svc := spec.MakePetSetService(addon)
+	if _, err := c.kclient.Core().Services(addon.Namespace).Create(svc); err != nil && !apierrors.IsAlreadyExists(err) {
 		return fmt.Errorf("failed creating service (%s)", err)
 	}
 
 	// Ensure we have a replica set running
 	psetQ := &v1alpha1.PetSet{}
-	psetQ.Namespace = app.GetAddon().Namespace
-	psetQ.Name = app.GetAddon().Name
+	psetQ.Namespace = addon.Namespace
+	psetQ.Name = addon.Name
 
-	obj, exists, err := c.psetInf.GetStore().Get(psetQ)
+	obj, psetExists, err := c.psetInf.GetStore().Get(psetQ)
 	if err != nil {
 		return err
 	}
 
-	if !exists {
-		if err := app.CreatePetSet(); err != nil {
-			return fmt.Errorf("failed creating petset (%s)", err)
+	planName := ""
+	var sp *spec.ServicePlan
+	selector := spec.NewLabel().Add(map[string]string{"default": "true"}).AsSelector()
+	clusterPlanPrefix := spec.KoliPrefix("clusterplan")
+	if psetExists {
+		pset := obj.(*v1alpha1.PetSet)
+		if pset.DeletionTimestamp != nil {
+			glog.Infof("%s - marked for deletion, skipping ...", logHeader)
+			return nil
 		}
-		return nil
+		planName = pset.Labels[clusterPlanPrefix]
 	}
-	return app.UpdatePetSet(obj.(*v1alpha1.PetSet))
+
+	// Find a default broker service plan
+	if planName == "" {
+		cache.ListAll(c.spInf.GetStore(), selector, func(obj interface{}) {
+			// it will not handle multiple results
+			// TODO: check for nil
+			splan := obj.(*spec.ServicePlan)
+			if splan.Namespace == bns.GetBrokerNamespace() {
+				planName = splan.Labels[clusterPlanPrefix]
+			}
+		})
+		if planName == "" {
+			glog.Infof("%s - broker service plan not found", logHeader)
+		}
+	}
+
+	// Search for the cluster plan by its name
+	spQ := &spec.ServicePlan{}
+	spQ.SetName(planName)
+	spQ.SetNamespace(systemNamespace)
+	obj, spExists, err := c.spInf.GetStore().Get(spQ)
+	if err != nil {
+		return err
+	}
+	// The broker doesn't have a service plan, search for a default one in the cluster
+	if !spExists {
+		glog.Infof("%s - cluster service plan '%s' doesn't exists", logHeader, planName)
+		glog.Infof("%s - searching for a default service plan in the cluster ...", logHeader)
+		cache.ListAll(c.spInf.GetStore(), selector, func(obj interface{}) {
+			// it will not handle multiple results
+			// TODO: check for nil
+			splan := obj.(*spec.ServicePlan)
+			if splan.Namespace == systemNamespace {
+				sp = splan
+			}
+		})
+		if sp == nil {
+			return fmt.Errorf("%s - couldn't find a default cluster plan", logHeader)
+		}
+	} else {
+		sp = obj.(*spec.ServicePlan)
+		glog.Infof("%s - found a cluster service plan: '%s'", logHeader, sp.Name)
+	}
+
+	if !psetExists {
+		return app.CreatePetSet(sp)
+	}
+	return app.UpdatePetSet(nil, sp)
 }
 
 func (c *AddonController) addonForDeployment(p *v1alpha1.PetSet) *spec.Addon {

@@ -71,6 +71,7 @@ func startControllers(stop <-chan struct{}) error {
 	go controller.NewAddonController(
 		sharedInformers.Addons().Informer(sysClient),
 		sharedInformers.PetSets().Informer(),
+		sharedInformers.ServicePlans().Informer(sysClient),
 		client,
 	).Run(1, wait.NeverStop)
 

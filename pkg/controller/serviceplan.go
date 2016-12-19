@@ -103,7 +103,6 @@ func (c *ServicePlanController) reconcile(sp *spec.ServicePlan) error {
 
 	logHeader := fmt.Sprintf("%s/%s", sp.Namespace, sp.Name)
 	if sp.Namespace == systemNamespace {
-		glog.Infof("%s - cluster plan, ignoring ...", logHeader)
 		// TODO: rules for cluster service plans
 		return nil
 	}

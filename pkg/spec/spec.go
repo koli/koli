@@ -17,8 +17,8 @@ const (
 // AddonInterface represents the implementation of generic apps
 type AddonInterface interface {
 	CreateConfigMap() error
-	CreatePetSet() error
-	UpdatePetSet(old *v1alpha1.PetSet) error
+	CreatePetSet(sp *ServicePlan) error
+	UpdatePetSet(old *v1alpha1.PetSet, sp *ServicePlan) error
 	DeleteApp() error
 	GetAddon() *Addon
 }
