@@ -1,6 +1,7 @@
 package util
 
 import (
+	"errors"
 	"fmt"
 
 	"strings"
@@ -63,7 +64,7 @@ type BrokerNamespace struct {
 func NewBrokerNamespace(namespace string) (*BrokerNamespace, error) {
 	parts := strings.Split(namespace, "-")
 	if len(parts) != 3 {
-		return nil, fmt.Errorf("namespace in wrong format: %s", namespace)
+		return nil, errors.New("namespace in wrong format")
 	}
 	return &BrokerNamespace{
 		Namespace:    parts[0],
@@ -83,4 +84,9 @@ func (b *BrokerNamespace) IsBroker() bool {
 // GetBrokerNamespace returns the broker namespace
 func (b *BrokerNamespace) GetBrokerNamespace() string {
 	return fmt.Sprintf("default-main-%s", b.Organization)
+}
+
+// GetNamespace retrieves the original namespace
+func (b *BrokerNamespace) GetNamespace() string {
+	return fmt.Sprintf("%s-%s-%s", b.Namespace, b.Customer, b.Organization)
 }
