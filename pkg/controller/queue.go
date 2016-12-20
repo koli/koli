@@ -3,17 +3,17 @@ package controller
 import (
 	"github.com/golang/glog"
 	"github.com/kolibox/koli/pkg/spec"
-	"k8s.io/client-go/1.5/pkg/api/v1"
-	"k8s.io/client-go/1.5/pkg/apis/apps/v1alpha1"
-	extensions "k8s.io/client-go/1.5/pkg/apis/extensions/v1beta1"
+	"k8s.io/kubernetes/pkg/api"
+	apps "k8s.io/kubernetes/pkg/apis/apps"
+	extensions "k8s.io/kubernetes/pkg/apis/extensions"
 )
 
 type queue struct {
 	addonch chan *spec.Addon
 	spch    chan *spec.ServicePlan
 	dpch    chan *extensions.Deployment
-	psch    chan *v1alpha1.PetSet
-	nsch    chan *v1.Namespace
+	psch    chan *apps.StatefulSet
+	nsch    chan *api.Namespace
 }
 
 func newQueue(size int) *queue {
@@ -21,8 +21,8 @@ func newQueue(size int) *queue {
 		addonch: make(chan *spec.Addon, size),
 		spch:    make(chan *spec.ServicePlan, size),
 		dpch:    make(chan *extensions.Deployment),
-		psch:    make(chan *v1alpha1.PetSet),
-		nsch:    make(chan *v1.Namespace, size),
+		psch:    make(chan *apps.StatefulSet),
+		nsch:    make(chan *api.Namespace, size),
 	}
 }
 
@@ -34,10 +34,10 @@ func (q *queue) add(o interface{}) {
 		q.spch <- o.(*spec.ServicePlan)
 	case *extensions.Deployment:
 		q.dpch <- o.(*extensions.Deployment)
-	case *v1alpha1.PetSet:
-		q.psch <- o.(*v1alpha1.PetSet)
-	case *v1.Namespace:
-		q.nsch <- o.(*v1.Namespace)
+	case *apps.StatefulSet:
+		q.psch <- o.(*apps.StatefulSet)
+	case *api.Namespace:
+		q.nsch <- o.(*api.Namespace)
 	default:
 		glog.Infof("add: unknown type (%T)", obj)
 	}
@@ -61,10 +61,10 @@ func (q *queue) pop(o interface{}) (interface{}, bool) {
 	case *extensions.Deployment:
 		obj, ok := <-q.dpch
 		return obj, ok
-	case *v1alpha1.PetSet:
+	case *apps.StatefulSet:
 		obj, ok := <-q.psch
 		return obj, ok
-	case *v1.Namespace:
+	case *api.Namespace:
 		obj, ok := <-q.nsch
 		return obj, ok
 	default:

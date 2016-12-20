@@ -3,10 +3,10 @@ package spec
 import (
 	"fmt"
 
-	"k8s.io/client-go/1.5/kubernetes"
-	"k8s.io/client-go/1.5/pkg/apis/apps/v1alpha1"
-	"k8s.io/client-go/1.5/pkg/labels"
-	"k8s.io/client-go/1.5/tools/cache"
+	apps "k8s.io/kubernetes/pkg/apis/apps"
+	"k8s.io/kubernetes/pkg/client/cache"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	"k8s.io/kubernetes/pkg/labels"
 )
 
 const (
@@ -18,7 +18,7 @@ const (
 type AddonInterface interface {
 	CreateConfigMap() error
 	CreatePetSet(sp *ServicePlan) error
-	UpdatePetSet(old *v1alpha1.PetSet, sp *ServicePlan) error
+	UpdatePetSet(old *apps.StatefulSet, sp *ServicePlan) error
 	DeleteApp() error
 	GetAddon() *Addon
 }
@@ -32,15 +32,15 @@ func (a *Addon) GetImage() string {
 }
 
 // GetReplicas returns the size of replicas, if is less than 1 sets a default value
-func (a *Addon) GetReplicas() *int32 {
+func (a *Addon) GetReplicas() int32 {
 	if a.Spec.Replicas < 1 {
 		a.Spec.Replicas = 1
 	}
-	return &a.Spec.Replicas
+	return a.Spec.Replicas
 }
 
 // GetApp retrieves the type of the add-on
-func (a *Addon) GetApp(c *kubernetes.Clientset, psetInf cache.SharedIndexInformer) (AddonInterface, error) {
+func (a *Addon) GetApp(c clientset.Interface, psetInf cache.SharedIndexInformer) (AddonInterface, error) {
 	switch a.Spec.Type {
 	case "redis":
 		return &Redis{client: c, addon: a, psetInf: psetInf}, nil

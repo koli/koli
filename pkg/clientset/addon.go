@@ -5,12 +5,12 @@ import (
 	"errors"
 
 	"github.com/kolibox/koli/pkg/spec"
-	"k8s.io/client-go/1.5/pkg/api"
-	"k8s.io/client-go/1.5/pkg/api/unversioned"
-	"k8s.io/client-go/1.5/pkg/api/v1"
-	"k8s.io/client-go/1.5/pkg/runtime"
-	"k8s.io/client-go/1.5/pkg/watch"
-	"k8s.io/client-go/1.5/rest"
+
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/client/restclient"
+	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/watch"
 )
 
 // AddonGetter has a method to return an AddonInterface.
@@ -23,7 +23,7 @@ type AddonGetter interface {
 type AddonInterface interface {
 	List(opts *api.ListOptions) (*spec.AddonList, error)
 	Get(name string) (*spec.Addon, error)
-	Delete(name string, options *v1.DeleteOptions) error
+	Delete(name string, options *api.DeleteOptions) error
 	Create(data *spec.Addon) (*spec.Addon, error)
 	Update(data *spec.Addon) (*spec.Addon, error)
 	Watch(opts *api.ListOptions) (watch.Interface, error)
@@ -31,7 +31,7 @@ type AddonInterface interface {
 
 // addon implements AddonInterface
 type addon struct {
-	client    *rest.RESTClient
+	client    restclient.Interface
 	namespace string
 	resource  *unversioned.APIResource
 }
@@ -65,9 +65,9 @@ func (a *addon) List(opts *api.ListOptions) (*spec.AddonList, error) {
 }
 
 // Delete deletes the resource with the specified name.
-func (a *addon) Delete(name string, opts *v1.DeleteOptions) error {
+func (a *addon) Delete(name string, opts *api.DeleteOptions) error {
 	if opts == nil {
-		opts = &v1.DeleteOptions{}
+		opts = &api.DeleteOptions{}
 	}
 	return a.client.Delete().
 		NamespaceIfScoped(a.namespace, a.resource.Namespaced).

@@ -6,23 +6,23 @@ import (
 	"strings"
 	"time"
 
+	"github.com/golang/glog"
 	"github.com/kolibox/koli/pkg/spec"
 	"github.com/kolibox/koli/pkg/util"
 
-	"github.com/golang/glog"
-	"k8s.io/client-go/1.5/kubernetes"
-	"k8s.io/client-go/1.5/pkg/api"
-	apierrors "k8s.io/client-go/1.5/pkg/api/errors"
-	"k8s.io/client-go/1.5/pkg/api/v1"
-	"k8s.io/client-go/1.5/pkg/apis/rbac/v1alpha1"
-	utilruntime "k8s.io/client-go/1.5/pkg/util/runtime"
-	"k8s.io/client-go/1.5/pkg/util/wait"
-	"k8s.io/client-go/1.5/tools/cache"
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/apis/rbac"
+	"k8s.io/kubernetes/pkg/client/cache"
+	"k8s.io/kubernetes/pkg/util/wait"
+
+	apierrors "k8s.io/kubernetes/pkg/api/errors"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 )
 
 // NamespaceController controller
 type NamespaceController struct {
-	kclient *kubernetes.Clientset
+	kclient clientset.Interface
 	nsInf   cache.SharedIndexInformer
 	queue   *queue
 }
@@ -39,7 +39,7 @@ var (
 )
 
 // NewNamespaceController creates a NamespaceController
-func NewNamespaceController(nsInformer cache.SharedIndexInformer, client *kubernetes.Clientset) *NamespaceController {
+func NewNamespaceController(nsInformer cache.SharedIndexInformer, client clientset.Interface) *NamespaceController {
 	nc := &NamespaceController{
 		kclient: client,
 		nsInf:   nsInformer,
@@ -54,14 +54,14 @@ func NewNamespaceController(nsInformer cache.SharedIndexInformer, client *kubern
 }
 
 func (c *NamespaceController) addNamespace(n interface{}) {
-	new := n.(*v1.Namespace)
+	new := n.(*api.Namespace)
 	glog.Infof("add-namespace - %s(%s)", new.Name, new.ResourceVersion)
 	c.queue.add(new)
 }
 
 func (c *NamespaceController) updateNamespace(o, n interface{}) {
-	old := o.(*v1.Namespace)
-	new := n.(*v1.Namespace)
+	old := o.(*api.Namespace)
+	new := n.(*api.Namespace)
 
 	if old.ResourceVersion == new.ResourceVersion {
 		return
@@ -79,7 +79,7 @@ func (c *NamespaceController) updateNamespace(o, n interface{}) {
 }
 
 func (c *NamespaceController) deleteNamespace(n interface{}) {
-	ns := n.(*v1.Namespace)
+	ns := n.(*api.Namespace)
 	glog.Infof("delete-namespace - %s(%s)", ns.Name, ns.ResourceVersion)
 }
 
@@ -113,17 +113,17 @@ func (c *NamespaceController) Run(workers int, stopc <-chan struct{}) {
 // It enforces that the syncHandler is never invoked concurrently with the same key.
 func (c *NamespaceController) runWorker() {
 	for {
-		obj, ok := c.queue.pop(&v1.Namespace{})
+		obj, ok := c.queue.pop(&api.Namespace{})
 		if !ok {
 			return
 		}
-		if err := c.reconcile(obj.(*v1.Namespace)); err != nil {
+		if err := c.reconcile(obj.(*api.Namespace)); err != nil {
 			utilruntime.HandleError(err)
 		}
 	}
 }
 
-func (c *NamespaceController) reconcile(ns *v1.Namespace) error {
+func (c *NamespaceController) reconcile(ns *api.Namespace) error {
 	user := ns.Annotations["sys.io/identity"]
 
 	logHeader := fmt.Sprintf("%s(%s)", ns.Name, ns.ResourceVersion)
@@ -167,7 +167,7 @@ func (c *NamespaceController) reconcile(ns *v1.Namespace) error {
 	})
 
 	// try to update the default namespace for the user
-	if !exists || ns.Status.Phase == v1.NamespaceTerminating {
+	if !exists || ns.Status.Phase == api.NamespaceTerminating {
 		glog.Infof("%s - namespace doesn't exist, repairing ...", logHeader)
 		label.Remove("default")
 		nss, err := c.kclient.Core().Namespaces().List(api.ListOptions{LabelSelector: label.AsSelector()})
@@ -223,9 +223,9 @@ func (c *NamespaceController) reconcile(ns *v1.Namespace) error {
 // create the permissions (role/role binding) needed for the user
 // to access the resources of the namespace.
 func (c *NamespaceController) createPermissions(ns string, usr *spec.User) {
-	role := &v1alpha1.Role{
-		ObjectMeta: v1.ObjectMeta{Name: "main"},
-		Rules: []v1alpha1.PolicyRule{
+	role := &rbac.Role{
+		ObjectMeta: api.ObjectMeta{Name: "main"},
+		Rules: []rbac.PolicyRule{
 			{
 				APIGroups: []string{"*"},
 				Resources: roleResources,
@@ -238,52 +238,51 @@ func (c *NamespaceController) createPermissions(ns string, usr *spec.User) {
 	}
 
 	// TODO: temporary solution: v1alpha1.RoleRef doesn't have RoleRef.Namespace, needed in version 1.4
-	data := `{
-		"roleRef": {"kind": "Role", "namespace": "%s", "name": "main"}, 
-		"kind": "RoleBinding", 
-		"subjects": [{"kind": "User", "name": "%s"}], 
-		"apiVersion": "rbac.authorization.k8s.io/v1alpha1", 
-		"metadata": {"name": "main", "namespace": "%s"}}`
-	result := c.kclient.Rbac().GetRESTClient().Post().
-		Namespace(ns).
-		Resource("rolebindings").
-		Body([]byte(fmt.Sprintf(data, ns, usr.Username, ns))).
-		Do()
-	if err := result.Error(); err != nil && !apierrors.IsAlreadyExists(err) {
-		glog.Errorf("failed creating role binding (%s)", err)
+	// data := `{
+	// 	"roleRef": {"kind": "Role", "namespace": "%s", "name": "main"},
+	// 	"kind": "RoleBinding",
+	// 	"subjects": [{"kind": "User", "name": "%s"}],
+	// 	"apiVersion": "rbac.authorization.k8s.io/v1alpha1",
+	// 	"metadata": {"name": "main", "namespace": "%s"}}`
+
+	roleBinding := &rbac.RoleBinding{
+		ObjectMeta: api.ObjectMeta{Name: "main"},
+		Subjects: []rbac.Subject{
+			{
+				Kind: "User",
+				Name: usr.Username, // TODO: change to ID
+				// Namespace: ns,
+			},
+		},
+		RoleRef: rbac.RoleRef{
+			Kind: "Role",
+			Name: "main", // must match role name
+		},
 	}
-
-	// roleBinding := &v1alpha1.RoleBinding{
-	// 	ObjectMeta: v1.ObjectMeta{Name: "main"},
-	// 	Subjects: []v1alpha1.Subject{
-	// 		{
-	// 			Kind: "User",
-	// 			Name: usr.Username, // TODO: change to ID
-	// 			// Namespace: ns,
-	// 		},
-	// 	},
-	// 	RoleRef: v1alpha1.RoleRef{
-	// 		Kind: "Role",
-	// 		Name: "main", // must match role name
-	// 		// Namespace: "", // TOOD: Need this field because the server version is still 1.4
-	// 	},
+	if _, err := c.kclient.Rbac().RoleBindings(ns).Create(roleBinding); err != nil && !apierrors.IsAlreadyExists(err) {
+		glog.Errorf("failed creating rolebinding: %s", err)
+	}
+	// result := c.kclient.Rbac().RESTClient().Post().
+	// 	Namespace(ns).
+	// 	Resource("rolebindings").
+	// 	Body([]byte(fmt.Sprintf(data, ns, usr.Username, ns))).
+	// 	Do()
+	// if err := result.Error(); err != nil && !apierrors.IsAlreadyExists(err) {
+	// 	glog.Errorf("failed creating role binding (%s)", err)
 	// }
 
-	// c.kclient.CoreClient.Client.Post
-	// client := c.kclient.Rbac().GetRESTClient()
-	// if _, err := c.kclient.Rbac().RoleBindings(ns).Create(roleBinding); err != nil {
-	// 	return fmt.Errorf("failed creating role binding (%s)", err)
-	// }
 }
 
 func (c *NamespaceController) createNetworkPolicy() {
 	// TODO: change the library to kubernetes, client-go doesn't have NetworkPoliciesGetter
+	// extensions.NetworkPolicy{
 
+	// }
 }
 
 // validateNamespace check if the namespace has the proper format
 // and matchs with the identity information
-func validateNamespace(ns *v1.Namespace, u *spec.User) error {
+func validateNamespace(ns *api.Namespace, u *spec.User) error {
 	parts := strings.Split(ns.Name, "-")
 	if len(parts) != 3 {
 		return fmt.Errorf("namespace %s is invalid, must be in the form [name]-[customer]-[org]", ns.Name)

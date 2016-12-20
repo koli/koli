@@ -1,14 +1,14 @@
 package spec
 
 import (
-	"k8s.io/client-go/1.5/pkg/api/unversioned"
-	"k8s.io/client-go/1.5/pkg/api/v1"
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/unversioned"
 )
 
 // ServicePlan defines how resources could be managed and distributed
 type ServicePlan struct {
 	unversioned.TypeMeta `json:",inline"`
-	v1.ObjectMeta        `json:"metadata,omitempty"`
+	api.ObjectMeta       `json:"metadata,omitempty"`
 
 	Spec ServicePlanSpec `json:"spec"`
 }
@@ -24,9 +24,9 @@ type ServicePlanList struct {
 // ServicePlanSpec holds specification parameters of an ServicePlan
 type ServicePlanSpec struct {
 	// Compute Resources required by containers.
-	Resources v1.ResourceRequirements `json:"resources,omitempty"`
+	Resources api.ResourceRequirements `json:"resources,omitempty"`
 	// Hard is the set of desired hard limits for each named resource.
-	Hard     v1.ResourceList     `json:"hard,omitempty"`
+	Hard     api.ResourceList    `json:"hard,omitempty"`
 	Features ServicePlanFeatures `json:"features,omitempty"`
 }
 
@@ -45,7 +45,7 @@ type ServicePlanFeatures struct {
 // ServicePlanStatus is information about the current status of a ServicePlan.
 type ServicePlanStatus struct {
 	unversioned.TypeMeta `json:",inline"`
-	v1.ObjectMeta        `json:"metadata,omitempty"`
+	api.ObjectMeta       `json:"metadata,omitempty"`
 
 	// Phase is the current lifecycle phase of the namespace.
 	Phase ServicePlanPhase `json:"phase"`
@@ -75,7 +75,7 @@ const (
 // Addon defines integration with external resources
 type Addon struct {
 	unversioned.TypeMeta `json:",inline"`
-	v1.ObjectMeta        `json:"metadata,omitempty"`
+	api.ObjectMeta       `json:"metadata,omitempty"`
 	Spec                 AddonSpec `json:"spec"`
 }
 
@@ -89,12 +89,12 @@ type AddonList struct {
 
 // AddonSpec holds specification parameters of an addon
 type AddonSpec struct {
-	Type      string      `json:"type"`
-	BaseImage string      `json:"baseImage"`
-	Version   string      `json:"version"`
-	Replicas  int32       `json:"replicas"`
-	Port      int32       `json:"port"`
-	Env       []v1.EnvVar `json:"env"`
+	Type      string       `json:"type"`
+	BaseImage string       `json:"baseImage"`
+	Version   string       `json:"version"`
+	Replicas  int32        `json:"replicas"`
+	Port      int32        `json:"port"`
+	Env       []api.EnvVar `json:"env"`
 	// More info: http://releases.k8s.io/HEAD/docs/user-guide/containers.md#containers-and-commands
 	Args []string `json:"args,omitempty"`
 }

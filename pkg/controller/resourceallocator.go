@@ -10,17 +10,18 @@ import (
 	"github.com/kolibox/koli/pkg/spec"
 	"github.com/kolibox/koli/pkg/util"
 
-	"k8s.io/client-go/1.5/kubernetes"
-	extensions "k8s.io/client-go/1.5/pkg/apis/extensions/v1beta1"
-	"k8s.io/client-go/1.5/pkg/labels"
-	utilruntime "k8s.io/client-go/1.5/pkg/util/runtime"
-	"k8s.io/client-go/1.5/pkg/util/wait"
-	"k8s.io/client-go/1.5/tools/cache"
+	"k8s.io/kubernetes/pkg/client/cache"
+	"k8s.io/kubernetes/pkg/labels"
+	"k8s.io/kubernetes/pkg/util/wait"
+
+	extensions "k8s.io/kubernetes/pkg/apis/extensions"
+	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 )
 
 // ResourceAllocatorCtrl controller
 type ResourceAllocatorCtrl struct {
-	kclient   *kubernetes.Clientset
+	kclient   kclientset.Interface
 	sysClient clientset.CoreInterface
 
 	dpInf cache.SharedIndexInformer
@@ -31,7 +32,7 @@ type ResourceAllocatorCtrl struct {
 
 // NewResourceAllocatorCtrl creates a ResourceAllocatorCtrl
 func NewResourceAllocatorCtrl(dpInf, spInf cache.SharedIndexInformer,
-	client *kubernetes.Clientset,
+	client kclientset.Interface,
 	sysClient clientset.CoreInterface) *ResourceAllocatorCtrl {
 
 	c := &ResourceAllocatorCtrl{
@@ -277,24 +278,3 @@ func (c *ResourceAllocatorCtrl) validateContainers(d *extensions.Deployment) err
 	}
 	return nil
 }
-
-// func (c *ResourceAllocatorCtrl) servicePlanForDeployment(d *extensions.Deployment) (*spec.ServicePlan, error) {
-// 	spQ := &spec.ServicePlan{}
-// 	spQ.Name = d.Name
-// 	spQ.Namespace = d.Namespace
-
-// 	obj, exists, err := c.spInf.GetStore().Get(spQ)
-// 	if !exists {
-// 		lbl := spec.NewLabel().Add(map[string]string{"default": "true"})
-// 		// servicePlans := []*spec.ServicePlan{}
-// 		if err := cache.ListAllByNamespace(c.spInf.GetIndexer(), d.Namespace, lbl.AsSelector(), func(obj interface{}) {
-// 			// sp := obj.(*spec.ServicePlan)
-// 			// append(servicePlans, sp)
-// 			// fmt.Println(servicePlans)
-// 		}); err != nil {
-// 			return nil, fmt.Errorf("failed retrieving service plan: %s", err)
-// 		}
-// 	}
-// 	return nil, nil
-
-// }

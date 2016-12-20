@@ -6,13 +6,13 @@ import (
 	"github.com/kolibox/koli/pkg/clientset"
 	"github.com/kolibox/koli/pkg/spec"
 
-	"k8s.io/client-go/1.5/pkg/api"
-	"k8s.io/client-go/1.5/pkg/api/v1"
-	"k8s.io/client-go/1.5/pkg/apis/apps/v1alpha1"
-	extensions "k8s.io/client-go/1.5/pkg/apis/extensions/v1beta1"
-	"k8s.io/client-go/1.5/pkg/runtime"
-	"k8s.io/client-go/1.5/pkg/watch"
-	"k8s.io/client-go/1.5/tools/cache"
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/client/cache"
+	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/watch"
+
+	apps "k8s.io/kubernetes/pkg/apis/apps"
+	extensions "k8s.io/kubernetes/pkg/apis/extensions"
 )
 
 // AddonInformer is a type of SharedIndexInformer which watches and lists all addons.
@@ -109,7 +109,7 @@ func (f *deploymentInformer) Informer() cache.SharedIndexInformer {
 	}
 
 	informer = cache.NewSharedIndexInformer(
-		cache.NewListWatchFromClient(f.client.Extensions().GetRESTClient(), "deployments", api.NamespaceAll, nil),
+		cache.NewListWatchFromClient(f.client.Extensions().RESTClient(), "deployments", api.NamespaceAll, nil),
 		&extensions.Deployment{}, f.defaultResync, cache.Indexers{},
 	)
 	f.informers[informerType] = informer
@@ -130,15 +130,15 @@ func (f *petSetInformer) Informer() cache.SharedIndexInformer {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	informerType := reflect.TypeOf(&v1alpha1.PetSet{})
+	informerType := reflect.TypeOf(&apps.StatefulSet{})
 	informer, exists := f.informers[informerType]
 	if exists {
 		return informer
 	}
 
 	informer = cache.NewSharedIndexInformer(
-		cache.NewListWatchFromClient(f.client.Apps().GetRESTClient(), "petsets", api.NamespaceAll, nil),
-		&v1alpha1.PetSet{}, f.defaultResync, cache.Indexers{},
+		cache.NewListWatchFromClient(f.client.Apps().RESTClient(), "statefulsets", api.NamespaceAll, nil),
+		&apps.StatefulSet{}, f.defaultResync, cache.Indexers{},
 	)
 	f.informers[informerType] = informer
 	return informer
@@ -158,15 +158,15 @@ func (f *namespaceInformer) Informer() cache.SharedIndexInformer {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	informerType := reflect.TypeOf(&v1.Namespace{})
+	informerType := reflect.TypeOf(&api.Namespace{})
 	informer, exists := f.informers[informerType]
 	if exists {
 		return informer
 	}
 
 	informer = cache.NewSharedIndexInformer(
-		cache.NewListWatchFromClient(f.client.Core().GetRESTClient(), "namespaces", api.NamespaceAll, nil),
-		&v1.Namespace{}, f.defaultResync, cache.Indexers{},
+		cache.NewListWatchFromClient(f.client.Core().RESTClient(), "namespaces", api.NamespaceAll, nil),
+		&api.Namespace{}, f.defaultResync, cache.Indexers{},
 	)
 	f.informers[informerType] = informer
 	return informer

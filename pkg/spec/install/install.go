@@ -2,7 +2,7 @@ package install
 
 import (
 	"github.com/kolibox/koli/pkg/spec"
-	"k8s.io/client-go/1.5/pkg/apimachinery/announced"
+	"k8s.io/kubernetes/pkg/apimachinery/announced"
 )
 
 func init() {

@@ -8,15 +8,16 @@ import (
 	"github.com/kolibox/koli/pkg/spec"
 	"github.com/kolibox/koli/pkg/util"
 
-	"k8s.io/client-go/1.5/kubernetes"
-	apierrors "k8s.io/client-go/1.5/pkg/api/errors"
-	"k8s.io/client-go/1.5/pkg/api/v1"
-	"k8s.io/client-go/1.5/pkg/apis/apps/v1alpha1"
-	extensions "k8s.io/client-go/1.5/pkg/apis/extensions/v1beta1"
-	"k8s.io/client-go/1.5/pkg/labels"
-	utilruntime "k8s.io/client-go/1.5/pkg/util/runtime"
-	"k8s.io/client-go/1.5/pkg/util/wait"
-	"k8s.io/client-go/1.5/tools/cache"
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/client/cache"
+	"k8s.io/kubernetes/pkg/labels"
+	"k8s.io/kubernetes/pkg/util/wait"
+
+	apierrors "k8s.io/kubernetes/pkg/api/errors"
+	apps "k8s.io/kubernetes/pkg/apis/apps"
+	extensions "k8s.io/kubernetes/pkg/apis/extensions"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 )
 
 const (
@@ -25,7 +26,7 @@ const (
 
 // AddonController controller
 type AddonController struct {
-	kclient *kubernetes.Clientset
+	kclient clientset.Interface
 
 	addonInf cache.SharedIndexInformer
 	spInf    cache.SharedIndexInformer
@@ -35,7 +36,7 @@ type AddonController struct {
 }
 
 // NewAddonController creates a new addon controller
-func NewAddonController(addonInformer, psetInformer, spInformer cache.SharedIndexInformer, client *kubernetes.Clientset) *AddonController {
+func NewAddonController(addonInformer, psetInformer, spInformer cache.SharedIndexInformer, client clientset.Interface) *AddonController {
 	ac := &AddonController{
 		kclient:  client,
 		addonInf: addonInformer,
@@ -51,8 +52,8 @@ func NewAddonController(addonInformer, psetInformer, spInformer cache.SharedInde
 	})
 
 	ac.psetInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: ac.updatePetSet,
-		DeleteFunc: ac.deletePetSet,
+		UpdateFunc: ac.updateStatefulSet,
+		DeleteFunc: ac.deleteStatefulSet,
 	})
 
 	// ac.spInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -86,24 +87,10 @@ func (c *AddonController) Run(workers int, stopc <-chan struct{}) {
 	glog.Info("shutting down Addon Controller")
 }
 
-// func (c *AddonController) updateServicePlan(o, n interface{}) {
-// 	old := o.(*spec.ServicePlan)
-// 	new := n.(*spec.ServicePlan)
-
-// 	if old.ResourceVersion == new.ResourceVersion {
-// 		return
-// 	}
-
-// 	// When a user associates a Service Plan to a new one
-// 	if !reflect.DeepEqual(old.Labels, new.Labels) && new.Namespace != systemNamespace {
-// 		c.enqueueForNamespace(new.Namespace)
-// 	}
-// }
-
 // enqueueForNamespace enqueues all Deployments object keys that belong to the given namespace.
 func (c *AddonController) enqueueForNamespace(namespace string) {
 	cache.ListAll(c.psetInf.GetStore(), labels.Everything(), func(obj interface{}) {
-		d := obj.(*v1alpha1.PetSet)
+		d := obj.(*apps.StatefulSet)
 		if d.Namespace == namespace {
 			c.queue.add(d)
 		}
@@ -134,9 +121,9 @@ func (c *AddonController) deleteAddon(a interface{}) {
 	c.enqueueAddon(addon)
 }
 
-func (c *AddonController) updatePetSet(o, n interface{}) {
-	old := o.(*v1alpha1.PetSet)
-	new := n.(*v1alpha1.PetSet)
+func (c *AddonController) updateStatefulSet(o, n interface{}) {
+	old := o.(*apps.StatefulSet)
+	new := n.(*apps.StatefulSet)
 	// Periodic resync may resend the deployment without changes in-between.
 	// Also breaks loops created by updating the resource ourselves.
 	if old.ResourceVersion == new.ResourceVersion {
@@ -149,8 +136,8 @@ func (c *AddonController) updatePetSet(o, n interface{}) {
 	}
 }
 
-func (c *AddonController) deletePetSet(a interface{}) {
-	d := a.(*v1alpha1.PetSet)
+func (c *AddonController) deleteStatefulSet(a interface{}) {
+	d := a.(*apps.StatefulSet)
 	glog.Infof("deleteDeployment: (%s/%s)", d.Namespace, d.Name)
 	if addon := c.addonForDeployment(d); addon != nil {
 		c.enqueueAddon(addon)
@@ -226,7 +213,7 @@ func (c *AddonController) reconcile(app spec.AddonInterface) error {
 	}
 
 	// Ensure we have a replica set running
-	psetQ := &v1alpha1.PetSet{}
+	psetQ := &apps.StatefulSet{}
 	psetQ.Namespace = addon.Namespace
 	psetQ.Name = addon.Name
 
@@ -240,7 +227,7 @@ func (c *AddonController) reconcile(app spec.AddonInterface) error {
 	selector := spec.NewLabel().Add(map[string]string{"default": "true"}).AsSelector()
 	clusterPlanPrefix := spec.KoliPrefix("clusterplan")
 	if psetExists {
-		pset := obj.(*v1alpha1.PetSet)
+		pset := obj.(*apps.StatefulSet)
 		if pset.DeletionTimestamp != nil {
 			glog.Infof("%s - marked for deletion, skipping ...", logHeader)
 			return nil
@@ -297,7 +284,7 @@ func (c *AddonController) reconcile(app spec.AddonInterface) error {
 	return app.UpdatePetSet(nil, sp)
 }
 
-func (c *AddonController) addonForDeployment(p *v1alpha1.PetSet) *spec.Addon {
+func (c *AddonController) addonForDeployment(p *apps.StatefulSet) *spec.Addon {
 	key, err := keyFunc(p)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("creating key: %s", err))
@@ -317,10 +304,10 @@ func (c *AddonController) addonForDeployment(p *v1alpha1.PetSet) *spec.Addon {
 }
 
 // CreateAddonTPRs generates the third party resource required for interacting with addons
-func CreateAddonTPRs(host string, kclient *kubernetes.Clientset) error {
+func CreateAddonTPRs(host string, kclient clientset.Interface) error {
 	tprs := []*extensions.ThirdPartyResource{
 		{
-			ObjectMeta: v1.ObjectMeta{
+			ObjectMeta: api.ObjectMeta{
 				Name: tprAddons,
 			},
 			Versions: []extensions.APIVersion{

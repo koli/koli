@@ -13,16 +13,16 @@ import (
 	"github.com/kolibox/koli/pkg/controller/informers"
 	_ "github.com/kolibox/koli/pkg/spec/install"
 
-	"k8s.io/client-go/1.5/kubernetes"
-	"k8s.io/client-go/1.5/pkg/util/wait"
-	"k8s.io/client-go/1.5/rest"
+	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	"k8s.io/kubernetes/pkg/client/restclient"
+	"k8s.io/kubernetes/pkg/util/wait"
 )
 
 // Config defines configuration parameters for the Operator.
 type Config struct {
 	Host        string
 	TLSInsecure bool
-	TLSConfig   rest.TLSClientConfig
+	TLSConfig   restclient.TLSClientConfig
 }
 
 var cfg Config
@@ -45,7 +45,7 @@ func startControllers(stop <-chan struct{}) error {
 	// if os.Getenv("SUPER_USER_TOKEN") == "" {
 	// 	return fmt.Errorf("SUPER_USER_TOKEN env not defined")
 	// }
-	client, err := kubernetes.NewForConfig(cfg)
+	client, err := kclientset.NewForConfig(cfg)
 	if err != nil {
 		return err
 	}
