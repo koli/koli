@@ -1,21 +1,21 @@
 package spec
 
 import (
-	"k8s.io/client-go/1.5/pkg/api/v1"
-	"k8s.io/client-go/1.5/pkg/apis/apps/v1alpha1"
-	"k8s.io/client-go/1.5/pkg/util/intstr"
+	"k8s.io/kubernetes/pkg/api"
+	apps "k8s.io/kubernetes/pkg/apis/apps"
+	"k8s.io/kubernetes/pkg/util/intstr"
 )
 
 // VolumeSpec facilitate passing definitions
-// of volumes (v1.Volumes) and how to mount then (v1.VolumeMount)
+// of volumes (api.Volumes) and how to mount then (api.VolumeMount)
 type VolumeSpec struct {
-	Volumes      []v1.Volume
-	VolumeMounts []v1.VolumeMount
+	Volumes      []api.Volume
+	VolumeMounts []api.VolumeMount
 }
 
-func makePetSet(addon *Addon, old *v1alpha1.PetSet, labels map[string]string, args []string, vol *VolumeSpec) *v1alpha1.PetSet {
-	petset := &v1alpha1.PetSet{
-		ObjectMeta: v1.ObjectMeta{
+func makePetSet(addon *Addon, old *apps.StatefulSet, labels map[string]string, args []string, vol *VolumeSpec) *apps.StatefulSet {
+	petset := &apps.StatefulSet{
+		ObjectMeta: api.ObjectMeta{
 			Name: addon.Name,
 		},
 		Spec: getPetSetSpec(addon, labels, append(addon.Spec.Args, args...), vol),
@@ -26,18 +26,18 @@ func makePetSet(addon *Addon, old *v1alpha1.PetSet, labels map[string]string, ar
 	return petset
 }
 
-// MakePetSetService generates a &v1.Service
-func MakePetSetService(addon *Addon) *v1.Service {
-	svc := &v1.Service{
-		ObjectMeta: v1.ObjectMeta{
+// MakePetSetService generates a &api.Service
+func MakePetSetService(addon *Addon) *api.Service {
+	svc := &api.Service{
+		ObjectMeta: api.ObjectMeta{
 			Name: addon.Name,
 			Labels: map[string]string{
 				"sys.io/app": addon.Name,
 			},
 		},
-		Spec: v1.ServiceSpec{
+		Spec: api.ServiceSpec{
 			ClusterIP: "None", // headless service
-			Ports: []v1.ServicePort{
+			Ports: []api.ServicePort{
 				{
 					Name:       addon.Spec.Type,
 					Port:       addon.Spec.Port,
@@ -53,31 +53,31 @@ func MakePetSetService(addon *Addon) *v1.Service {
 }
 
 // getPetSetSpec returns a generic PetSetSpec
-func getPetSetSpec(addon *Addon, labels map[string]string, args []string, vol *VolumeSpec) v1alpha1.PetSetSpec {
+func getPetSetSpec(addon *Addon, labels map[string]string, args []string, vol *VolumeSpec) apps.StatefulSetSpec {
 	terminationGracePeriod := int64(30) // TODO: should be base on the app type
-	return v1alpha1.PetSetSpec{
+	return apps.StatefulSetSpec{
 		ServiceName: addon.Name,
 		Replicas:    addon.GetReplicas(),
-		Template: v1.PodTemplateSpec{
-			ObjectMeta: v1.ObjectMeta{
+		Template: api.PodTemplateSpec{
+			ObjectMeta: api.ObjectMeta{
 				Labels: labels,
 				Annotations: map[string]string{
 					"pod.alpha.kubernetes.io/initialized": "true",
 				},
 			},
-			Spec: v1.PodSpec{
+			Spec: api.PodSpec{
 				Volumes: vol.Volumes,
-				Containers: []v1.Container{
+				Containers: []api.Container{
 					{
 						Name:  addon.Name,
 						Image: addon.GetImage(),
 						Args:  args,
 						Env:   addon.Spec.Env,
-						Ports: []v1.ContainerPort{
+						Ports: []api.ContainerPort{
 							{
 								Name:          "addon",
 								ContainerPort: addon.Spec.Port, // TODO: should be based on the app type
-								Protocol:      v1.ProtocolTCP,
+								Protocol:      api.ProtocolTCP,
 							},
 						},
 						VolumeMounts: vol.VolumeMounts,

@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/client-go/1.5/kubernetes"
-	"k8s.io/client-go/1.5/tools/cache"
+	"k8s.io/kubernetes/pkg/client/cache"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 )
 
 // SharedInformerFactory provides interface which holds unique informers for pods, nodes, namespaces, persistent volume
@@ -23,7 +23,7 @@ type SharedInformerFactory interface {
 }
 
 type sharedInformerFactory struct {
-	client        kubernetes.Interface
+	client        clientset.Interface
 	lock          sync.Mutex
 	defaultResync time.Duration
 
@@ -34,7 +34,7 @@ type sharedInformerFactory struct {
 }
 
 // NewSharedInformerFactory constructs a new instance of sharedInformerFactory
-func NewSharedInformerFactory(client kubernetes.Interface, defaultResync time.Duration) SharedInformerFactory {
+func NewSharedInformerFactory(client clientset.Interface, defaultResync time.Duration) SharedInformerFactory {
 	return &sharedInformerFactory{
 		client:           client,
 		defaultResync:    defaultResync,

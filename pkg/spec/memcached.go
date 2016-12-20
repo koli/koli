@@ -6,16 +6,16 @@ import (
 
 	"github.com/kolibox/koli/pkg/util"
 
-	"k8s.io/client-go/1.5/kubernetes"
-	"k8s.io/client-go/1.5/pkg/api"
-	"k8s.io/client-go/1.5/pkg/apis/apps/v1alpha1"
-	"k8s.io/client-go/1.5/pkg/labels"
-	"k8s.io/client-go/1.5/tools/cache"
+	"k8s.io/kubernetes/pkg/api"
+	apps "k8s.io/kubernetes/pkg/apis/apps"
+	"k8s.io/kubernetes/pkg/client/cache"
+	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	"k8s.io/kubernetes/pkg/labels"
 )
 
 // Memcached add-on in memory key value store database
 type Memcached struct {
-	client  *kubernetes.Clientset
+	client  clientset.Interface
 	addon   *Addon
 	psetInf cache.SharedIndexInformer
 }
@@ -35,14 +35,14 @@ func (m *Memcached) CreatePetSet(sp *ServicePlan) error {
 	petset.Spec.Template.Spec.Containers[0].Resources.Limits = sp.Spec.Resources.Limits
 	petset.Spec.Template.Spec.Containers[0].Resources.Requests = sp.Spec.Resources.Requests
 	petset.Labels = NewLabel().Add(map[string]string{"clusterplan": sp.Name}).Set
-	if _, err := m.client.Apps().PetSets(m.addon.Namespace).Create(petset); err != nil {
+	if _, err := m.client.Apps().StatefulSets(m.addon.Namespace).Create(petset); err != nil {
 		return fmt.Errorf("failed creating petset (%s)", err)
 	}
 	return nil
 }
 
 // UpdatePetSet update a memcached PetSet
-func (m *Memcached) UpdatePetSet(old *v1alpha1.PetSet, sp *ServicePlan) error {
+func (m *Memcached) UpdatePetSet(old *apps.StatefulSet, sp *ServicePlan) error {
 	labels := map[string]string{
 		"sys.io/type": "addon",
 		"sys.io/app":  m.addon.Name,
@@ -51,7 +51,7 @@ func (m *Memcached) UpdatePetSet(old *v1alpha1.PetSet, sp *ServicePlan) error {
 	petset.Spec.Template.Spec.Containers[0].Resources.Limits = sp.Spec.Resources.Limits
 	petset.Spec.Template.Spec.Containers[0].Resources.Requests = sp.Spec.Resources.Requests
 	petset.SetLabels(NewLabel().Add(map[string]string{"clusterplan": sp.Name}).Set)
-	if _, err := m.client.Apps().PetSets(m.addon.Namespace).Update(petset); err != nil {
+	if _, err := m.client.Apps().StatefulSets(m.addon.Namespace).Update(petset); err != nil {
 		return fmt.Errorf("failed creating petset (%s)", err)
 	}
 	return nil
@@ -60,7 +60,7 @@ func (m *Memcached) UpdatePetSet(old *v1alpha1.PetSet, sp *ServicePlan) error {
 // DeleteApp exclude a memcached PetSet
 func (m *Memcached) DeleteApp() error {
 	// Update the replica count to 0 and wait for all pods to be deleted.
-	psetClient := m.client.Apps().PetSets(m.addon.Namespace)
+	psetClient := m.client.Apps().StatefulSets(m.addon.Namespace)
 	key, err := cache.DeletionHandlingMetaNamespaceKeyFunc(m.addon)
 	if err != nil {
 		return err
@@ -70,12 +70,11 @@ func (m *Memcached) DeleteApp() error {
 		return err
 	}
 	// Deep-copy otherwise we are mutating our cache.
-	oldPset, err := util.PetSetDeepCopy(obj.(*v1alpha1.PetSet))
+	oldPset, err := util.StatefulSetDeepCopy(obj.(*apps.StatefulSet))
 	if err != nil {
 		return err
 	}
-	zero := int32(0)
-	oldPset.Spec.Replicas = &zero
+	oldPset.Spec.Replicas = 0
 
 	if _, err := psetClient.Update(oldPset); err != nil {
 		return err

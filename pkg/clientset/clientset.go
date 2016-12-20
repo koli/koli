@@ -6,9 +6,9 @@ import (
 
 	"github.com/kolibox/koli/pkg/spec"
 
-	"k8s.io/client-go/1.5/dynamic"
-	"k8s.io/client-go/1.5/pkg/api/unversioned"
-	"k8s.io/client-go/1.5/rest"
+	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/client/restclient"
+	"k8s.io/kubernetes/pkg/client/typed/dynamic"
 )
 
 // Interface core
@@ -30,17 +30,17 @@ func (c *Clientset) Core() CoreInterface {
 	return c.CoreClient
 }
 
-// NewClusterConfig creates a new customized *rest.Config
-func NewClusterConfig(host string, tlsInsecure bool, tlsConfig *rest.TLSClientConfig) (*rest.Config, error) {
-	var cfg *rest.Config
+// NewClusterConfig creates a new customized *restclient.Config
+func NewClusterConfig(host string, tlsInsecure bool, tlsConfig *restclient.TLSClientConfig) (*restclient.Config, error) {
+	var cfg *restclient.Config
 	var err error
 
 	if len(host) == 0 {
-		if cfg, err = rest.InClusterConfig(); err != nil {
+		if cfg, err = restclient.InClusterConfig(); err != nil {
 			return nil, err
 		}
 	} else {
-		cfg = &rest.Config{
+		cfg = &restclient.Config{
 			Host: host,
 		}
 		hostURL, err := url.Parse(host)
@@ -58,8 +58,8 @@ func NewClusterConfig(host string, tlsInsecure bool, tlsConfig *rest.TLSClientCo
 	return cfg, nil
 }
 
-// NewSysRESTClient generates a new *rest.RESTClient to communicate with system third party resources
-func NewSysRESTClient(c *rest.Config) (*CoreClient, error) {
+// NewSysRESTClient generates a new *restclient.Interface to communicate with system third party resources
+func NewSysRESTClient(c *restclient.Config) (*CoreClient, error) {
 	c.APIPath = "/apis"
 
 	c.GroupVersion = &unversioned.GroupVersion{
@@ -71,8 +71,7 @@ func NewSysRESTClient(c *rest.Config) (*CoreClient, error) {
 	c.ContentConfig = contentConfig
 
 	// c.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: api.Codecs}
-
-	cl, err := rest.RESTClientFor(c)
+	cl, err := restclient.RESTClientFor(c)
 	if err != nil {
 		return nil, err
 	}

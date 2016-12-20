@@ -5,12 +5,12 @@ import (
 	"errors"
 
 	"github.com/kolibox/koli/pkg/spec"
-	"k8s.io/client-go/1.5/pkg/api"
-	"k8s.io/client-go/1.5/pkg/api/unversioned"
-	"k8s.io/client-go/1.5/pkg/api/v1"
-	"k8s.io/client-go/1.5/pkg/runtime"
-	"k8s.io/client-go/1.5/pkg/watch"
-	"k8s.io/client-go/1.5/rest"
+
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/client/restclient"
+	"k8s.io/kubernetes/pkg/runtime"
+	"k8s.io/kubernetes/pkg/watch"
 )
 
 // ServicePlanStatusGetter has a method to return an ServicePlanStatusInterface.
@@ -23,7 +23,7 @@ type ServicePlanStatusGetter interface {
 type ServicePlanStatusInterface interface {
 	List(opts *api.ListOptions) (*spec.ServicePlanStatusList, error)
 	Get(name string) (*spec.ServicePlanStatus, error)
-	Delete(name string, options *v1.DeleteOptions) error
+	Delete(name string, options *api.DeleteOptions) error
 	Create(data *spec.ServicePlanStatus) (*spec.ServicePlanStatus, error)
 	Update(data *spec.ServicePlanStatus) (*spec.ServicePlanStatus, error)
 	Watch(opts *api.ListOptions) (watch.Interface, error)
@@ -31,8 +31,7 @@ type ServicePlanStatusInterface interface {
 
 // servicePlanStatusks implements ServicePlanStatusInterface
 type servicePlanStatus struct {
-	client *rest.RESTClient
-	// client    restclient.Interface
+	client    restclient.Interface
 	namespace string
 	resource  *unversioned.APIResource
 }
@@ -65,9 +64,9 @@ func (s *servicePlanStatus) List(opts *api.ListOptions) (*spec.ServicePlanStatus
 }
 
 // Delete deletes the resource with the specified name.
-func (s *servicePlanStatus) Delete(name string, opts *v1.DeleteOptions) error {
+func (s *servicePlanStatus) Delete(name string, opts *api.DeleteOptions) error {
 	if opts == nil {
-		opts = &v1.DeleteOptions{}
+		opts = &api.DeleteOptions{}
 	}
 	return s.client.Delete().
 		NamespaceIfScoped(s.namespace, s.resource.Namespaced).

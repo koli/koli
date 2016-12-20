@@ -1,13 +1,13 @@
 package clientset
 
 import (
-	"k8s.io/client-go/1.5/pkg/api/unversioned"
-	"k8s.io/client-go/1.5/rest"
+	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/client/restclient"
 )
 
 // CoreInterface contains client third party resources
 type CoreInterface interface {
-	RESTClient() *rest.RESTClient
+	RESTClient() restclient.Interface
 
 	AddonGetter
 	ServicePlanGetter
@@ -16,12 +16,12 @@ type CoreInterface interface {
 
 // CoreClient is used to interact with features provided by the Core group.
 type CoreClient struct {
-	restClient *rest.RESTClient
+	restClient restclient.Interface
 }
 
 // RESTClient returns a RESTClient that is used to communicate
 // with API server by this client implementation.
-func (c *CoreClient) RESTClient() *rest.RESTClient {
+func (c *CoreClient) RESTClient() restclient.Interface {
 	if c == nil {
 		return nil
 	}

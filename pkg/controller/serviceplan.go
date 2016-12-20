@@ -8,14 +8,15 @@ import (
 	"github.com/kolibox/koli/pkg/clientset"
 	"github.com/kolibox/koli/pkg/spec"
 
-	"k8s.io/client-go/1.5/kubernetes"
-	apierrors "k8s.io/client-go/1.5/pkg/api/errors"
-	"k8s.io/client-go/1.5/pkg/api/unversioned"
-	"k8s.io/client-go/1.5/pkg/api/v1"
-	extensions "k8s.io/client-go/1.5/pkg/apis/extensions/v1beta1"
-	utilruntime "k8s.io/client-go/1.5/pkg/util/runtime"
-	"k8s.io/client-go/1.5/pkg/util/wait"
-	"k8s.io/client-go/1.5/tools/cache"
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/api/unversioned"
+	"k8s.io/kubernetes/pkg/client/cache"
+	"k8s.io/kubernetes/pkg/util/wait"
+
+	apierrors "k8s.io/kubernetes/pkg/api/errors"
+	extensions "k8s.io/kubernetes/pkg/apis/extensions"
+	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 )
 
 const (
@@ -26,7 +27,7 @@ const (
 
 // ServicePlanController controller
 type ServicePlanController struct {
-	kclient   *kubernetes.Clientset
+	kclient   kclientset.Interface
 	sysClient clientset.CoreInterface
 
 	spInf cache.SharedIndexInformer
@@ -35,7 +36,7 @@ type ServicePlanController struct {
 }
 
 // NewServicePlanController create a new ServicePlanController
-func NewServicePlanController(spInf cache.SharedIndexInformer, client *kubernetes.Clientset, sysClient clientset.CoreInterface) *ServicePlanController {
+func NewServicePlanController(spInf cache.SharedIndexInformer, client kclientset.Interface, sysClient clientset.CoreInterface) *ServicePlanController {
 	spc := &ServicePlanController{
 		kclient:   client,
 		sysClient: sysClient,
@@ -130,7 +131,7 @@ func (c *ServicePlanController) reconcile(sp *spec.ServicePlan) error {
 			Kind:       "Serviceplanstatus",
 			APIVersion: spec.SchemeGroupVersion.String(),
 		},
-		ObjectMeta: v1.ObjectMeta{
+		ObjectMeta: api.ObjectMeta{
 			Name: sp.Name,
 		},
 		Phase: spec.ServicePlanActive,
@@ -198,10 +199,10 @@ func (c *ServicePlanController) planExists(planName string) bool {
 }
 
 // CreateServicePlan3PRs generates the third party resource required for interacting with Service Plans
-func CreateServicePlan3PRs(host string, kclient *kubernetes.Clientset) error {
+func CreateServicePlan3PRs(host string, kclient kclientset.Interface) error {
 	tprs := []*extensions.ThirdPartyResource{
 		{
-			ObjectMeta: v1.ObjectMeta{
+			ObjectMeta: api.ObjectMeta{
 				Name: tprServicePlan,
 			},
 			Versions: []extensions.APIVersion{
@@ -224,10 +225,10 @@ func CreateServicePlan3PRs(host string, kclient *kubernetes.Clientset) error {
 
 // CreateServicePlanStatus3PRs generates the third party resource required for informing
 // the status of a Service Plan
-func CreateServicePlanStatus3PRs(host string, kclient *kubernetes.Clientset) error {
+func CreateServicePlanStatus3PRs(host string, kclient kclientset.Interface) error {
 	tprs := []*extensions.ThirdPartyResource{
 		{
-			ObjectMeta: v1.ObjectMeta{
+			ObjectMeta: api.ObjectMeta{
 				Name: tprServicePlanStatus,
 			},
 			Versions: []extensions.APIVersion{
