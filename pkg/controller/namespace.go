@@ -3,7 +3,6 @@ package controller
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/golang/glog"
@@ -16,8 +15,11 @@ import (
 	"k8s.io/kubernetes/pkg/util/wait"
 
 	apierrors "k8s.io/kubernetes/pkg/api/errors"
+	extensions "k8s.io/kubernetes/pkg/apis/extensions"
 	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
+
+	"k8s.io/kubernetes/pkg/api/unversioned"
 )
 
 // NamespaceController controller
@@ -69,7 +71,7 @@ func (c *NamespaceController) updateNamespace(o, n interface{}) {
 
 	// Prevent infinite loop on updateFunc
 	// TODO: test this behavior with delete handler
-	if old.ResourceVersion == new.Annotations["sys.io/resourceVersion"] {
+	if old.ResourceVersion == new.Annotations[spec.KoliPrefix("resourceVersion")] {
 		glog.Info("skipping internal update...")
 		return
 	}
@@ -124,46 +126,33 @@ func (c *NamespaceController) runWorker() {
 }
 
 func (c *NamespaceController) reconcile(ns *api.Namespace) error {
-	user := ns.Annotations["sys.io/identity"]
-
+	key, err := keyFunc(ns)
+	if err != nil {
+		return err
+	}
+	identity := ns.Annotations[spec.KoliPrefix("identity")]
 	logHeader := fmt.Sprintf("%s(%s)", ns.Name, ns.ResourceVersion)
-	if user == "" {
+	if identity == "" {
 		glog.Infof("%s - empty identity, ignoring...", logHeader)
 		return nil
 	}
 
-	u := &spec.User{}
-	if err := json.Unmarshal([]byte(user), u); err != nil {
-		return fmt.Errorf("%s - failed decoding user (%s)", logHeader, err)
-	}
-
-	// validate if the namespace is correct
-	if err := validateNamespace(ns, u); err != nil {
-		return err
-	}
-
-	_, exists, err := c.nsInf.GetStore().Get(ns)
+	_, exists, err := c.nsInf.GetStore().GetByKey(key)
 	if err != nil {
 		return err
 	}
 
-	if !exists {
-		glog.Infof("%s - namespace doesn't exists", logHeader)
-		return nil
+	// TODO: Should we manage several users using annotations?
+	// A third party resource could exist to manage the users
+	user := &spec.User{}
+	if err := json.Unmarshal([]byte(identity), user); err != nil {
+		return fmt.Errorf("%s - failed decoding user (%s)", logHeader, err)
 	}
-
-	// &v1alpha1.Role{}
-	// TODO: if it doesn't exists, set a finalizer: https://github.com/kubernetes/kubernetes/blob/master/docs/design/namespaces.md#finalizers
-	// TODO: configure role and role binding - OK
-	// TODO: set the proper labels - OK
-	// TODO: set network policy annotation - OK
-	// TODO: create a network policy allowing traffic between pods in the same namespace
-	// TODO: hard-coded quota for namespaces
 
 	label := spec.NewLabel().Add(map[string]string{
 		"default":  "true",
-		"customer": u.Customer,
-		"org":      u.Organization,
+		"customer": user.Customer,
+		"org":      user.Organization,
 	})
 
 	// try to update the default namespace for the user
@@ -180,14 +169,24 @@ func (c *NamespaceController) reconcile(ns *api.Namespace) error {
 			if err != nil {
 				return fmt.Errorf("%s - failed creating a namespace copy (%s)", logHeader, err)
 			}
-			n.Labels["sys.io/default"] = "true"
+			n.Labels[spec.KoliPrefix("default")] = "true"
 
 			if _, err := c.kclient.Core().Namespaces().Update(n); err != nil {
 				return fmt.Errorf("%s - failed updating a default namespace (%s)", logHeader, err)
 			}
-			glog.Infof("%s - default namespace updated for user '%s'", logHeader, u.Username)
+			glog.Infof("%s - default namespace updated for user '%s'", logHeader, user.Username)
 		}
 		return nil
+	}
+	bns, err := util.NewBrokerNamespace(ns.Name)
+	if err != nil {
+		glog.Info("%s - %s", logHeader, err)
+		return nil
+	}
+
+	if bns.Organization != user.Organization || bns.Customer != user.Customer {
+		msg := "identity mismatch. user=%s customer=%s org=%s ns=%s"
+		return fmt.Errorf(msg, user.Username, user.Customer, user.Organization, bns.GetNamespace())
 	}
 
 	nsCopy, err := util.NamespaceDeepCopy(ns)
@@ -203,9 +202,9 @@ func (c *NamespaceController) reconcile(ns *api.Namespace) error {
 	if len(nss.Items) > 0 {
 		label.Remove("default")
 	}
-	nsCopy.Annotations["net.beta.kubernetes.io/network-policy"] = `"{"ingress": {"isolation": "DefaultDeny"}}"`
+	nsCopy.Annotations["net.beta.kubernetes.io/network-policy"] = `{"ingress": {"isolation": "DefaultDeny"}}`
 	// Prevent infinite loop on updateFunc
-	nsCopy.Annotations["sys.io/resourceVersion"] = nsCopy.ResourceVersion
+	nsCopy.Annotations[spec.KoliPrefix("resourceVersion")] = nsCopy.ResourceVersion
 	nsCopy.Labels = label.Set
 
 	if _, err := c.kclient.Core().Namespaces().Update(nsCopy); err != nil {
@@ -213,10 +212,9 @@ func (c *NamespaceController) reconcile(ns *api.Namespace) error {
 	}
 
 	// TODO: requeue on errors?
-	c.createPermissions(ns.Name, u)
-	c.createNetworkPolicy()
+	c.createPermissions(ns.Name, user)
+	c.createNetworkPolicy(ns.Name)
 
-	// a, exists, err := c.addonInf.GetStore().GetByKey(key)
 	return nil
 }
 
@@ -237,21 +235,12 @@ func (c *NamespaceController) createPermissions(ns string, usr *spec.User) {
 		glog.Errorf("failed creating role (%s)", err)
 	}
 
-	// TODO: temporary solution: v1alpha1.RoleRef doesn't have RoleRef.Namespace, needed in version 1.4
-	// data := `{
-	// 	"roleRef": {"kind": "Role", "namespace": "%s", "name": "main"},
-	// 	"kind": "RoleBinding",
-	// 	"subjects": [{"kind": "User", "name": "%s"}],
-	// 	"apiVersion": "rbac.authorization.k8s.io/v1alpha1",
-	// 	"metadata": {"name": "main", "namespace": "%s"}}`
-
 	roleBinding := &rbac.RoleBinding{
 		ObjectMeta: api.ObjectMeta{Name: "main"},
 		Subjects: []rbac.Subject{
 			{
 				Kind: "User",
 				Name: usr.Username, // TODO: change to ID
-				// Namespace: ns,
 			},
 		},
 		RoleRef: rbac.RoleRef{
@@ -262,34 +251,28 @@ func (c *NamespaceController) createPermissions(ns string, usr *spec.User) {
 	if _, err := c.kclient.Rbac().RoleBindings(ns).Create(roleBinding); err != nil && !apierrors.IsAlreadyExists(err) {
 		glog.Errorf("failed creating rolebinding: %s", err)
 	}
-	// result := c.kclient.Rbac().RESTClient().Post().
-	// 	Namespace(ns).
-	// 	Resource("rolebindings").
-	// 	Body([]byte(fmt.Sprintf(data, ns, usr.Username, ns))).
-	// 	Do()
-	// if err := result.Error(); err != nil && !apierrors.IsAlreadyExists(err) {
-	// 	glog.Errorf("failed creating role binding (%s)", err)
-	// }
-
 }
 
-func (c *NamespaceController) createNetworkPolicy() {
-	// TODO: change the library to kubernetes, client-go doesn't have NetworkPoliciesGetter
-	// extensions.NetworkPolicy{
-
-	// }
-}
-
-// validateNamespace check if the namespace has the proper format
-// and matchs with the identity information
-func validateNamespace(ns *api.Namespace, u *spec.User) error {
-	parts := strings.Split(ns.Name, "-")
-	if len(parts) != 3 {
-		return fmt.Errorf("namespace %s is invalid, must be in the form [name]-[customer]-[org]", ns.Name)
+func (c *NamespaceController) createNetworkPolicy(ns string) {
+	// allow traffic between all pods in the namespace only
+	networkPolicy := &extensions.NetworkPolicy{
+		ObjectMeta: api.ObjectMeta{Name: "main"},
+		Spec: extensions.NetworkPolicySpec{
+			PodSelector: unversioned.LabelSelector{},
+			Ingress: []extensions.NetworkPolicyIngressRule{
+				{
+					From: []extensions.NetworkPolicyPeer{
+						{
+							PodSelector: &unversioned.LabelSelector{
+								MatchLabels: nil,
+							},
+						},
+					},
+				},
+			},
+		},
 	}
-	if u.Customer != parts[1] || u.Organization != parts[2] {
-		msg := "identity information mismatch. user-customer=%s user-org=%s ns-customer=%s ns-org=%s"
-		return fmt.Errorf(msg, u.Customer, u.Organization, parts[1], parts[2])
+	if _, err := c.kclient.Extensions().NetworkPolicies(ns).Create(networkPolicy); err != nil && !apierrors.IsAlreadyExists(err) {
+		glog.Warningf("failed creating network policy: %s", err)
 	}
-	return nil
 }
