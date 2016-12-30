@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kolibox/koli/pkg/spec"
-	"github.com/kolibox/koli/pkg/spec/util"
+	"kolihub.io/koli/pkg/spec"
+	"kolihub.io/koli/pkg/spec/util"
 
 	"k8s.io/kubernetes/pkg/api"
 	apps "k8s.io/kubernetes/pkg/apis/apps"

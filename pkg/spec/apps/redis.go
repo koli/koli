@@ -6,9 +6,9 @@ import (
 	"html/template"
 	"time"
 
-	"github.com/kolibox/koli/pkg/spec"
-	"github.com/kolibox/koli/pkg/spec/util"
 	"github.com/renstrom/dedent"
+	"kolihub.io/koli/pkg/spec"
+	"kolihub.io/koli/pkg/spec/util"
 
 	"k8s.io/kubernetes/pkg/api"
 	apierrors "k8s.io/kubernetes/pkg/api/errors"

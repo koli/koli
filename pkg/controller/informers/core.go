@@ -3,8 +3,8 @@ package informers
 import (
 	"reflect"
 
-	"github.com/kolibox/koli/pkg/clientset"
-	"github.com/kolibox/koli/pkg/spec"
+	"kolihub.io/koli/pkg/clientset"
+	"kolihub.io/koli/pkg/spec"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/cache"

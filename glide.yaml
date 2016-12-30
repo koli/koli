@@ -1,4 +1,4 @@
-package: github.com/kolibox/koli
+package: github.com/kolihub/koli
 import:
 - package: k8s.io/kubernetes
   version: v1.5.1

@@ -1,8 +1,8 @@
 package install
 
 import (
-	"github.com/kolibox/koli/pkg/spec"
 	"k8s.io/kubernetes/pkg/apimachinery/announced"
+	"kolihub.io/koli/pkg/spec"
 )
 
 func init() {
@@ -10,7 +10,7 @@ func init() {
 		&announced.GroupMetaFactoryArgs{
 			GroupName:                  spec.GroupName,
 			VersionPreferenceOrder:     []string{spec.SchemeGroupVersion.Version},
-			ImportPrefix:               "github.com/kolibox/koli/pkg/spec",
+			ImportPrefix:               "kolihub.io/koli/pkg/spec",
 			AddInternalObjectsToScheme: spec.AddToScheme,
 		},
 		announced.VersionToSchemeFunc{

@@ -1,9 +1,9 @@
 package install
 
 import (
-	"github.com/kolibox/koli/pkg/spec"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/resource"
+	"kolihub.io/koli/pkg/spec"
 )
 
 func init() {

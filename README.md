@@ -14,7 +14,7 @@ TODO
 
 ## Quick Start / MacOS Only
 
-- Install [kbox](https://github.com/kolibox/kbox)
+- Install [kbox](https://github.com/kolihub/kbox)
 - Install [kubectl](https://storage.googleapis.com/kubernetes-release/release/v1.4.3/bin/linux/amd64/kubectl)
 
 ```bash
@@ -25,13 +25,13 @@ kubect get pods -n kube-system -w # On the same shell!
 # Install helm (http://helm.sh)
 cd /tmp/ && curl http://storage.googleapis.com/kubernetes-helm/helm-v2.0.0-beta.1-darwin-amd64.tar.gz  |tar -xf - && mv darwin-amd64/helm /usr/local/bin/helm
 rm -rf ~/.helm && helm init  # Wait for the tiller pod starts  
-helm repo add kolibox-alpha https://kolibox.github.io/charts
+helm repo add kolihub-alpha https://kolihub.github.io/charts
 
 # Create the namespace koli-system
 kubectl create ns koli-system
 # Make sure the SYSTEM_TOKEN is set. E.G.: echo $SYSTEM_TOKEN
 SYSTEM_TOKEN=$(kubectl get secrets -n kube-system -o yaml |grep -i token: |awk {'print $2'})
-helm install kolibox-alpha/koli --set systemToken=$SYSTEM_TOKEN --namespace=koli-system
+helm install kolihub-alpha/koli --set systemToken=$SYSTEM_TOKEN --namespace=koli-system
 
 # Wait for all pods to start
 kubectl get pods -n koli-system -w
@@ -54,7 +54,7 @@ GUEST_TOKEN=$(koli config view -o jsonpath='{.users[?(@.name == "koli")].user.to
 # Configure an addon named "redis"
 curl https://gist.githubusercontent.com/sandromello/218ee91f3e45f58448d46acc384d2bc5/raw/95fc1f401b5eab66de3fca1ca501192326c73565/addon-redis.json > /tmp/redis.json 
 curl http://192.168.64.2:30080/addons/redis -H "Authorization: Bearer $GUEST_TOKEN" \
-  -H 'Content-Type: application/json' -H 'Host: controller.kolibox.io' \
+  -H 'Content-Type: application/json' -H 'Host: controller.kolihub.io' \
   -XPOST --data-binary @/tmp/redis.json
 
 # Interact with the Koli Platform
