@@ -21,8 +21,8 @@ import (
 )
 
 const (
-	tprServicePlan       = "serviceplan.sys.koli.io"
-	tprServicePlanStatus = "serviceplanstatus.sys.koli.io"
+	tprServicePlan       = "serviceplan.platform.koli.io"
+	tprServicePlanStatus = "serviceplanstatus.platform.koli.io"
 )
 
 // ServicePlanController controller
@@ -220,7 +220,7 @@ func CreateServicePlan3PRs(host string, kclient kclientset.Interface) error {
 	}
 
 	// We have to wait for the TPRs to be ready. Otherwise the initial watch may fail.
-	return watch3PRs(host, "/apis/sys.koli.io/v1alpha1/serviceplans", kclient)
+	return watch3PRs(host, "/apis/platform.koli.io/v1alpha1/serviceplans", kclient)
 }
 
 // CreateServicePlanStatus3PRs generates the third party resource required for informing
@@ -246,5 +246,5 @@ func CreateServicePlanStatus3PRs(host string, kclient kclientset.Interface) erro
 	}
 
 	// We have to wait for the TPRs to be ready. Otherwise the initial watch may fail.
-	return watch3PRs(host, "/apis/sys.koli.io/v1alpha1/serviceplanstatus", kclient)
+	return watch3PRs(host, "/apis/platform.koli.io/v1alpha1/serviceplanstatus", kclient)
 }

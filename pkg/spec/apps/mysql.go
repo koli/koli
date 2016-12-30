@@ -42,7 +42,7 @@ func (m *MySQL) CreateConfigMap() error {
 	cm = &api.ConfigMap{
 		ObjectMeta: api.ObjectMeta{
 			Name:   m.addon.Name,
-			Labels: map[string]string{"sys.io/app": m.addon.Name},
+			Labels: map[string]string{"koli.io/app": m.addon.Name},
 		},
 		Data: map[string]string{
 			mysqlConfFileName: mysqlConfig,
@@ -98,8 +98,8 @@ func (m *MySQL) makeVolumes() *VolumeSpec {
 // CreatePetSet add a new mySQL PetSet
 func (m *MySQL) CreatePetSet(sp *spec.ServicePlan) error {
 	labels := map[string]string{
-		"sys.io/type": "addon",
-		"sys.io/app":  m.addon.Name,
+		"koli.io/type": "addon",
+		"koli.io/app":  m.addon.Name,
 	}
 	petset := makePetSet(m.addon, nil, labels, nil, m.makeVolumes())
 	petset.Spec.Template.Spec.Containers[0].Resources.Limits = sp.Spec.Resources.Limits
@@ -114,8 +114,8 @@ func (m *MySQL) CreatePetSet(sp *spec.ServicePlan) error {
 // UpdatePetSet update a mySQL PetSet
 func (m *MySQL) UpdatePetSet(old *apps.StatefulSet, sp *spec.ServicePlan) error {
 	labels := map[string]string{
-		"sys.io/type": "addon",
-		"sys.io/app":  m.addon.Name,
+		"koli.io/type": "addon",
+		"koli.io/app":  m.addon.Name,
 	}
 	petset := makePetSet(m.addon, old, labels, nil, m.makeVolumes())
 	petset.Spec.Template.Spec.Containers[0].Resources.Limits = sp.Spec.Resources.Limits
@@ -184,5 +184,5 @@ func (m *MySQL) GetAddon() *spec.Addon {
 
 // getSelector retrieves the a selector for the redis app based on its name
 func (m *MySQL) getSelector() (labels.Selector, error) {
-	return labels.Parse("sys.io/type=addon,sys.io/app=" + m.addon.Name)
+	return labels.Parse("koli.io/type=addon,koli.io/app=" + m.addon.Name)
 }

@@ -41,7 +41,7 @@ func (r *Redis) CreateConfigMap() error {
 	cm = &api.ConfigMap{
 		ObjectMeta: api.ObjectMeta{
 			Name:   r.addon.Name,
-			Labels: map[string]string{"sys.io/app": r.addon.Name},
+			Labels: map[string]string{"koli.io/app": r.addon.Name},
 		},
 		Data: map[string]string{
 			redisConfFileName: redisConfig,
@@ -97,8 +97,8 @@ func (r *Redis) makeVolumes() *VolumeSpec {
 // CreatePetSet add a new redis PetSet
 func (r *Redis) CreatePetSet(sp *spec.ServicePlan) error {
 	labels := map[string]string{
-		"sys.io/type": "addon",
-		"sys.io/app":  r.addon.Name,
+		"koli.io/type": "addon",
+		"koli.io/app":  r.addon.Name,
 	}
 	petset := makePetSet(r.addon, nil, labels, []string{redisConfFilePath}, r.makeVolumes())
 	petset.Spec.Template.Spec.Containers[0].Resources.Limits = sp.Spec.Resources.Limits
@@ -113,8 +113,8 @@ func (r *Redis) CreatePetSet(sp *spec.ServicePlan) error {
 // UpdatePetSet update a redis PetSet
 func (r *Redis) UpdatePetSet(old *apps.StatefulSet, sp *spec.ServicePlan) error {
 	labels := map[string]string{
-		"sys.io/type": "addon",
-		"sys.io/app":  r.addon.Name,
+		"koli.io/type": "addon",
+		"koli.io/app":  r.addon.Name,
 	}
 	petset := makePetSet(r.addon, old, labels, []string{redisConfFilePath}, r.makeVolumes())
 	petset.Spec.Template.Spec.Containers[0].Resources.Limits = sp.Spec.Resources.Limits
@@ -182,5 +182,5 @@ func (r *Redis) GetAddon() *spec.Addon {
 
 // GetSelector retrieves the a selector for the redis app based on its name
 func (r *Redis) GetSelector() (labels.Selector, error) {
-	return labels.Parse("sys.io/type=addon,sys.io/app=" + r.addon.Name)
+	return labels.Parse("koli.io/type=addon,koli.io/app=" + r.addon.Name)
 }
