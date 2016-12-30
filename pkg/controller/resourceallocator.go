@@ -8,12 +8,13 @@ import (
 	"github.com/golang/glog"
 	"github.com/kolibox/koli/pkg/clientset"
 	"github.com/kolibox/koli/pkg/spec"
-	"github.com/kolibox/koli/pkg/util"
+	"github.com/kolibox/koli/pkg/spec/util"
 
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/util/wait"
 
+	"github.com/kolibox/koli/pkg/platform"
 	extensions "k8s.io/kubernetes/pkg/apis/extensions"
 	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
@@ -74,7 +75,7 @@ func (c *ResourceAllocatorCtrl) updateDeployment(o, n interface{}) {
 	new := n.(*extensions.Deployment)
 
 	// TODO: skip a list of namespaces
-	if new.Namespace == systemNamespace || old.ResourceVersion == new.ResourceVersion {
+	if new.Namespace == platform.SystemNamespace || old.ResourceVersion == new.ResourceVersion {
 		return
 	}
 
@@ -103,7 +104,7 @@ func (c *ResourceAllocatorCtrl) updateServicePlan(o, n interface{}) {
 	}
 
 	// When a user associates a Service Plan to a new one
-	if !reflect.DeepEqual(old.Labels, new.Labels) && new.Namespace != systemNamespace {
+	if !reflect.DeepEqual(old.Labels, new.Labels) && new.Namespace != platform.SystemNamespace {
 		c.enqueueForNamespace(new.Namespace)
 	}
 }
@@ -174,7 +175,7 @@ func (c *ResourceAllocatorCtrl) reconcile(d *extensions.Deployment) error {
 
 	logHeader := fmt.Sprintf("%s/%s(%d)", d.Namespace, d.Name, d.Status.ObservedGeneration)
 
-	bns, err := util.NewBrokerNamespace(d.Namespace)
+	pns, err := platform.NewNamespace(d.Namespace)
 	if err != nil {
 		// Skip only because it's not a valid namespace to process
 		glog.Warningf("%s - %s. skipping ...", logHeader, err)
@@ -195,7 +196,7 @@ func (c *ResourceAllocatorCtrl) reconcile(d *extensions.Deployment) error {
 			// it will not handle multiple results
 			// TODO: check for nil
 			splan := obj.(*spec.ServicePlan)
-			if splan.Namespace == bns.GetBrokerNamespace() {
+			if splan.Namespace == pns.GetSystemNamespace() {
 				planName = splan.Labels[clusterPlanPrefix]
 			}
 		})
@@ -207,7 +208,7 @@ func (c *ResourceAllocatorCtrl) reconcile(d *extensions.Deployment) error {
 	// Search for the cluster plan by its name
 	spQ := &spec.ServicePlan{}
 	spQ.SetName(planName)
-	spQ.SetNamespace(systemNamespace)
+	spQ.SetNamespace(platform.SystemNamespace)
 	obj, exists, err := c.spInf.GetStore().Get(spQ)
 	if err != nil {
 		return err
@@ -220,7 +221,7 @@ func (c *ResourceAllocatorCtrl) reconcile(d *extensions.Deployment) error {
 			// it will not handle multiple results
 			// TODO: check for nil
 			splan := obj.(*spec.ServicePlan)
-			if splan.Namespace == systemNamespace {
+			if splan.Namespace == platform.SystemNamespace {
 				sp = splan
 			}
 		})
