@@ -2,10 +2,10 @@ package controller
 
 import (
 	"github.com/golang/glog"
-	"github.com/kolibox/koli/pkg/spec"
 	"k8s.io/kubernetes/pkg/api"
 	apps "k8s.io/kubernetes/pkg/apis/apps"
 	extensions "k8s.io/kubernetes/pkg/apis/extensions"
+	"kolihub.io/koli/pkg/spec"
 )
 
 type queue struct {

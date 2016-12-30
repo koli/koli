@@ -1,10 +1,10 @@
 package apps
 
 import (
-	"github.com/kolibox/koli/pkg/spec"
 	"k8s.io/kubernetes/pkg/api"
 	apps "k8s.io/kubernetes/pkg/apis/apps"
 	"k8s.io/kubernetes/pkg/util/intstr"
+	"kolihub.io/koli/pkg/spec"
 )
 
 // VolumeSpec facilitate passing definitions

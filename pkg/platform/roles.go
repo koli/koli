@@ -1,9 +1,9 @@
 package platform
 
 import (
-	"github.com/kolibox/koli/pkg/spec"
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/rbac"
+	"kolihub.io/koli/pkg/spec"
 )
 
 var (

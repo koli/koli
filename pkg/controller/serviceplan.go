@@ -5,9 +5,9 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/kolibox/koli/pkg/clientset"
-	"github.com/kolibox/koli/pkg/platform"
-	"github.com/kolibox/koli/pkg/spec"
+	"kolihub.io/koli/pkg/clientset"
+	"kolihub.io/koli/pkg/platform"
+	"kolihub.io/koli/pkg/spec"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"

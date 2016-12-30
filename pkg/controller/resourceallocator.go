@@ -6,15 +6,15 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/kolibox/koli/pkg/clientset"
-	"github.com/kolibox/koli/pkg/spec"
-	"github.com/kolibox/koli/pkg/spec/util"
+	"kolihub.io/koli/pkg/clientset"
+	"kolihub.io/koli/pkg/platform"
+	"kolihub.io/koli/pkg/spec"
+	"kolihub.io/koli/pkg/spec/util"
 
 	"k8s.io/kubernetes/pkg/client/cache"
 	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/util/wait"
 
-	"github.com/kolibox/koli/pkg/platform"
 	extensions "k8s.io/kubernetes/pkg/apis/extensions"
 	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	utilruntime "k8s.io/kubernetes/pkg/util/runtime"

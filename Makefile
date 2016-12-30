@@ -5,10 +5,10 @@ GITCOMMIT ?= $(shell git rev-parse --short HEAD)
 DATE ?= $(shell date -u "+%Y-%m-%dT%H:%M:%SZ")
 
 LDFLAGS := "-s -w \
--X github.com/kolibox/koli/pkg/cli/version.kubernetesClientVersion=${KUBECLIVERSION} \
--X github.com/kolibox/koli/pkg/cli/version.gitVersion=${GITVERSION} \
--X github.com/kolibox/koli/pkg/cli/version.gitCommit=${GITCOMMIT} \
--X github.com/kolibox/koli/pkg/cli/version.buildDate=${DATE}"
+-X github.com/kolihub/koli/pkg/cli/version.kubernetesClientVersion=${KUBECLIVERSION} \
+-X github.com/kolihub/koli/pkg/cli/version.gitVersion=${GITVERSION} \
+-X github.com/kolihub/koli/pkg/cli/version.gitCommit=${GITCOMMIT} \
+-X github.com/kolihub/koli/pkg/cli/version.buildDate=${DATE}"
 
 info:
 	@echo "KUBECLIVERSION:   ${KUBECLIVERSION}"
@@ -18,6 +18,7 @@ info:
 
 build:
 	mkdir -p ./build
-	go build -ldflags ${LDFLAGS} -o build/koli-${GITVERSION} github.com/kolibox/koli/cmd
+	go build -ldflags ${LDFLAGS} -o build/koli-${GITVERSION} github.com/kolihub/koli/cmd
+	go build -ldflags ${LDFLAGS} -o build/koli-controller-${GITVERSION} github.com/kolihub/cmd/controller
 
 .PHONY: build

@@ -13,11 +13,11 @@ You also need `virtualenv` installed.
 $ sudo pip install virtualenv
 ```
 
-Clone [kbox](https://github.com/kolibox/kbox) and [controller](https://github.com/kolibox/kbox) repositories:
+Clone [kbox](https://github.com/kolihub/kbox) and [controller](https://github.com/kolihub/kbox) repositories:
 
 ```bash
-$ git clone https://github.com/kolibox/kbox.git
-$ git clone https://github.com/kolibox/controller.git
+$ git clone https://github.com/kolihub/kbox.git
+$ git clone https://github.com/kolihub/controller.git
 ```
 
 Create `controller/environment.sh` file:
@@ -27,7 +27,7 @@ Create `controller/environment.sh` file:
 ```bash
 #export SECRET_PATH=/Users/san/Downloads/saccount
 export ENVIRONMENT=development
-export PYTHONPATH=/Users/cainelli/Documents/workspace/kolibox/controller/rootfs
+export PYTHONPATH=/Users/cainelli/Documents/workspace/kolihub/controller/rootfs
 export KUBERNETES_SERVICE_HOST=192.168.64.2
 export KUBERNETES_SERVICE_PORT=5443
 ```
@@ -188,14 +188,14 @@ $ kubectl config use-context koli
 
 Download `koli` CLI
 ```bash
-$ curl -O https://github.com/kolibox/koli/releases/download/v0.1.1-alpha/koli-darwin-v0.1.1-alpha /usr/local/bin/koli
+$ curl -O https://github.com/kolihub/koli/releases/download/v0.1.1-alpha/koli-darwin-v0.1.1-alpha /usr/local/bin/koli
 $ chmod +x /usr/local/bin/koli
 ```
 
 ```bash
 # your machine native shell
 $ curl http://127.0.0.1:8000/users -H 'Content-Type: application/json' -XPOST \
-    -d '{"username": "cainelli", "email": "cainelli@kolibox.io", "password": "ko+li", "type": "regular"}'
+    -d '{"username": "cainelli", "email": "cainelli@kolihub.io", "password": "ko+li", "type": "regular"}'
 ```
 
 Build `api-router` image

@@ -14,12 +14,12 @@ type Namespace struct {
 }
 
 const (
-	controllerHost = "controller.kolibox.io"
+	controllerHost = "controller.kolihub.io"
 )
 
 // Controller represents the communication with the KOLI Controller
 type Controller struct {
-	// API Base URL. E.G.: https://controller.kolibox.io
+	// API Base URL. E.G.: https://controller.kolihub.io
 	Request  *Request
 	resource string
 }

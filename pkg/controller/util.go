@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/kolibox/koli/pkg/platform"
+	"kolihub.io/koli/pkg/platform"
 
 	apierrors "k8s.io/kubernetes/pkg/api/errors"
 	"k8s.io/kubernetes/pkg/client/cache"

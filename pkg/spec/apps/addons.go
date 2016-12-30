@@ -3,7 +3,7 @@ package apps
 import (
 	"fmt"
 
-	"github.com/kolibox/koli/pkg/spec"
+	"kolihub.io/koli/pkg/spec"
 
 	"k8s.io/kubernetes/pkg/apis/apps"
 	"k8s.io/kubernetes/pkg/client/cache"
