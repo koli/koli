@@ -33,7 +33,7 @@ func MakePetSetService(addon *spec.Addon) *api.Service {
 		ObjectMeta: api.ObjectMeta{
 			Name: addon.Name,
 			Labels: map[string]string{
-				"sys.io/app": addon.Name,
+				"koli.io/app": addon.Name,
 			},
 		},
 		Spec: api.ServiceSpec{
@@ -46,7 +46,7 @@ func MakePetSetService(addon *spec.Addon) *api.Service {
 				},
 			},
 			Selector: map[string]string{
-				"sys.io/app": addon.Name,
+				"koli.io/app": addon.Name,
 			},
 		},
 	}

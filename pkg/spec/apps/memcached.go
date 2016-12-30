@@ -29,8 +29,8 @@ func (m *Memcached) CreateConfigMap() error {
 // CreatePetSet add a new memcached PetSet
 func (m *Memcached) CreatePetSet(sp *spec.ServicePlan) error {
 	labels := map[string]string{
-		"sys.io/type": "addon",
-		"sys.io/app":  m.addon.Name,
+		"koli.io/type": "addon",
+		"koli.io/app":  m.addon.Name,
 	}
 	petset := makePetSet(m.addon, nil, labels, nil, &VolumeSpec{})
 	petset.Spec.Template.Spec.Containers[0].Resources.Limits = sp.Spec.Resources.Limits
@@ -45,8 +45,8 @@ func (m *Memcached) CreatePetSet(sp *spec.ServicePlan) error {
 // UpdatePetSet update a memcached PetSet
 func (m *Memcached) UpdatePetSet(old *apps.StatefulSet, sp *spec.ServicePlan) error {
 	labels := map[string]string{
-		"sys.io/type": "addon",
-		"sys.io/app":  m.addon.Name,
+		"koli.io/type": "addon",
+		"koli.io/app":  m.addon.Name,
 	}
 	petset := makePetSet(m.addon, old, labels, nil, &VolumeSpec{})
 	petset.Spec.Template.Spec.Containers[0].Resources.Limits = sp.Spec.Resources.Limits
@@ -114,5 +114,5 @@ func (m *Memcached) GetAddon() *spec.Addon {
 
 // getSelector retrieves the a selector for the memcached app based on its name
 func (m *Memcached) getSelector() (labels.Selector, error) {
-	return labels.Parse("sys.io/type=addon,sys.io/app=" + m.addon.Name)
+	return labels.Parse("koli.io/type=addon,koli.io/app=" + m.addon.Name)
 }

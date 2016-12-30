@@ -22,7 +22,7 @@ import (
 )
 
 const (
-	tprAddons = "addon.sys.koli.io"
+	tprAddons = "addon.platform.koli.io"
 )
 
 // AddonController controller
@@ -326,5 +326,5 @@ func CreateAddonTPRs(host string, kclient clientset.Interface) error {
 	}
 
 	// We have to wait for the TPRs to be ready. Otherwise the initial watch may fail.
-	return watch3PRs(host, "/apis/sys.koli.io/v1alpha1/addons", kclient)
+	return watch3PRs(host, "/apis/platform.koli.io/v1alpha1/addons", kclient)
 }
