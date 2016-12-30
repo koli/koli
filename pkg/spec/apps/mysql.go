@@ -1,4 +1,4 @@
-package spec
+package apps
 
 import (
 	"bytes"
@@ -6,7 +6,8 @@ import (
 	"html/template"
 	"time"
 
-	"github.com/kolibox/koli/pkg/util"
+	"github.com/kolibox/koli/pkg/spec"
+	"github.com/kolibox/koli/pkg/spec/util"
 	"github.com/renstrom/dedent"
 
 	"k8s.io/kubernetes/pkg/api"
@@ -26,7 +27,7 @@ const (
 // MySQL add-on relational database management system
 type MySQL struct {
 	client  clientset.Interface
-	addon   *Addon
+	addon   *spec.Addon
 	psetInf cache.SharedIndexInformer
 }
 
@@ -95,7 +96,7 @@ func (m *MySQL) makeVolumes() *VolumeSpec {
 }
 
 // CreatePetSet add a new mySQL PetSet
-func (m *MySQL) CreatePetSet(sp *ServicePlan) error {
+func (m *MySQL) CreatePetSet(sp *spec.ServicePlan) error {
 	labels := map[string]string{
 		"sys.io/type": "addon",
 		"sys.io/app":  m.addon.Name,
@@ -103,7 +104,7 @@ func (m *MySQL) CreatePetSet(sp *ServicePlan) error {
 	petset := makePetSet(m.addon, nil, labels, nil, m.makeVolumes())
 	petset.Spec.Template.Spec.Containers[0].Resources.Limits = sp.Spec.Resources.Limits
 	petset.Spec.Template.Spec.Containers[0].Resources.Requests = sp.Spec.Resources.Requests
-	petset.Labels = NewLabel().Add(map[string]string{"clusterplan": sp.Name}).Set
+	petset.Labels = spec.NewLabel().Add(map[string]string{"clusterplan": sp.Name}).Set
 	if _, err := m.client.Apps().StatefulSets(m.addon.Namespace).Create(petset); err != nil {
 		return fmt.Errorf("failed creating petset (%s)", err)
 	}
@@ -111,7 +112,7 @@ func (m *MySQL) CreatePetSet(sp *ServicePlan) error {
 }
 
 // UpdatePetSet update a mySQL PetSet
-func (m *MySQL) UpdatePetSet(old *apps.StatefulSet, sp *ServicePlan) error {
+func (m *MySQL) UpdatePetSet(old *apps.StatefulSet, sp *spec.ServicePlan) error {
 	labels := map[string]string{
 		"sys.io/type": "addon",
 		"sys.io/app":  m.addon.Name,
@@ -119,7 +120,7 @@ func (m *MySQL) UpdatePetSet(old *apps.StatefulSet, sp *ServicePlan) error {
 	petset := makePetSet(m.addon, old, labels, nil, m.makeVolumes())
 	petset.Spec.Template.Spec.Containers[0].Resources.Limits = sp.Spec.Resources.Limits
 	petset.Spec.Template.Spec.Containers[0].Resources.Requests = sp.Spec.Resources.Requests
-	petset.SetLabels(NewLabel().Add(map[string]string{"clusterplan": sp.Name}).Set)
+	petset.SetLabels(spec.NewLabel().Add(map[string]string{"clusterplan": sp.Name}).Set)
 
 	if _, err := m.client.Apps().StatefulSets(m.addon.Namespace).Update(petset); err != nil {
 		return fmt.Errorf("failed creating petset (%s)", err)
@@ -177,7 +178,7 @@ func (m *MySQL) DeleteApp() error {
 }
 
 // GetAddon returns the addon object
-func (m *MySQL) GetAddon() *Addon {
+func (m *MySQL) GetAddon() *spec.Addon {
 	return m.addon
 }
 

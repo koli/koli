@@ -1,4 +1,4 @@
-package spec
+package apps
 
 import (
 	"bytes"
@@ -6,7 +6,8 @@ import (
 	"html/template"
 	"time"
 
-	"github.com/kolibox/koli/pkg/util"
+	"github.com/kolibox/koli/pkg/spec"
+	"github.com/kolibox/koli/pkg/spec/util"
 	"github.com/renstrom/dedent"
 
 	"k8s.io/kubernetes/pkg/api"
@@ -25,7 +26,7 @@ const (
 // Redis add-on in memory key value store database
 type Redis struct {
 	client  clientset.Interface
-	addon   *Addon
+	addon   *spec.Addon
 	psetInf cache.SharedIndexInformer
 }
 
@@ -94,7 +95,7 @@ func (r *Redis) makeVolumes() *VolumeSpec {
 }
 
 // CreatePetSet add a new redis PetSet
-func (r *Redis) CreatePetSet(sp *ServicePlan) error {
+func (r *Redis) CreatePetSet(sp *spec.ServicePlan) error {
 	labels := map[string]string{
 		"sys.io/type": "addon",
 		"sys.io/app":  r.addon.Name,
@@ -102,7 +103,7 @@ func (r *Redis) CreatePetSet(sp *ServicePlan) error {
 	petset := makePetSet(r.addon, nil, labels, []string{redisConfFilePath}, r.makeVolumes())
 	petset.Spec.Template.Spec.Containers[0].Resources.Limits = sp.Spec.Resources.Limits
 	petset.Spec.Template.Spec.Containers[0].Resources.Requests = sp.Spec.Resources.Requests
-	petset.Labels = NewLabel().Add(map[string]string{"clusterplan": sp.Name}).Set
+	petset.Labels = spec.NewLabel().Add(map[string]string{"clusterplan": sp.Name}).Set
 	if _, err := r.client.Apps().StatefulSets(r.addon.Namespace).Create(petset); err != nil {
 		return fmt.Errorf("failed creating petset (%s)", err)
 	}
@@ -110,7 +111,7 @@ func (r *Redis) CreatePetSet(sp *ServicePlan) error {
 }
 
 // UpdatePetSet update a redis PetSet
-func (r *Redis) UpdatePetSet(old *apps.StatefulSet, sp *ServicePlan) error {
+func (r *Redis) UpdatePetSet(old *apps.StatefulSet, sp *spec.ServicePlan) error {
 	labels := map[string]string{
 		"sys.io/type": "addon",
 		"sys.io/app":  r.addon.Name,
@@ -118,7 +119,7 @@ func (r *Redis) UpdatePetSet(old *apps.StatefulSet, sp *ServicePlan) error {
 	petset := makePetSet(r.addon, old, labels, []string{redisConfFilePath}, r.makeVolumes())
 	petset.Spec.Template.Spec.Containers[0].Resources.Limits = sp.Spec.Resources.Limits
 	petset.Spec.Template.Spec.Containers[0].Resources.Requests = sp.Spec.Resources.Requests
-	petset.SetLabels(NewLabel().Add(map[string]string{"clusterplan": sp.Name}).Set)
+	petset.SetLabels(spec.NewLabel().Add(map[string]string{"clusterplan": sp.Name}).Set)
 	if _, err := r.client.Apps().StatefulSets(r.addon.Namespace).Update(petset); err != nil {
 		return fmt.Errorf("failed creating petset (%s)", err)
 	}
@@ -175,7 +176,7 @@ func (r *Redis) DeleteApp() error {
 }
 
 // GetAddon returns the addon object
-func (r *Redis) GetAddon() *Addon {
+func (r *Redis) GetAddon() *spec.Addon {
 	return r.addon
 }
 

@@ -11,6 +11,7 @@ import (
 	"github.com/kolibox/koli/pkg/clientset"
 	"github.com/kolibox/koli/pkg/controller"
 	"github.com/kolibox/koli/pkg/controller/informers"
+	_ "github.com/kolibox/koli/pkg/controller/install"
 	_ "github.com/kolibox/koli/pkg/spec/install"
 
 	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
@@ -55,6 +56,7 @@ func startControllers(stop <-chan struct{}) error {
 		return fmt.Errorf("communicating with server failed: %s", err)
 	}
 
+	controller.CreatePlatformRoles(client)
 	// Create required third party resources
 	controller.CreateAddonTPRs(cfg.Host, client)
 	controller.CreateServicePlan3PRs(cfg.Host, client)
@@ -77,7 +79,9 @@ func startControllers(stop <-chan struct{}) error {
 
 	go controller.NewNamespaceController(
 		sharedInformers.Namespaces().Informer(),
+		sharedInformers.ServicePlans().Informer(sysClient),
 		client,
+		sysClient,
 	).Run(1, wait.NeverStop)
 
 	go controller.NewServicePlanController(

@@ -5,6 +5,9 @@ import (
 	"k8s.io/kubernetes/pkg/api/unversioned"
 )
 
+// ResourceList is a set of (resource name, quantity) pairs.
+type ResourceList api.ResourceList
+
 // ServicePlan defines how resources could be managed and distributed
 type ServicePlan struct {
 	unversioned.TypeMeta `json:",inline"`
@@ -18,7 +21,7 @@ type ServicePlanList struct {
 	unversioned.TypeMeta `json:",inline"`
 	unversioned.ListMeta `json:"metadata,omitempty"`
 
-	Items []*ServicePlan `json:"items"`
+	Items []ServicePlan `json:"items"`
 }
 
 // ServicePlanSpec holds specification parameters of an ServicePlan
@@ -26,21 +29,30 @@ type ServicePlanSpec struct {
 	// Compute Resources required by containers.
 	Resources api.ResourceRequirements `json:"resources,omitempty"`
 	// Hard is the set of desired hard limits for each named resource.
-	Hard     api.ResourceList    `json:"hard,omitempty"`
-	Features ServicePlanFeatures `json:"features,omitempty"`
+	Hard  ResourceList   `json:"hard,omitempty"`
+	Roles []PlatformRole `json:"roles,omitempty"`
 }
 
-// ServicePlanFeatures defines the permissions for a ServicePlan
-type ServicePlanFeatures struct {
-	PodManagement struct {
-		Exec        bool `json:"exec"`
-		PortForward bool `json:"portForward"`
-		AutoScale   bool `json:"autoScale"`
-		Attach      bool `json:"attach"`
-	} `json:"podManagement"`
-	AddonManagement bool `json:"addonManagement"`
-	MetricsAccess   bool `json:"metricsAccess"`
-}
+const (
+	// ResourceNamespace , number
+	ResourceNamespace api.ResourceName = "namespaces"
+)
+
+// PlatformRole is the name identifying various roles in a PlatformRoleList.
+type PlatformRole string
+
+const (
+	// RoleExecAllow cluster role name
+	RoleExecAllow PlatformRole = "exec-allow"
+	// RolePortForwardAllow cluster role name
+	RolePortForwardAllow PlatformRole = "portforward-allow"
+	// RoleAutoScaleAllow cluster role name
+	RoleAutoScaleAllow PlatformRole = "autoscale-allow"
+	// RoleAttachAllow cluster role name
+	RoleAttachAllow PlatformRole = "attach-allow"
+	// RoleAddonManagement cluster role name
+	RoleAddonManagement PlatformRole = "addon-management"
+)
 
 // ServicePlanStatus is information about the current status of a ServicePlan.
 type ServicePlanStatus struct {
@@ -56,9 +68,10 @@ type ServicePlanStatusList struct {
 	unversioned.TypeMeta `json:",inline"`
 	unversioned.ListMeta `json:"metadata,omitempty"`
 
-	Items []*ServicePlanStatus `json:"items"`
+	Items []ServicePlanStatus `json:"items"`
 }
 
+// ServicePlanPhase is the current lifecycle phase of the Service Plan.
 type ServicePlanPhase string
 
 const (
@@ -84,7 +97,7 @@ type AddonList struct {
 	unversioned.TypeMeta `json:",inline"`
 	unversioned.ListMeta `json:"metadata,omitempty"`
 
-	Items []*Addon `json:"items"`
+	Items []Addon `json:"items"`
 }
 
 // AddonSpec holds specification parameters of an addon
@@ -103,6 +116,13 @@ type AddonSpec struct {
 type User struct {
 	ID           string `json:"id"`
 	Username     string `json:"username"`
-	Organization string `json:"org"`
 	Customer     string `json:"customer"`
+	Organization string `json:"org"`
+	// Groups are a set of strings which associate users with as set of commonly grouped users.
+	// A group name is unique in the cluster and it's formed by it's namespace, customer or the organization name:
+	// [org] - Matches all the namespaces of the broker
+	// [customer]-[org] - Matches all namespaces from the customer broker
+	// [name]-[customer]-[org] - Matches a specific namespace
+	// http://kubernetes.io/docs/admin/authentication/
+	Groups []string `json:"groups"`
 }

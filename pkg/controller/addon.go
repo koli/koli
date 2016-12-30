@@ -5,8 +5,9 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	"github.com/kolibox/koli/pkg/platform"
 	"github.com/kolibox/koli/pkg/spec"
-	"github.com/kolibox/koli/pkg/util"
+	koliapps "github.com/kolibox/koli/pkg/spec/apps"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/cache"
@@ -157,7 +158,7 @@ func (c *AddonController) runWorker() {
 			return
 		}
 		// Get the app based on its type
-		app, err := a.(*spec.Addon).GetApp(c.kclient, c.psetInf)
+		app, err := koliapps.GetType(a.(*spec.Addon), c.kclient, c.psetInf)
 		if err != nil {
 			// If an add-on is provided without a known type
 			utilruntime.HandleError(err)
@@ -168,7 +169,7 @@ func (c *AddonController) runWorker() {
 	}
 }
 
-func (c *AddonController) reconcile(app spec.AddonInterface) error {
+func (c *AddonController) reconcile(app koliapps.AddonInterface) error {
 	key, err := keyFunc(app.GetAddon())
 	if err != nil {
 		return err
@@ -176,7 +177,7 @@ func (c *AddonController) reconcile(app spec.AddonInterface) error {
 
 	addon := app.GetAddon()
 	logHeader := fmt.Sprintf("%s/%s(%s)", addon.Namespace, addon.Name, addon.ResourceVersion)
-	bns, err := util.NewBrokerNamespace(addon.Namespace)
+	pns, err := platform.NewNamespace(addon.Namespace)
 	if err != nil {
 		// Skip only because it's not a valid namespace to process
 		glog.Warningf("%s - %s. skipping ...", logHeader, err)
@@ -207,7 +208,7 @@ func (c *AddonController) reconcile(app spec.AddonInterface) error {
 	}
 
 	// expose the app
-	svc := spec.MakePetSetService(addon)
+	svc := koliapps.MakePetSetService(addon)
 	if _, err := c.kclient.Core().Services(addon.Namespace).Create(svc); err != nil && !apierrors.IsAlreadyExists(err) {
 		return fmt.Errorf("failed creating service (%s)", err)
 	}
@@ -241,7 +242,7 @@ func (c *AddonController) reconcile(app spec.AddonInterface) error {
 			// it will not handle multiple results
 			// TODO: check for nil
 			splan := obj.(*spec.ServicePlan)
-			if splan.Namespace == bns.GetBrokerNamespace() {
+			if splan.Namespace == pns.GetSystemNamespace() {
 				planName = splan.Labels[clusterPlanPrefix]
 			}
 		})
@@ -253,7 +254,7 @@ func (c *AddonController) reconcile(app spec.AddonInterface) error {
 	// Search for the cluster plan by its name
 	spQ := &spec.ServicePlan{}
 	spQ.SetName(planName)
-	spQ.SetNamespace(systemNamespace)
+	spQ.SetNamespace(platform.SystemNamespace)
 	obj, spExists, err := c.spInf.GetStore().Get(spQ)
 	if err != nil {
 		return err
@@ -266,7 +267,7 @@ func (c *AddonController) reconcile(app spec.AddonInterface) error {
 			// it will not handle multiple results
 			// TODO: check for nil
 			splan := obj.(*spec.ServicePlan)
-			if splan.Namespace == systemNamespace {
+			if splan.Namespace == platform.SystemNamespace {
 				sp = splan
 			}
 		})

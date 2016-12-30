@@ -1,6 +1,7 @@
-package spec
+package apps
 
 import (
+	"github.com/kolibox/koli/pkg/spec"
 	"k8s.io/kubernetes/pkg/api"
 	apps "k8s.io/kubernetes/pkg/apis/apps"
 	"k8s.io/kubernetes/pkg/util/intstr"
@@ -13,7 +14,7 @@ type VolumeSpec struct {
 	VolumeMounts []api.VolumeMount
 }
 
-func makePetSet(addon *Addon, old *apps.StatefulSet, labels map[string]string, args []string, vol *VolumeSpec) *apps.StatefulSet {
+func makePetSet(addon *spec.Addon, old *apps.StatefulSet, labels map[string]string, args []string, vol *VolumeSpec) *apps.StatefulSet {
 	petset := &apps.StatefulSet{
 		ObjectMeta: api.ObjectMeta{
 			Name: addon.Name,
@@ -27,7 +28,7 @@ func makePetSet(addon *Addon, old *apps.StatefulSet, labels map[string]string, a
 }
 
 // MakePetSetService generates a &api.Service
-func MakePetSetService(addon *Addon) *api.Service {
+func MakePetSetService(addon *spec.Addon) *api.Service {
 	svc := &api.Service{
 		ObjectMeta: api.ObjectMeta{
 			Name: addon.Name,
@@ -53,7 +54,7 @@ func MakePetSetService(addon *Addon) *api.Service {
 }
 
 // getPetSetSpec returns a generic PetSetSpec
-func getPetSetSpec(addon *Addon, labels map[string]string, args []string, vol *VolumeSpec) apps.StatefulSetSpec {
+func getPetSetSpec(addon *spec.Addon, labels map[string]string, args []string, vol *VolumeSpec) apps.StatefulSetSpec {
 	terminationGracePeriod := int64(30) // TODO: should be base on the app type
 	return apps.StatefulSetSpec{
 		ServiceName: addon.Name,

@@ -2,57 +2,22 @@ package spec
 
 import (
 	"fmt"
+	"strings"
 
-	apps "k8s.io/kubernetes/pkg/apis/apps"
-	"k8s.io/kubernetes/pkg/client/cache"
-	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	"k8s.io/kubernetes/pkg/api"
+	"k8s.io/kubernetes/pkg/apis/rbac"
 	"k8s.io/kubernetes/pkg/labels"
 )
 
-const (
-	// KoliPrefixValue is used for creating annotations and labels
-	KoliPrefixValue = "koli.io"
-)
+// KoliPrefixValue is used for creating annotations and labels
+const KoliPrefixValue = "koli.io"
 
-// AddonInterface represents the implementation of generic apps
-type AddonInterface interface {
-	CreateConfigMap() error
-	CreatePetSet(sp *ServicePlan) error
-	UpdatePetSet(old *apps.StatefulSet, sp *ServicePlan) error
-	DeleteApp() error
-	GetAddon() *Addon
-}
+// PlatformRegisteredRoles contains all the cluster roles provisioned on the platform
+var PlatformRegisteredRoles []PlatformRole
 
-// GetImage gets the BaseImage + Version
-func (a *Addon) GetImage() string {
-	if a.Spec.Version == "" {
-		a.Spec.Version = "latest"
-	}
-	return fmt.Sprintf("%s:%s", a.Spec.BaseImage, a.Spec.Version)
-}
-
-// GetReplicas returns the size of replicas, if is less than 1 sets a default value
-func (a *Addon) GetReplicas() int32 {
-	if a.Spec.Replicas < 1 {
-		a.Spec.Replicas = 1
-	}
-	return a.Spec.Replicas
-}
-
-// GetApp retrieves the type of the add-on
-func (a *Addon) GetApp(c clientset.Interface, psetInf cache.SharedIndexInformer) (AddonInterface, error) {
-	switch a.Spec.Type {
-	case "redis":
-		return &Redis{client: c, addon: a, psetInf: psetInf}, nil
-	case "memcached":
-		return &Memcached{client: c, addon: a, psetInf: psetInf}, nil
-	case "mysql":
-		return &MySQL{client: c, addon: a, psetInf: psetInf}, nil
-	default:
-		// Generic add-on
-	}
-	return nil, fmt.Errorf("invalid add-on type (%s)", a.Spec.Type)
-}
+// PlatformRegisteredResources contains all the resources allowed for a user to configure
+// in resource quotas: http://kubernetes.io/docs/admin/resourcequota/#Object-Count-Quota
+var PlatformRegisteredResources *ResourceList
 
 // Label wraps a labels.Set
 type Label struct {
@@ -61,8 +26,18 @@ type Label struct {
 }
 
 // Remove a key from the labels.Set using a pre-defined prefix
-func (l *Label) Remove(key string) {
+func (l *Label) Remove(key string) *Label {
 	delete(l.Set, fmt.Sprintf("%s/%s", KoliPrefixValue, key))
+	return l
+}
+
+// Exists verifies if the given key exists
+func (l *Label) Exists(key string) bool {
+	_, hasKey := l.Set[fmt.Sprintf("%s/%s", l.Prefix, key)]
+	if hasKey {
+		return true
+	}
+	return false
 }
 
 // Add values to a labels.Set using a pre-defined prefix
@@ -90,4 +65,59 @@ func NewLabel(prefixS ...string) *Label {
 // KoliPrefix returns a value with the default prefix - spec.KoliPrefix
 func KoliPrefix(value string) string {
 	return fmt.Sprintf("%s/%s", KoliPrefixValue, value)
+}
+
+// GetRoleBinding retrieves a role binding for this role
+func (r PlatformRole) GetRoleBinding(subjects []rbac.Subject) *rbac.RoleBinding {
+	return &rbac.RoleBinding{
+		ObjectMeta: api.ObjectMeta{Name: string(r)},
+		Subjects:   subjects,
+		RoleRef: rbac.RoleRef{
+			Kind: "ClusterRole",
+			Name: string(r), // must match role name
+		},
+	}
+}
+
+// IsRegisteredRole check if the role matches with the registered roles.
+func (r PlatformRole) IsRegisteredRole() bool {
+	for _, role := range PlatformRegisteredRoles {
+		if r == role {
+			return true
+		}
+	}
+	return false
+}
+
+// Exists verifies if the slice contains the role
+func (r PlatformRole) Exists(roles []PlatformRole) bool {
+	for _, role := range roles {
+		if r == role {
+			return true
+		}
+	}
+	return false
+}
+
+// NewPlatformRoles converts a string of comma separated roles to registered []PlatformRoles
+func NewPlatformRoles(roles string) []PlatformRole {
+	platformRoles := []PlatformRole{}
+	for _, r := range strings.Split(roles, ",") {
+		role := PlatformRole(r)
+		if !role.IsRegisteredRole() {
+			continue
+		}
+		platformRoles = append(platformRoles, role)
+	}
+	return platformRoles
+}
+
+// RemoveUnregisteredResources removes resources which are not registered on the platform
+func (r *ResourceList) RemoveUnregisteredResources() {
+	for resourceName := range *r {
+		_, hasKey := (*PlatformRegisteredResources)[resourceName]
+		if !hasKey {
+			delete(*r, resourceName)
+		}
+	}
 }

@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/kolibox/koli/pkg/clientset"
+	"github.com/kolibox/koli/pkg/platform"
 	"github.com/kolibox/koli/pkg/spec"
 
 	"k8s.io/kubernetes/pkg/api"
@@ -22,7 +23,6 @@ import (
 const (
 	tprServicePlan       = "serviceplan.sys.koli.io"
 	tprServicePlanStatus = "serviceplanstatus.sys.koli.io"
-	systemNamespace      = "koli-system"
 )
 
 // ServicePlanController controller
@@ -103,7 +103,7 @@ func (c *ServicePlanController) reconcile(sp *spec.ServicePlan) error {
 	}
 
 	logHeader := fmt.Sprintf("%s/%s", sp.Namespace, sp.Name)
-	if sp.Namespace == systemNamespace {
+	if sp.Namespace == platform.SystemNamespace {
 		// TODO: rules for cluster service plans
 		return nil
 	}
@@ -174,7 +174,7 @@ func (c *ServicePlanController) updateServicePlan(o, n interface{}) {
 	new := n.(*spec.ServicePlan)
 
 	if old.ResourceVersion != new.ResourceVersion {
-		glog.Infof("update-service-plan - %s/%s - new resource, queueing ...", new.Namespace, new.Name)
+		glog.Infof("%s/%s - update-serviceplan, found new resource, queueing ...", new.Namespace, new.Name)
 	}
 
 	c.queue.add(new)
@@ -191,7 +191,7 @@ func (c *ServicePlanController) planExists(planName string) bool {
 	if planName == "" {
 		return false
 	}
-	if _, err := c.sysClient.ServicePlan(systemNamespace).Get(planName); err != nil {
+	if _, err := c.sysClient.ServicePlan(platform.SystemNamespace).Get(planName); err != nil {
 		glog.Warningf("failed listing cluster plan '%s': %s", planName, err)
 		return false
 	}
