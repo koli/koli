@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"os"
 	"time"
 
 	"github.com/golang/glog"
@@ -13,6 +14,9 @@ import (
 	"kolihub.io/koli/pkg/controller/informers"
 	_ "kolihub.io/koli/pkg/controller/install"
 	_ "kolihub.io/koli/pkg/spec/install"
+	"kolihub.io/koli/pkg/version"
+
+	"encoding/json"
 
 	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/restclient"
@@ -27,6 +31,13 @@ type Config struct {
 }
 
 var cfg Config
+var showVersion bool
+
+type Version struct {
+	git       string
+	main      string
+	buildDatr string
+}
 
 func init() {
 	pflag.CommandLine.AddGoFlagSet(flag.CommandLine)
@@ -34,6 +45,7 @@ func init() {
 	pflag.StringVar(&cfg.TLSConfig.CertFile, "cert-file", "", "Path to public TLS certificate file.")
 	pflag.StringVar(&cfg.TLSConfig.KeyFile, "key-file", "", " Path to private TLS certificate file.")
 	pflag.StringVar(&cfg.TLSConfig.CAFile, "ca-file", "", " Path to TLS CA file.")
+	pflag.BoolVar(&showVersion, "version", true, "Print version information and quit")
 	pflag.BoolVar(&cfg.TLSInsecure, "tls-insecure", false, " Don't verify API server's CA certificate.")
 	pflag.Parse()
 }
@@ -103,6 +115,16 @@ func startControllers(stop <-chan struct{}) error {
 }
 
 func main() {
-	err := startControllers(make(chan struct{}))
-	glog.Fatalf("error running controllers: %v", err)
+	if showVersion {
+		version := version.Get()
+		b, err := json.Marshal(&version)
+		if err != nil {
+			fmt.Printf("failed decoding version: %s\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(string(b))
+	} else {
+		err := startControllers(make(chan struct{}))
+		glog.Fatalf("error running controllers: %v", err)
+	}
 }
