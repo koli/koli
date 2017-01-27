@@ -1,6 +1,6 @@
 ## Koli PaaS
 
-<img src="https://s3.amazonaws.com/kolihub/logos/02.png" width="200">
+<img src="https://s3.amazonaws.com/kolihub/logos/01.png" width="400">
 
 Koli it's a Plataform as Service (PaaS) built on top of Kubernetes, providing tools
 that enables easy management and deployment of applications.
