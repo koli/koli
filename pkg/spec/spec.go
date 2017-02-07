@@ -10,7 +10,7 @@ import (
 )
 
 // KoliPrefixValue is used for creating annotations and labels
-const KoliPrefixValue = "koli.io"
+const KoliPrefixValue = "kolihub.io"
 
 // PlatformRegisteredRoles contains all the cluster roles provisioned on the platform
 var PlatformRegisteredRoles []PlatformRole

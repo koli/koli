@@ -62,3 +62,16 @@ func ServicePlanDeepCopy(sp *spec.ServicePlan) (*spec.ServicePlan, error) {
 	}
 	return copied, nil
 }
+
+// ReleaseDeepCopy creates a deep-copy from the specified resource
+func ReleaseDeepCopy(r *spec.Release) (*spec.Release, error) {
+	objCopy, err := api.Scheme.DeepCopy(r)
+	if err != nil {
+		return nil, err
+	}
+	copied, ok := objCopy.(*spec.Release)
+	if !ok {
+		return nil, fmt.Errorf("expected Release, got %#v", objCopy)
+	}
+	return copied, nil
+}

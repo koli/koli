@@ -20,19 +20,25 @@ import (
 
 	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	"k8s.io/kubernetes/pkg/client/restclient"
+	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/util/wait"
 )
 
 // Config defines configuration parameters for the Operator.
 type Config struct {
-	Host        string
-	TLSInsecure bool
-	TLSConfig   restclient.TLSClientConfig
+	Host                   string
+	TLSInsecure            bool
+	TLSConfig              restclient.TLSClientConfig
+	ObjectStorageAccessKey string
+	ObjectStorageSecretKey string
+	ObjectStorageHost      string
+	ObjectStoragePort      int
 }
 
 var cfg Config
 var showVersion bool
 
+// Version refers to the version of the binary
 type Version struct {
 	git       string
 	main      string
@@ -45,7 +51,11 @@ func init() {
 	pflag.StringVar(&cfg.TLSConfig.CertFile, "cert-file", "", "Path to public TLS certificate file.")
 	pflag.StringVar(&cfg.TLSConfig.KeyFile, "key-file", "", " Path to private TLS certificate file.")
 	pflag.StringVar(&cfg.TLSConfig.CAFile, "ca-file", "", " Path to TLS CA file.")
-	pflag.BoolVar(&showVersion, "version", true, "Print version information and quit")
+	pflag.StringVar(&cfg.ObjectStorageAccessKey, "access-key", "", " Builder Object Storage ACCESS_KEY")
+	pflag.StringVar(&cfg.ObjectStorageSecretKey, "secret-key", "", " Builder Object Storage ACCESS_SECRET_KEY")
+	pflag.StringVar(&cfg.ObjectStorageHost, "objstorage-host", "", " Builder Object Storage Host")
+	pflag.IntVar(&cfg.ObjectStoragePort, "objstorage-port", 443, " Builder Object Storage Port")
+	pflag.BoolVar(&showVersion, "version", false, "Print version information and quit")
 	pflag.BoolVar(&cfg.TLSInsecure, "tls-insecure", false, " Don't verify API server's CA certificate.")
 	pflag.Parse()
 }
@@ -73,6 +83,7 @@ func startControllers(stop <-chan struct{}) error {
 	controller.CreateAddonTPRs(cfg.Host, client)
 	controller.CreateServicePlan3PRs(cfg.Host, client)
 	controller.CreateServicePlanStatus3PRs(cfg.Host, client)
+	controller.CreateReleaseTPRs(cfg.Host, client)
 
 	sysClient, err := clientset.NewSysRESTClient(cfg)
 	if err != nil {
@@ -107,6 +118,28 @@ func startControllers(stop <-chan struct{}) error {
 		sharedInformers.ServicePlans().Informer(sysClient),
 		client,
 		sysClient,
+	).Run(1, wait.NeverStop)
+
+	go controller.NewReleaseController(
+		sharedInformers.Releases().Informer(sysClient),
+		sharedInformers.Deployments().Informer(),
+		sysClient,
+		client,
+	).Run(1, wait.NeverStop)
+
+	go controller.NewBuildController(
+		sharedInformers.Releases().Informer(sysClient),
+		sysClient,
+		client,
+	).Run(1, wait.NeverStop)
+
+	// TODO: hard-coded
+	selector := labels.Set{"kolihub.io/type": "slugbuild"}
+	go controller.NewDeployerController(
+		sharedInformers.Pods().Informer(selector.AsSelector()),
+		sharedInformers.Deployments().Informer(),
+		sysClient,
+		client,
 	).Run(1, wait.NeverStop)
 
 	sharedInformers.Start(stop)

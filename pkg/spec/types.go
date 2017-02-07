@@ -112,6 +112,30 @@ type AddonSpec struct {
 	Args []string `json:"args,omitempty"`
 }
 
+// Release refers to compiled slug file versions
+type Release struct {
+	unversioned.TypeMeta `json:",inline"`
+	api.ObjectMeta       `json:"metadata,omitempty"`
+	Spec                 ReleaseSpec `json:"spec"`
+}
+
+// ReleaseSpec holds specification parameters of a release
+type ReleaseSpec struct {
+	// The URL of the git remote server to download the git revision tarball
+	GitRemote     string `json:"gitRemote"`
+	GitRevision   string `json:"gitRevision"`
+	GitRepository string `json:"gitRepository"`
+	DeployRelease bool   `json:"deployRelease"`
+	Token         string `json:"token"`
+}
+
+// ReleaseList is a list of Release
+type ReleaseList struct {
+	unversioned.TypeMeta `json:",inline"`
+	unversioned.ListMeta `json:"metadata,omitempty"`
+	Items                []Release `json:"items"`
+}
+
 // User identifies an user on the platform
 type User struct {
 	ID           string `json:"id"`

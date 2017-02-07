@@ -12,6 +12,7 @@ type CoreInterface interface {
 	AddonGetter
 	ServicePlanGetter
 	ServicePlanStatusGetter
+	ReleaseGetter
 }
 
 // CoreClient is used to interact with features provided by the Core group.
@@ -38,9 +39,14 @@ func (c *CoreClient) ServicePlan(namespace string) ServicePlanInterface {
 	return newServicePlan(c, namespace)
 }
 
-// Addon generates a new client to communnicate with Addon resources
+// Addon generates a new client to communicate with Addon resources
 func (c *CoreClient) Addon(namespace string) AddonInterface {
 	return newAddon(c, namespace)
+}
+
+// Release generates a new client to communicate with Release resources
+func (c *CoreClient) Release(namespace string) ReleaseInterface {
+	return newRelease(c, namespace)
 }
 
 func newServicePlanStatus(c *CoreClient, namespace string) *servicePlanStatus {
@@ -75,6 +81,18 @@ func newAddon(c *CoreClient, namespace string) *addon {
 			Name:       "addons",
 			Namespaced: true,
 			Kind:       "Addon",
+		},
+	}
+}
+
+func newRelease(c *CoreClient, namespace string) *release {
+	return &release{
+		client:    c.RESTClient(),
+		namespace: namespace,
+		resource: &unversioned.APIResource{
+			Name:       "releases",
+			Namespaced: true,
+			Kind:       "release",
 		},
 	}
 }
