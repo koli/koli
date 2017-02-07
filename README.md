@@ -3,7 +3,8 @@
 Koli it's a Plataform as Service (PaaS) built on top of Kubernetes, providing tools
 that enables easy management and deployment of applications.
 
-**Project Status:** Alpha
+*__Note__: This project is in __alpha status__ and is It is subject to architectural changes.
+We will change or remove this notice when development status changes.*
 
 ## Development
 
