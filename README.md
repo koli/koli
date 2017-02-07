@@ -6,14 +6,9 @@ that enables easy management and deployment of applications.
 *__Note__: This project is in __alpha status__ and is It is subject to architectural changes.
 We will change or remove this notice when development status changes.*
 
-## Development
-
-> The `vendor` folder in kubernetes `k8s.io/kubernetes/vendor` must be purged, otherwise
-> it will bump into this [problem](https://github.com/golang/go/issues/12432)
-
 TODO
 
-## Quick Start / MacOS Only
+## Quick Start / MacOS Only - (Deprecated)
 
 - Install [kbox](https://github.com/kolihub/kbox)
 - Install [kubectl](https://storage.googleapis.com/kubernetes-release/release/v1.4.3/bin/linux/amd64/kubectl)
@@ -65,25 +60,4 @@ koli create addon redis
 koli create links redis
 (...)
 ```
-
-
-- Creating or updating a new deployment with the annotation `kolihub.io/build=true` will create a new release
-  - The release will have the same annotation telling to start a new build
-  - When the slugbuild is created the resource is updated with the annotation `kolihub.io/build=false` to deactivate the build
-- Creating or updating a new deployment with the annotation `kolihub.io/build=true,kolihub.io/buildrelease=<RELEASE-NAME>` will rebuild the release
-- The release could be controlled individually by using the same annotations
-  > If the annotation `kolihub.io/deployrelease=true` is set, make sure to ensure that the deployment exists.
-
-- dry-run the build (doesn't upload to object store)
-- a build is triggered when the spec is `build=true`
-- a new release is created when the deployment specifies a release name that doesn't exists
-
-
-Deploy build parameters
-
-- gitrevision=sha-1
-- gitcommitmsg=""
-- gitbranch
-- gitremote
-- deploy=true|false
 
