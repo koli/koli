@@ -44,7 +44,10 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 		&ServicePlanList{},
 		&ServicePlanStatus{},
 		&ServicePlanStatusList{},
+		&Release{},
+		&ReleaseList{},
 		&api.ListOptions{},
+		&api.DeleteOptions{},
 	)
 	return nil
 }
