@@ -1,3 +1,19 @@
+# v0.4.0-alpha
+
+## Features
+
+- Application release concept [#73](https://github.com/kolihub/koli/issues/73)
+  - Builder Controller [#74](https://github.com/kolihub/koli/issues/74)
+  - Release Controller [#73](https://github.com/kolihub/koli/issues/73)
+  - Deployer Controller [#61](https://github.com/kolihub/koli/issues/61)
+
+## Improvements
+
+- Expiration of releases on deploy
+- Deploy after building apps
+- Remove rebuilding releases, resources must be immutable
+- Add build revisions
+
 # v0.3.0-alpha
 
 ## Features
