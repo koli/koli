@@ -3,6 +3,7 @@ package spec
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/rbac"
@@ -10,7 +11,10 @@ import (
 )
 
 // KoliPrefixValue is used for creating annotations and labels
-const KoliPrefixValue = "kolihub.io"
+const (
+	KoliPrefixValue    = "kolihub.io"
+	ReleaseExpireAfter = 20
+)
 
 // PlatformRegisteredRoles contains all the cluster roles provisioned on the platform
 var PlatformRegisteredRoles []PlatformRole
@@ -120,4 +124,17 @@ func (r *ResourceList) RemoveUnregisteredResources() {
 			delete(*r, resourceName)
 		}
 	}
+}
+
+// Expired verifies if the creation time of the resource is expired.
+func (r *Release) Expired() bool {
+	expireAfter := r.Spec.ExpireAfter
+	if expireAfter == 0 {
+		expireAfter = ReleaseExpireAfter
+	}
+	createdAt := r.GetCreationTimestamp().Add(time.Duration(expireAfter) * time.Minute)
+	if createdAt.Before(time.Now().UTC()) {
+		return true
+	}
+	return false
 }

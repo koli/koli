@@ -1,3 +1,4 @@
 vendor
 .vscode
 build
+rootfs/usr/bin/
