@@ -14,7 +14,6 @@ import (
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/api/unversioned"
 	"k8s.io/kubernetes/pkg/client/cache"
-	"k8s.io/kubernetes/pkg/labels"
 	"k8s.io/kubernetes/pkg/util/wait"
 
 	extensions "k8s.io/kubernetes/pkg/apis/extensions"
@@ -23,7 +22,7 @@ import (
 )
 
 // keys required in a deployment annotation for creating a new release
-var requiredKeys = []string{"gitremote", "gitrepository"}
+var requiredKeys = []string{"gitremote", "gitrepository", "buildrevision"}
 
 // ReleaseController controller
 type ReleaseController struct {
@@ -69,17 +68,17 @@ func (r *ReleaseController) updateDeployment(o, n interface{}) {
 	// observedGeneration is intended as a way for an observer to determine how up to date the status reported by the primary controller
 	// for the resource is. No more, no less. That needs to be combined with the usual resourceVersion-based optimistic concurrency
 	// mechanism to ensure that controllers don't act upon stale data, and with leader-election sequence numbers in the case of HA.
-	if new.Spec.Paused && old.Generation != new.Generation {
-		glog.Infof("update-deployment(%d) - %s/%s - paused resource, queueing ...", statusGen, new.Namespace, new.Name)
+	if old.Generation != new.Generation {
+		glog.Infof("update-deployment(%d) - %s/%s - new generation, queueing ...", statusGen, new.Namespace, new.Name)
 		r.queue.add(new)
 	}
 	// updating a deployment triggers this function serveral times.
 	// a deployment must be queued only when every generation status is synchronized -
 	// when the generation and ObservedGeneration are equal for each resource object (new and old)
-	if old.Generation == new.Generation && old.Status.ObservedGeneration == statusGen {
-		glog.Infof("update-deployment(%d) - %s/%s - resource on sync, queueing ...", statusGen, new.Namespace, new.Name)
-		r.queue.add(new)
-	}
+	// if old.Generation == new.Generation && old.Status.ObservedGeneration == statusGen {
+	// 	glog.Infof("update-deployment(%d) - %s/%s - resource on sync, queueing ...", statusGen, new.Namespace, new.Name)
+	// 	r.queue.add(new)
+	// }
 }
 
 // Run the controller.
@@ -130,7 +129,7 @@ func (r *ReleaseController) reconcile(dp *extensions.Deployment) error {
 	logHeader := fmt.Sprintf("%s/%s", dp.Namespace, dp.Name)
 	_, err = platform.NewNamespace(dp.Namespace)
 	if err != nil {
-		glog.Infof("%s - noop, it's not a valid namespace", logHeader)
+		glog.V(4).Infof("%s - noop, it's not a valid namespace", logHeader)
 		return nil
 	}
 
@@ -141,43 +140,44 @@ func (r *ReleaseController) reconcile(dp *extensions.Deployment) error {
 
 	if !exists || dp.DeletionTimestamp != nil {
 		// TODO: delete from the remote object store (minio/s3/gcs...)
-		glog.Infof("%s - deployment doesn't exists or was marked for deletion, skipping ...", logHeader)
+		glog.V(4).Infof("%s - deployment doesn't exists or was marked for deletion, skipping ...", logHeader)
 		return nil
 	}
 
 	if dp.Annotations[spec.KoliPrefix("build")] != "true" {
-		glog.Infof("%s - noop, isn't a build action", logHeader)
+		glog.V(4).Infof("%s - noop, isn't a build action", logHeader)
 		return nil
 	}
-	// check if there's is a specific release for building it
-	releaseTarget := dp.Annotations[spec.KoliPrefix("buildrelease")]
-	if releaseTarget != "" {
-		releaseExists := false
-		cache.ListAll(r.releaseInf.GetStore(), labels.Everything(), func(obj interface{}) {
-			// TODO: check for nil
-			rel := obj.(*spec.Release)
-			if rel.Namespace == dp.Namespace && rel.Name == releaseTarget {
-				releaseExists = true
-			}
-		})
-		// The releases exists, trigger a build on it
-		if releaseExists {
-			glog.Infof("%s - activating the build for release '%s'", logHeader, releaseTarget)
-			activateBuild := activateBuildPayload(true)
-			_, err := r.clientset.Release(dp.Namespace).Patch(releaseTarget, api.StrategicMergePatchType, activateBuild)
-			if err == nil {
-				// We need to update the 'build' key to false, otherwise the build will be triggered again.
-				// TODO: Need other strategy for dealing with this kind of scenario
-				deactivateBuild := activateBuildPayload(false)
-				_, err = r.kclient.Extensions().Deployments(dp.Namespace).Patch(dp.Name, api.StrategicMergePatchType, deactivateBuild)
-				if err != nil {
-					return fmt.Errorf("%s - failed deactivating deployment: %s", logHeader, err)
-				}
-				return nil
-			}
-			return fmt.Errorf("%s - failed activating build for '%s'", logHeader, releaseTarget)
-		}
-	}
+	// EXPERIMENTAL: check if there's is a specific release for building it
+	// TODO: The release is immutable from an user perspective?
+	// releaseTarget := dp.Annotations[spec.KoliPrefix("buildrelease")]
+	// if releaseTarget != "" {
+	// 	releaseExists := false
+	// 	cache.ListAll(r.releaseInf.GetStore(), labels.Everything(), func(obj interface{}) {
+	// 		// TODO: check for nil
+	// 		rel := obj.(*spec.Release)
+	// 		if rel.Namespace == dp.Namespace && rel.Name == releaseTarget {
+	// 			releaseExists = true
+	// 		}
+	// 	})
+	// 	// The releases exists, trigger a build on it
+	// 	if releaseExists {
+	// 		glog.Infof("%s - activating the build for release '%s'", logHeader, releaseTarget)
+	// 		activateBuild := activateBuildPayload(true)
+	// 		_, err := r.clientset.Release(dp.Namespace).Patch(releaseTarget, api.StrategicMergePatchType, activateBuild)
+	// 		if err == nil {
+	// 			// We need to update the 'build' key to false, otherwise the build will be triggered again.
+	// 			// TODO: Need other strategy for dealing with this kind of scenario
+	// 			deactivateBuild := activateBuildPayload(false)
+	// 			_, err = r.kclient.Extensions().Deployments(dp.Namespace).Patch(dp.Name, api.StrategicMergePatchType, deactivateBuild)
+	// 			if err != nil {
+	// 				return fmt.Errorf("%s - failed deactivating deployment: %s", logHeader, err)
+	// 			}
+	// 			return nil
+	// 		}
+	// 		return fmt.Errorf("%s - failed activating build for '%s'", logHeader, releaseTarget)
+	// 	}
+	// }
 	// The release doesn't exists, create/build a new one!
 	if err := validateRequiredKeys(dp); err != nil {
 		return fmt.Errorf("%s - %s", logHeader, err)
@@ -188,11 +188,11 @@ func (r *ReleaseController) reconcile(dp *extensions.Deployment) error {
 		// TODO: add an event informing the problem!
 		return fmt.Errorf("%s - %s", logHeader, err)
 	}
-	dpVersion := fmt.Sprintf("%s-v%d", dp.Name, dp.Status.ObservedGeneration)
-	deployRelease := false
-	if dp.Annotations[spec.KoliPrefix("deployrelease")] == "true" {
+	dpRevision := fmt.Sprintf("%s-v%s", dp.Name, dp.Annotations[spec.KoliPrefix("buildrevision")])
+	autoDeploy := false
+	if dp.Annotations[spec.KoliPrefix("autodeploy")] == "true" {
 		// Deploy it after the build
-		deployRelease = true
+		autoDeploy = true
 	}
 	release := &spec.Release{
 		TypeMeta: unversioned.TypeMeta{
@@ -200,9 +200,8 @@ func (r *ReleaseController) reconcile(dp *extensions.Deployment) error {
 			APIVersion: spec.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: api.ObjectMeta{
-			Name:        dpVersion,
-			Namespace:   dp.Namespace,
-			Annotations: map[string]string{spec.KoliPrefix("build"): "true"},
+			Name:      dpRevision,
+			Namespace: dp.Namespace,
 			// Useful for filtering
 			Labels: map[string]string{
 				spec.KoliPrefix("deploy"):      dp.Name,
@@ -210,11 +209,13 @@ func (r *ReleaseController) reconcile(dp *extensions.Deployment) error {
 			},
 		},
 		Spec: spec.ReleaseSpec{
+			BuildRevision: dp.Annotations[spec.KoliPrefix("buildrevision")],
 			GitRemote:     dp.Annotations[spec.KoliPrefix("gitremote")],
 			GitRepository: dp.Annotations[spec.KoliPrefix("gitrepository")],
 			GitRevision:   gitSha.Full(),
-			DeployRelease: deployRelease,
-			Token:         dp.Annotations[spec.KoliPrefix("gittoken")],
+			AutoDeploy:    autoDeploy,
+			DeployName:    dp.Name,
+			Build:         true, // Always build a new release!
 		},
 	}
 	if _, err := r.clientset.Release(release.Namespace).Create(release); err != nil {
@@ -222,7 +223,6 @@ func (r *ReleaseController) reconcile(dp *extensions.Deployment) error {
 	}
 
 	glog.Infof("%s - new release created '%s'", logHeader, release.Name)
-
 	// We need to update the 'build' key to false, otherwise the build will be triggered again.
 	// TODO: Need other strategy for dealing with this kind of scenario
 	deactivateBuild := activateBuildPayload(false)

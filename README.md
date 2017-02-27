@@ -60,4 +60,3 @@ koli create addon redis
 koli create links redis
 (...)
 ```
-

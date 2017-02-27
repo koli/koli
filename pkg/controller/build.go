@@ -16,17 +16,13 @@ import (
 	"k8s.io/kubernetes/pkg/util/wait"
 
 	apierrors "k8s.io/kubernetes/pkg/api/errors"
-	"k8s.io/kubernetes/pkg/api/unversioned"
 	extensions "k8s.io/kubernetes/pkg/apis/extensions"
 	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
 	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
 )
 
 const (
-	tprReleases      = "release.platform.koli.io"
-	tarPath          = "TAR_PATH"
-	putPath          = "PUT_PATH"
-	slugbuilderImage = "quay.io/koli/slugbuilder"
+	tprReleases = "release.platform.koli.io"
 )
 
 // BuildController controller
@@ -35,15 +31,21 @@ type BuildController struct {
 	clientset  clientset.CoreInterface
 	releaseInf cache.SharedIndexInformer
 	queue      *queue
+	config     *Config
 }
 
 // NewBuildController creates a new BuilderController
-func NewBuildController(releaseInf cache.SharedIndexInformer, sysClient clientset.CoreInterface, kclient kclientset.Interface) *BuildController {
+func NewBuildController(
+	config *Config,
+	releaseInf cache.SharedIndexInformer,
+	sysClient clientset.CoreInterface,
+	kclient kclientset.Interface) *BuildController {
 	b := &BuildController{
 		kclient:    kclient,
 		clientset:  sysClient,
 		releaseInf: releaseInf,
 		queue:      newQueue(200),
+		config:     config,
 	}
 
 	b.releaseInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
@@ -125,7 +127,7 @@ func (b *BuildController) reconcile(release *spec.Release) error {
 	logHeader := fmt.Sprintf("%s/%s", release.Namespace, release.Name)
 	pns, err := platform.NewNamespace(release.Namespace)
 	if err != nil {
-		glog.Infof("%s - noop, it's not a valid namespace", logHeader)
+		glog.V(4).Infof("%s - noop, it's not a valid namespace", logHeader)
 		return nil
 	}
 
@@ -136,11 +138,11 @@ func (b *BuildController) reconcile(release *spec.Release) error {
 
 	if !exists || release.DeletionTimestamp != nil {
 		// TODO: delete from the remote object store (minio/s3/gcs...)
-		glog.Infof("%s - release doesn't exists or was marked for deletion, skipping ...", logHeader)
+		glog.V(4).Infof("%s - release doesn't exists or was marked for deletion, skipping ...", logHeader)
 		return nil
 	}
-	if release.Annotations[spec.KoliPrefix("build")] != "true" {
-		glog.Infof("%s - noop, isn't a build action", logHeader)
+	if !release.Spec.Build {
+		glog.V(4).Infof("%s - noop, isn't a build action", logHeader)
 		return nil
 	}
 
@@ -149,14 +151,10 @@ func (b *BuildController) reconcile(release *spec.Release) error {
 		// TODO: add an event informing the problem!
 		return fmt.Errorf("%s - %s", logHeader, err)
 	}
-	info := koliutil.NewSlugBuilderInfo(pns, release.Spec.GitRepository, gitSha)
-	sbPodName := fmt.Sprintf("sb-%s-%s", release.Name, release.ResourceVersion)
-	// TODO send to slugbuilderPod
-	buildLogFile := fmt.Sprintf("build-%s.log", release.ResourceVersion)
-	_ = buildLogFile
-	// TODO: set the token to download the tarball from the remote
-	// TODO: if the download is local then pass the local token (all repositories are private)
-	pod := slugbuilderPod(release, gitSha, info)
+
+	info := koliutil.NewSlugBuilderInfo(pns.GetNamespace(), release.Spec.DeployName, gitSha)
+	sbPodName := fmt.Sprintf("sb-%s", release.Name)
+	pod := slugbuilderPod(b.config, release, gitSha, info)
 	_, err = b.kclient.Core().Pods(release.Namespace).Create(pod)
 	if err != nil {
 		// TODO: add an event informing the problem!
@@ -169,12 +167,12 @@ func (b *BuildController) reconcile(release *spec.Release) error {
 	if err != nil {
 		return fmt.Errorf("%s - failed deep copying release: %s", logHeader, err)
 	}
-	// releaseCopy.SetLabels(map[string]string{spec.KoliPrefix("type"): "slugbuild"})
-	releaseCopy.SetAnnotations(map[string]string{spec.KoliPrefix("build"): "false"})
-	releaseCopy.TypeMeta = unversioned.TypeMeta{
-		Kind:       "Release",
-		APIVersion: spec.SchemeGroupVersion.String(),
-	}
+	// a build has started for this release, disable it!
+	releaseCopy.Spec.Build = false
+	// releaseCopy.TypeMeta = unversioned.TypeMeta{
+	// 	Kind:       "Release",
+	// 	APIVersion: spec.SchemeGroupVersion.String(),
+	// }
 
 	_, err = b.clientset.Release(releaseCopy.Namespace).Update(releaseCopy)
 	if err != nil {
@@ -208,31 +206,33 @@ func CreateReleaseTPRs(host string, kclient kclientset.Interface) error {
 	return watch3PRs(host, "/apis/platform.koli.io/v1alpha1/releases", kclient)
 }
 
-func slugbuilderPod(rel *spec.Release, gitSha *koliutil.SHA, info *koliutil.SlugBuilderInfo) *api.Pod {
+func slugbuilderPod(cfg *Config, rel *spec.Release, gitSha *koliutil.SHA, info *koliutil.SlugBuilderInfo) *api.Pod {
 	// TODO: get from controller startup config
 	env := map[string]interface{}{
-		"BUILDER_STORAGE":   "minio",
-		"ACCESS_KEY":        "8TZRY2JRWMPT6UMXR6I5",
-		"ACCESS_SECRET_KEY": "gbstrOvotMMcg2sMfGUhA5a6Et/EI5ALtIHsobYk",
-		"BUCKET_NAME":       "gaia",
-		"S3_HOST":           "192.168.64.2",
-		"S3_PORT":           "9000",
-		"DRY_RUN":           "FALSE",
+		"BUILDER_STORAGE":   cfg.ObjectStorageType,
+		"ACCESS_KEY":        cfg.ObjectStorageAccessKey,
+		"ACCESS_SECRET_KEY": cfg.ObjectStorageSecretKey,
+		"BUCKET_NAME":       cfg.ClusterName,
+		"S3_HOST":           cfg.ObjectStorageHost,
+		"S3_PORT":           cfg.ObjectStoragePort,
+		"GITREMOTE":         rel.Spec.GitRemote,
+		"GITREVISION":       rel.Spec.GitRevision,
+	}
+	if cfg.DebugBuild {
+		env["DEBUG"] = "TRUE"
 	}
 	pod := podResource(rel, gitSha, env)
 
 	// Slugbuilder
-	pod.Spec.Containers[0].Image = slugbuilderImage
+	pod.Spec.Containers[0].Image = cfg.SlugBuildImage
 	pod.Spec.Containers[0].Name = rel.Name
-	// pod.Spec.Containers[0].Name = podName
 
-	addEnvToContainer(pod, tarPath, info.TarKey(), 0)
-	addEnvToContainer(pod, putPath, info.PushKey(), 0)
+	addEnvToContainer(pod, "PUT_PATH", info.PushKey(), 0)
 	return &pod
 }
 
 func podResource(rel *spec.Release, gitSha *koliutil.SHA, env map[string]interface{}) api.Pod {
-	sbPodName := fmt.Sprintf("sb-%s-%s", rel.Name, rel.ResourceVersion)
+	sbPodName := fmt.Sprintf("sb-%s", rel.Name)
 	pod := api.Pod{
 		Spec: api.PodSpec{
 			RestartPolicy: api.RestartPolicyNever,
@@ -246,14 +246,15 @@ func podResource(rel *spec.Release, gitSha *koliutil.SHA, env map[string]interfa
 			Name:      sbPodName,
 			Namespace: rel.Namespace,
 			Annotations: map[string]string{
-				spec.KoliPrefix("gitfullsha"):  gitSha.Full(),
+				spec.KoliPrefix("gitfullrev"):  gitSha.Full(),
 				spec.KoliPrefix("releasename"): rel.Name,
 			},
 			Labels: map[string]string{
 				// TODO: hard-coded
-				spec.KoliPrefix("deployrelease"): "true",
-				spec.KoliPrefix("gitsha"):        gitSha.Short(),
+				spec.KoliPrefix("autodeploy"):    "true",
 				spec.KoliPrefix("type"):          "slugbuild",
+				spec.KoliPrefix("gitrevision"):   gitSha.Short(),
+				spec.KoliPrefix("buildrevision"): rel.Spec.BuildRevision,
 			},
 		},
 	}
@@ -268,9 +269,6 @@ func podResource(rel *spec.Release, gitSha *koliutil.SHA, env map[string]interfa
 			}
 		}
 	}
-	// Debug the output of the slufbuild pod
-	addEnvToContainer(pod, "DEBUG", "1", 0)
-
 	return pod
 }
 

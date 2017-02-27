@@ -125,8 +125,11 @@ type ReleaseSpec struct {
 	GitRemote     string `json:"gitRemote"`
 	GitRevision   string `json:"gitRevision"`
 	GitRepository string `json:"gitRepository"`
-	DeployRelease bool   `json:"deployRelease"`
-	Token         string `json:"token"`
+	BuildRevision string `json:"buildRevision"`
+	AutoDeploy    bool   `json:"autoDeploy"`
+	ExpireAfter   int32  `json:"expireAfter"`
+	DeployName    string `json:"deployName"`
+	Build         bool   `json:"build"`
 }
 
 // ReleaseList is a list of Release
