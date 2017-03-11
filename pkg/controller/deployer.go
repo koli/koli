@@ -2,7 +2,6 @@ package controller
 
 import (
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/golang/glog"
@@ -209,17 +208,11 @@ func (d *DeployerController) deploySlug(release *spec.Release) error {
 	if err != nil {
 		return fmt.Errorf("wrong sha: %s", err)
 	}
-	info := koliutil.NewSlugBuilderInfo(dpCopy.Namespace, dpCopy.Name, gitSha)
-	dpCopy.Spec.Template.Spec.Volumes = []api.Volume{
-		{
-			Name: "objectstorage-keyfile",
-			VolumeSource: api.VolumeSource{
-				Secret: &api.SecretVolumeSource{
-					SecretName: "objectstorage-keyfile",
-				},
-			},
-		},
-	}
+	info := koliutil.NewSlugBuilderInfo(
+		dpCopy.Namespace,
+		dpCopy.Name,
+		platform.GitReleasesPathPrefix,
+		gitSha)
 	c := dpCopy.Spec.Template.Spec.Containers
 	// TODO: hard-coded
 	c[0].Ports = []api.ContainerPort{
@@ -229,45 +222,17 @@ func (d *DeployerController) deploySlug(release *spec.Release) error {
 			Protocol:      api.ProtocolTCP,
 		},
 	}
-	// TODO: hard-coded, it must come from Procfile
-	c[0].Args = []string{"start", "web"}
+	c[0].Args = []string{"start", "web"} // TODO: hard-coded, it must come from Procfile
 	c[0].Image = d.config.SlugRunnerImage
 	c[0].Name = dpCopy.Name
-	c[0].VolumeMounts = []api.VolumeMount{
-		{
-			Name:      "objectstorage-keyfile",
-			ReadOnly:  true,
-			MountPath: "/var/run/secrets/koli/objectstore/creds/",
-		},
-	}
 	c[0].Env = []api.EnvVar{
 		{
 			Name:  "SLUG_URL",
-			Value: info.TarKey(),
+			Value: fmt.Sprintf("%s/%s", d.config.GitReleaseHost, info.TarKey()),
 		},
 		{
-			Name:  "BUILDER_STORAGE",
-			Value: d.config.ObjectStorageType,
-		},
-		{
-			Name:  "S3_HOST",
-			Value: d.config.ObjectStorageHost,
-		},
-		{
-			Name:  "S3_PORT",
-			Value: strconv.Itoa(d.config.ObjectStoragePort),
-		},
-		{
-			Name:  "ACCESS_KEY_FILE",
-			Value: "/var/run/secrets/koli/objectstore/creds/accesskey",
-		},
-		{
-			Name:  "ACCESS_SECRET_FILE",
-			Value: "/var/run/secrets/koli/objectstore/creds/secretkey",
-		},
-		{
-			Name:  "BUCKET_FILE",
-			Value: "/var/run/secrets/koli/objectstore/creds/bucket",
+			Name:  "AUTH_TOKEN",
+			Value: release.Spec.AuthToken,
 		},
 		{
 			Name:  "DEBUG",

@@ -12,4 +12,8 @@ const (
 	// BrokerSystemCustomer is the portion name of a system namespace of the broker.
 	// E.g.: [namespace]-org-[org]
 	BrokerSystemCustomer = "org"
+	// GitRepositoryPathPrefix is used to construct the URL path of the repositories
+	GitRepositoryPathPrefix = "repos"
+	// GitReleasesPathPrefix is used to construct the URL path of the releases
+	GitReleasesPathPrefix = "releases"
 )

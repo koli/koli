@@ -130,6 +130,7 @@ type ReleaseSpec struct {
 	ExpireAfter   int32  `json:"expireAfter"`
 	DeployName    string `json:"deployName"`
 	Build         bool   `json:"build"`
+	AuthToken     string `json:"auth_token"` // expirable token
 }
 
 // ReleaseList is a list of Release
