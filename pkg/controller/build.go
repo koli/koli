@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"path/filepath"
 	"time"
 
 	"github.com/golang/glog"
@@ -152,9 +153,16 @@ func (b *BuildController) reconcile(release *spec.Release) error {
 		return fmt.Errorf("%s - %s", logHeader, err)
 	}
 
-	info := koliutil.NewSlugBuilderInfo(pns.GetNamespace(), release.Spec.DeployName, gitSha)
+	info := koliutil.NewSlugBuilderInfo(
+		pns.GetNamespace(),
+		release.Spec.DeployName,
+		platform.GitReleasesPathPrefix,
+		gitSha)
 	sbPodName := fmt.Sprintf("sb-%s", release.Name)
-	pod := slugbuilderPod(b.config, release, gitSha, info)
+	pod, err := slugbuilderPod(b.config, release, gitSha, info)
+	if err != nil {
+		return fmt.Errorf("%s - failed creating slugbuild pod: %s", logHeader, err)
+	}
 	_, err = b.kclient.Core().Pods(release.Namespace).Create(pod)
 	if err != nil {
 		// TODO: add an event informing the problem!
@@ -206,17 +214,20 @@ func CreateReleaseTPRs(host string, kclient kclientset.Interface) error {
 	return watch3PRs(host, "/apis/platform.koli.io/v1alpha1/releases", kclient)
 }
 
-func slugbuilderPod(cfg *Config, rel *spec.Release, gitSha *koliutil.SHA, info *koliutil.SlugBuilderInfo) *api.Pod {
-	// TODO: get from controller startup config
+func slugbuilderPod(cfg *Config, rel *spec.Release, gitSha *koliutil.SHA, info *koliutil.SlugBuilderInfo) (*api.Pod, error) {
+	gitCloneURL, err := rel.GitCloneURL()
+	if err != nil {
+		return nil, err
+	}
+	urlPath := filepath.Join(
+		rel.Spec.GitRepository,
+		platform.GitReleasesPathPrefix,
+		rel.Spec.GitRevision)
 	env := map[string]interface{}{
-		"BUILDER_STORAGE":   cfg.ObjectStorageType,
-		"ACCESS_KEY":        cfg.ObjectStorageAccessKey,
-		"ACCESS_SECRET_KEY": cfg.ObjectStorageSecretKey,
-		"BUCKET_NAME":       cfg.ClusterName,
-		"S3_HOST":           cfg.ObjectStorageHost,
-		"S3_PORT":           cfg.ObjectStoragePort,
-		"GITREMOTE":         rel.Spec.GitRemote,
-		"GITREVISION":       rel.Spec.GitRevision,
+		"GIT_CLONE_URL":   gitCloneURL,
+		"GIT_RELEASE_URL": fmt.Sprintf("%s/%s", cfg.GitReleaseHost, urlPath),
+		"GIT_REVISION":    rel.Spec.GitRevision,
+		"AUTH_TOKEN":      rel.Spec.AuthToken,
 	}
 	if cfg.DebugBuild {
 		env["DEBUG"] = "TRUE"
@@ -227,8 +238,8 @@ func slugbuilderPod(cfg *Config, rel *spec.Release, gitSha *koliutil.SHA, info *
 	pod.Spec.Containers[0].Image = cfg.SlugBuildImage
 	pod.Spec.Containers[0].Name = rel.Name
 
-	addEnvToContainer(pod, "PUT_PATH", info.PushKey(), 0)
-	return &pod
+	// addEnvToContainer(pod,a "PUT_PATH", info.PushKey(), 0)
+	return &pod, nil
 }
 
 func podResource(rel *spec.Release, gitSha *koliutil.SHA, env map[string]interface{}) api.Pod {

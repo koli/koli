@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"net/url"
+
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/apis/rbac"
 	"k8s.io/kubernetes/pkg/labels"
@@ -137,4 +139,15 @@ func (r *Release) Expired() bool {
 		return true
 	}
 	return false
+}
+
+// GitCloneURL constructs the remote clone URL for the given release
+func (r *Release) GitCloneURL() (string, error) {
+	u, err := url.Parse(r.Spec.GitRemote)
+	if err != nil {
+		return "", fmt.Errorf("failed parsing url: %s", err)
+	}
+	// <SCHEME>://<USER>:<USER-CREDENTIALS>@<REMOTE-URL>/<OWNER>/<REPO>
+	gitRemoteURL := fmt.Sprintf("%s://:%s@%s/%s", u.Scheme, r.Spec.AuthToken, u.Host, r.Spec.GitRepository)
+	return gitRemoteURL + ".git", nil
 }

@@ -212,6 +212,7 @@ func (r *ReleaseController) reconcile(dp *extensions.Deployment) error {
 			BuildRevision: dp.Annotations[spec.KoliPrefix("buildrevision")],
 			GitRemote:     dp.Annotations[spec.KoliPrefix("gitremote")],
 			GitRepository: dp.Annotations[spec.KoliPrefix("gitrepository")],
+			AuthToken:     dp.Annotations[spec.KoliPrefix("authtoken")],
 			GitRevision:   gitSha.Full(),
 			AutoDeploy:    autoDeploy,
 			DeployName:    dp.Name,
