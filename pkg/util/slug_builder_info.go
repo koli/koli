@@ -12,7 +12,7 @@ type SlugBuilderInfo struct {
 // NewSlugBuilderInfo creates and populates a new SlugBuilderInfo based on the given data
 func NewSlugBuilderInfo(namespace, deployName, prefix string, sha *SHA) *SlugBuilderInfo {
 	// [namespace]-[customer]-[org]/[deployname]/[prefix]/[full-git-rev]/slug.tgz
-	basePath := filepath.Join(namespace, deployName, prefix, sha.Full())
+	basePath := filepath.Join(prefix, namespace, deployName, sha.Full())
 	tarKey := filepath.Join(basePath, "slug.tgz")
 	// this is where the deployer controller tells slugrunner to download the slug from,
 	// so we have to tell slugbuilder to upload it to here

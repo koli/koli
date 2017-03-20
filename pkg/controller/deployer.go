@@ -10,7 +10,6 @@ import (
 	"kolihub.io/koli/pkg/platform"
 	"kolihub.io/koli/pkg/spec"
 	specutil "kolihub.io/koli/pkg/spec/util"
-	koliutil "kolihub.io/koli/pkg/util"
 
 	"k8s.io/kubernetes/pkg/api"
 	"k8s.io/kubernetes/pkg/client/cache"
@@ -204,15 +203,6 @@ func (d *DeployerController) deploySlug(release *spec.Release) error {
 		return fmt.Errorf("failed deep copying: %s", err)
 	}
 	dpCopy.Spec.Paused = false
-	gitSha, err := koliutil.NewSha(release.Spec.GitRevision)
-	if err != nil {
-		return fmt.Errorf("wrong sha: %s", err)
-	}
-	info := koliutil.NewSlugBuilderInfo(
-		dpCopy.Namespace,
-		dpCopy.Name,
-		platform.GitReleasesPathPrefix,
-		gitSha)
 	c := dpCopy.Spec.Template.Spec.Containers
 	// TODO: hard-coded
 	c[0].Ports = []api.ContainerPort{
@@ -225,10 +215,11 @@ func (d *DeployerController) deploySlug(release *spec.Release) error {
 	c[0].Args = []string{"start", "web"} // TODO: hard-coded, it must come from Procfile
 	c[0].Image = d.config.SlugRunnerImage
 	c[0].Name = dpCopy.Name
+	slugURL := release.GitReleaseURL(d.config.GitReleaseHost) + "/slug.tgz"
 	c[0].Env = []api.EnvVar{
 		{
 			Name:  "SLUG_URL",
-			Value: fmt.Sprintf("%s/%s", d.config.GitReleaseHost, info.TarKey()),
+			Value: slugURL,
 		},
 		{
 			Name:  "AUTH_TOKEN",
