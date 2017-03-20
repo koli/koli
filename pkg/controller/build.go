@@ -2,7 +2,6 @@ package controller
 
 import (
 	"fmt"
-	"path/filepath"
 	"time"
 
 	"github.com/golang/glog"
@@ -215,17 +214,17 @@ func CreateReleaseTPRs(host string, kclient kclientset.Interface) error {
 }
 
 func slugbuilderPod(cfg *Config, rel *spec.Release, gitSha *koliutil.SHA, info *koliutil.SlugBuilderInfo) (*api.Pod, error) {
-	gitCloneURL, err := rel.GitCloneURL()
-	if err != nil {
-		return nil, err
+	gitCloneURL := rel.Spec.GitRemote
+	if !rel.IsGitHubSource() {
+		var err error
+		gitCloneURL, err = rel.GitCloneURL()
+		if err != nil {
+			return nil, err
+		}
 	}
-	urlPath := filepath.Join(
-		rel.Spec.GitRepository,
-		platform.GitReleasesPathPrefix,
-		rel.Spec.GitRevision)
 	env := map[string]interface{}{
 		"GIT_CLONE_URL":   gitCloneURL,
-		"GIT_RELEASE_URL": fmt.Sprintf("%s/%s", cfg.GitReleaseHost, urlPath),
+		"GIT_RELEASE_URL": rel.GitReleaseURL(cfg.GitReleaseHost),
 		"GIT_REVISION":    rel.Spec.GitRevision,
 		"AUTH_TOKEN":      rel.Spec.AuthToken,
 	}

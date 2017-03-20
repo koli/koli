@@ -2,6 +2,7 @@ package spec
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -141,13 +142,27 @@ func (r *Release) Expired() bool {
 	return false
 }
 
+// IsGitHubSource check if the source of the build is from github
+func (r *Release) IsGitHubSource() bool {
+	return r.Spec.Source == GitHubSource
+}
+
 // GitCloneURL constructs the remote clone URL for the given release
 func (r *Release) GitCloneURL() (string, error) {
 	u, err := url.Parse(r.Spec.GitRemote)
 	if err != nil {
 		return "", fmt.Errorf("failed parsing url: %s", err)
 	}
-	// <SCHEME>://<USER>:<USER-CREDENTIALS>@<REMOTE-URL>/<OWNER>/<REPO>
-	gitRemoteURL := fmt.Sprintf("%s://:%s@%s/%s", u.Scheme, r.Spec.AuthToken, u.Host, r.Spec.GitRepository)
+	gitRemoteURL := fmt.Sprintf("%s://jwt:%s@%s/%s", u.Scheme, r.Spec.AuthToken, u.Host, r.Spec.GitRepository)
 	return gitRemoteURL + ".git", nil
+}
+
+// GitReleaseURL constructs the URL where the release must be stored
+func (r *Release) GitReleaseURL(host string) string {
+	repository := r.Spec.GitRepository
+	if r.IsGitHubSource() {
+		repository = filepath.Join(r.GetNamespace(), r.Spec.DeployName)
+	}
+	urlPath := filepath.Join("releases", repository, r.Spec.GitRevision)
+	return fmt.Sprintf("%s/%s", host, urlPath)
 }

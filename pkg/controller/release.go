@@ -194,6 +194,7 @@ func (r *ReleaseController) reconcile(dp *extensions.Deployment) error {
 		// Deploy it after the build
 		autoDeploy = true
 	}
+	sourceType := spec.SourceType(dp.Annotations[spec.KoliPrefix("source")])
 	release := &spec.Release{
 		TypeMeta: unversioned.TypeMeta{
 			Kind:       "Release",
@@ -217,6 +218,7 @@ func (r *ReleaseController) reconcile(dp *extensions.Deployment) error {
 			AutoDeploy:    autoDeploy,
 			DeployName:    dp.Name,
 			Build:         true, // Always build a new release!
+			Source:        sourceType,
 		},
 	}
 	if _, err := r.clientset.Release(release.Namespace).Create(release); err != nil {
