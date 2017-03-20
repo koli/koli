@@ -1,3 +1,14 @@
+# v0.5.0-alpha
+
+## Features
+
+- GitHub webhook integration [#77](https://github.com/kolihub/koli/issues/77)
+- Centralize upload/download slugs to gitstep [#88](https://github.com/kolihub/koli/issues/88)
+
+## Improvements
+
+- Cleanup slug after build [#87](https://github.com/kolihub/koli/issues/87)
+
 # v0.4.0-alpha
 
 ## Features
