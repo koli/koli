@@ -1,9 +1,10 @@
 package platform
 
 import (
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/apis/rbac"
 	"kolihub.io/koli/pkg/spec"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	rbac "k8s.io/client-go/pkg/apis/rbac/v1beta1"
 )
 
 var (
@@ -24,23 +25,23 @@ var (
 func GetRoles() []*rbac.ClusterRole {
 	return []*rbac.ClusterRole{
 		{
-			ObjectMeta: api.ObjectMeta{Name: string(spec.RoleExecAllow)},
+			ObjectMeta: metav1.ObjectMeta{Name: string(spec.RoleExecAllow)},
 			Rules:      GetExecRule(),
 		},
 		{
-			ObjectMeta: api.ObjectMeta{Name: string(spec.RolePortForwardAllow)},
+			ObjectMeta: metav1.ObjectMeta{Name: string(spec.RolePortForwardAllow)},
 			Rules:      GetPortForwardRule(),
 		},
 		{
-			ObjectMeta: api.ObjectMeta{Name: string(spec.RoleAutoScaleAllow)},
+			ObjectMeta: metav1.ObjectMeta{Name: string(spec.RoleAutoScaleAllow)},
 			Rules:      GetAutoScaleRule(),
 		},
 		{
-			ObjectMeta: api.ObjectMeta{Name: string(spec.RoleAttachAllow)},
+			ObjectMeta: metav1.ObjectMeta{Name: string(spec.RoleAttachAllow)},
 			Rules:      GetAttachRule(),
 		},
 		{
-			ObjectMeta: api.ObjectMeta{Name: string(spec.RoleAddonManagement)},
+			ObjectMeta: metav1.ObjectMeta{Name: string(spec.RoleAddonManagement)},
 			Rules:      GetAddonManagementRule(),
 		},
 	}
@@ -106,7 +107,7 @@ func GetPodManagementRule() []rbac.PolicyRule {
 func GetAddonManagementRule() []rbac.PolicyRule {
 	return []rbac.PolicyRule{
 		{
-			APIGroups: []string{"platform.koli.io/v1alpha1"},
+			APIGroups: []string{"platform.koli.io/v1"},
 			Resources: []string{"addons"},
 			Verbs:     []string{"get", "watch", "list", "create", "update", "delete"},
 		},

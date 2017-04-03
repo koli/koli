@@ -11,27 +11,24 @@ import (
 	specutil "kolihub.io/koli/pkg/spec/util"
 	koliutil "kolihub.io/koli/pkg/util"
 
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/client/cache"
-	"k8s.io/kubernetes/pkg/util/wait"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/pkg/api/v1"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 
-	apierrors "k8s.io/kubernetes/pkg/api/errors"
-	extensions "k8s.io/kubernetes/pkg/apis/extensions"
-	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
-	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
-)
-
-const (
-	tprReleases = "release.platform.koli.io"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 )
 
 // BuildController controller
 type BuildController struct {
-	kclient    kclientset.Interface
+	kclient    kubernetes.Interface
 	clientset  clientset.CoreInterface
 	releaseInf cache.SharedIndexInformer
-	queue      *queue
 	config     *Config
+
+	queue    *TaskQueue
+	recorder record.EventRecorder
 }
 
 // NewBuildController creates a new BuilderController
@@ -39,14 +36,16 @@ func NewBuildController(
 	config *Config,
 	releaseInf cache.SharedIndexInformer,
 	sysClient clientset.CoreInterface,
-	kclient kclientset.Interface) *BuildController {
+	kclient kubernetes.Interface) *BuildController {
+
 	b := &BuildController{
 		kclient:    kclient,
 		clientset:  sysClient,
 		releaseInf: releaseInf,
-		queue:      newQueue(200),
+		recorder:   newRecorder(kclient, "apps-controller"),
 		config:     config,
 	}
+	b.queue = NewTaskQueue(b.syncHandler)
 
 	b.releaseInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    b.addRelease,
@@ -59,7 +58,9 @@ func NewBuildController(
 func (b *BuildController) addRelease(obj interface{}) {
 	release := obj.(*spec.Release)
 	glog.Infof("add-release - %s/%s", release.Namespace, release.Name)
-	b.queue.add(release)
+
+	b.queue.Add(release)
+	// b.queue.add(release)
 }
 
 func (b *BuildController) updateRelease(o, n interface{}) {
@@ -70,13 +71,15 @@ func (b *BuildController) updateRelease(o, n interface{}) {
 	}
 
 	glog.Infof("update-release - %s/%s", new.Namespace, new.Name)
-	b.queue.add(new)
+	b.queue.Add(new)
+	// b.queue.add(new)
 }
 
 func (b *BuildController) deleteRelease(obj interface{}) {
 	release := obj.(*spec.Release)
 	glog.Infof("delete-release - %s/%s", release.Namespace, release.Name)
-	b.queue.add(release)
+	b.queue.Add(release)
+	// b.queue.add(release)
 }
 
 // Run the controller.
@@ -84,7 +87,7 @@ func (b *BuildController) Run(workers int, stopc <-chan struct{}) {
 	// don't let panics crash the process
 	defer utilruntime.HandleCrash()
 	// make sure the work queue is shutdown which will trigger workers to end
-	defer b.queue.close()
+	defer b.queue.shutdown()
 
 	glog.Info("Starting Build Controller...")
 
@@ -95,7 +98,8 @@ func (b *BuildController) Run(workers int, stopc <-chan struct{}) {
 	for i := 0; i < workers; i++ {
 		// runWorker will loop until "something bad" happens.
 		// The .Until will then rekick the worker after one second
-		go wait.Until(b.runWorker, time.Second, stopc)
+		go b.queue.run(time.Second, stopc)
+		// go wait.Until(b.runWorker, time.Second, stopc)
 	}
 
 	// wait until we're told to stop
@@ -103,46 +107,27 @@ func (b *BuildController) Run(workers int, stopc <-chan struct{}) {
 	glog.Info("shutting down Build controller...")
 }
 
-// runWorker runs a worker thread that just dequeues items, processes them, and marks them done.
-// It enforces that the syncHandler is never invoked concurrently with the same key.
-func (b *BuildController) runWorker() {
-	for {
-		release, ok := b.queue.pop(&spec.Release{})
-		if !ok {
-			return
-		}
-
-		if err := b.reconcile(release.(*spec.Release)); err != nil {
-			utilruntime.HandleError(err)
-		}
-	}
-}
-
-func (b *BuildController) reconcile(release *spec.Release) error {
-	key, err := keyFunc(release)
+func (b *BuildController) syncHandler(key string) error {
+	obj, _, err := b.releaseInf.GetStore().GetByKey(key)
 	if err != nil {
 		return err
 	}
-
+	release := obj.(*spec.Release)
 	logHeader := fmt.Sprintf("%s/%s", release.Namespace, release.Name)
+
+	if release.DeletionTimestamp != nil {
+		// TODO: delete from the remote object store (minio/s3/gcs...)
+		glog.V(3).Infof("%s - release marked for deletion, skipping ...", logHeader)
+		return nil
+	}
 	pns, err := platform.NewNamespace(release.Namespace)
 	if err != nil {
-		glog.V(4).Infof("%s - noop, it's not a valid namespace", logHeader)
+		glog.V(3).Infof("%s - noop, it's not a valid namespace", logHeader)
 		return nil
 	}
 
-	_, exists, err := b.releaseInf.GetStore().GetByKey(key)
-	if err != nil {
-		return err
-	}
-
-	if !exists || release.DeletionTimestamp != nil {
-		// TODO: delete from the remote object store (minio/s3/gcs...)
-		glog.V(4).Infof("%s - release doesn't exists or was marked for deletion, skipping ...", logHeader)
-		return nil
-	}
 	if !release.Spec.Build {
-		glog.V(4).Infof("%s - noop, isn't a build action", logHeader)
+		glog.V(3).Infof("%s - noop, isn't a build action", logHeader)
 		return nil
 	}
 
@@ -188,32 +173,7 @@ func (b *BuildController) reconcile(release *spec.Release) error {
 	return nil
 }
 
-// CreateReleaseTPRs generates the third party resource required for interacting with releases
-func CreateReleaseTPRs(host string, kclient kclientset.Interface) error {
-	tprs := []*extensions.ThirdPartyResource{
-		{
-			ObjectMeta: api.ObjectMeta{
-				Name: tprReleases,
-			},
-			Versions: []extensions.APIVersion{
-				{Name: "v1alpha1"},
-			},
-			Description: "Application Releases",
-		},
-	}
-	tprClient := kclient.Extensions().ThirdPartyResources()
-	for _, tpr := range tprs {
-		if _, err := tprClient.Create(tpr); err != nil && !apierrors.IsAlreadyExists(err) {
-			return err
-		}
-		glog.Infof("Third Party Resource '%s' provisioned", tpr.Name)
-	}
-
-	// We have to wait for the TPRs to be ready. Otherwise the initial watch may fail.
-	return watch3PRs(host, "/apis/platform.koli.io/v1alpha1/releases", kclient)
-}
-
-func slugbuilderPod(cfg *Config, rel *spec.Release, gitSha *koliutil.SHA, info *koliutil.SlugBuilderInfo) (*api.Pod, error) {
+func slugbuilderPod(cfg *Config, rel *spec.Release, gitSha *koliutil.SHA, info *koliutil.SlugBuilderInfo) (*v1.Pod, error) {
 	gitCloneURL := rel.Spec.GitRemote
 	if !rel.IsGitHubSource() {
 		var err error
@@ -241,18 +201,18 @@ func slugbuilderPod(cfg *Config, rel *spec.Release, gitSha *koliutil.SHA, info *
 	return &pod, nil
 }
 
-func podResource(rel *spec.Release, gitSha *koliutil.SHA, env map[string]interface{}) api.Pod {
+func podResource(rel *spec.Release, gitSha *koliutil.SHA, env map[string]interface{}) v1.Pod {
 	sbPodName := fmt.Sprintf("sb-%s", rel.Name)
-	pod := api.Pod{
-		Spec: api.PodSpec{
-			RestartPolicy: api.RestartPolicyNever,
-			Containers: []api.Container{
+	pod := v1.Pod{
+		Spec: v1.PodSpec{
+			RestartPolicy: v1.RestartPolicyNever,
+			Containers: []v1.Container{
 				{
-					ImagePullPolicy: api.PullIfNotPresent,
+					ImagePullPolicy: v1.PullIfNotPresent,
 				},
 			},
 		},
-		ObjectMeta: api.ObjectMeta{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:      sbPodName,
 			Namespace: rel.Namespace,
 			Annotations: map[string]string{
@@ -272,7 +232,7 @@ func podResource(rel *spec.Release, gitSha *koliutil.SHA, env map[string]interfa
 	if len(pod.Spec.Containers) > 0 {
 		for k, v := range env {
 			for i := range pod.Spec.Containers {
-				pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, api.EnvVar{
+				pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{
 					Name:  k,
 					Value: fmt.Sprintf("%v", v),
 				})
@@ -282,9 +242,9 @@ func podResource(rel *spec.Release, gitSha *koliutil.SHA, env map[string]interfa
 	return pod
 }
 
-func addEnvToContainer(pod api.Pod, key, value string, index int) {
+func addEnvToContainer(pod v1.Pod, key, value string, index int) {
 	if len(pod.Spec.Containers) > 0 {
-		pod.Spec.Containers[index].Env = append(pod.Spec.Containers[index].Env, api.EnvVar{
+		pod.Spec.Containers[index].Env = append(pod.Spec.Containers[index].Env, v1.EnvVar{
 			Name:  key,
 			Value: value,
 		})

@@ -6,18 +6,20 @@ import (
 	"kolihub.io/koli/pkg/spec"
 
 	"k8s.io/kubernetes/pkg/api"
-	apps "k8s.io/kubernetes/pkg/apis/apps"
-	extensions "k8s.io/kubernetes/pkg/apis/extensions"
+
+	"k8s.io/client-go/pkg/api/v1"
+	v1beta1 "k8s.io/client-go/pkg/apis/apps/v1beta1"
+	extensions "k8s.io/client-go/pkg/apis/extensions/v1beta1"
 )
 
 // StatefulSetDeepCopy creates a deep-copy from a StatefulSet
 // https://github.com/kubernetes/kubernetes/blob/master/docs/devel/controllers.md
-func StatefulSetDeepCopy(petset *apps.StatefulSet) (*apps.StatefulSet, error) {
+func StatefulSetDeepCopy(petset *v1beta1.StatefulSet) (*v1beta1.StatefulSet, error) {
 	objCopy, err := api.Scheme.DeepCopy(petset)
 	if err != nil {
 		return nil, err
 	}
-	copied, ok := objCopy.(*apps.StatefulSet)
+	copied, ok := objCopy.(*v1beta1.StatefulSet)
 	if !ok {
 		return nil, fmt.Errorf("expected StatefulSet, got %#v", objCopy)
 	}
@@ -25,12 +27,12 @@ func StatefulSetDeepCopy(petset *apps.StatefulSet) (*apps.StatefulSet, error) {
 }
 
 // NamespaceDeepCopy creates a deep-copy from a Namespace
-func NamespaceDeepCopy(ns *api.Namespace) (*api.Namespace, error) {
+func NamespaceDeepCopy(ns *v1.Namespace) (*v1.Namespace, error) {
 	objCopy, err := api.Scheme.DeepCopy(ns)
 	if err != nil {
 		return nil, err
 	}
-	copied, ok := objCopy.(*api.Namespace)
+	copied, ok := objCopy.(*v1.Namespace)
 	if !ok {
 		return nil, fmt.Errorf("expected Namespace, got %#v", objCopy)
 	}
@@ -51,12 +53,12 @@ func DeploymentDeepCopy(d *extensions.Deployment) (*extensions.Deployment, error
 }
 
 // ServicePlanDeepCopy creates a deep-copy from the specified resource
-func ServicePlanDeepCopy(sp *spec.ServicePlan) (*spec.ServicePlan, error) {
+func ServicePlanDeepCopy(sp *spec.Plan) (*spec.Plan, error) {
 	objCopy, err := api.Scheme.DeepCopy(sp)
 	if err != nil {
 		return nil, err
 	}
-	copied, ok := objCopy.(*spec.ServicePlan)
+	copied, ok := objCopy.(*spec.Plan)
 	if !ok {
 		return nil, fmt.Errorf("expected Service Plan, got %#v", objCopy)
 	}

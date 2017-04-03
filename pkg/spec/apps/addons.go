@@ -5,22 +5,22 @@ import (
 
 	"kolihub.io/koli/pkg/spec"
 
-	"k8s.io/kubernetes/pkg/apis/apps"
-	"k8s.io/kubernetes/pkg/client/cache"
-	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
+	"k8s.io/client-go/kubernetes"
+	v1beta1 "k8s.io/client-go/pkg/apis/apps/v1beta1"
+	"k8s.io/client-go/tools/cache"
 )
 
 // AddonInterface represents the implementation of generic apps
 type AddonInterface interface {
 	CreateConfigMap() error
-	CreatePetSet(sp *spec.ServicePlan) error
-	UpdatePetSet(old *apps.StatefulSet, sp *spec.ServicePlan) error
+	CreatePetSet(sp *spec.Plan) error
+	UpdatePetSet(old *v1beta1.StatefulSet, sp *spec.Plan) error
 	DeleteApp() error
 	GetAddon() *spec.Addon
 }
 
 // GetType retrieves the type of the add-on
-func GetType(a *spec.Addon, c clientset.Interface, psetInf cache.SharedIndexInformer) (AddonInterface, error) {
+func GetType(a *spec.Addon, c kubernetes.Interface, psetInf cache.SharedIndexInformer) (AddonInterface, error) {
 	switch a.Spec.Type {
 	case "redis":
 		return &Redis{client: c, addon: a, psetInf: psetInf}, nil

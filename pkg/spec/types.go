@@ -1,33 +1,34 @@
 package spec
 
 import (
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/api/unversioned"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/pkg/api"
+	"k8s.io/client-go/pkg/api/v1"
 )
 
 // ResourceList is a set of (resource name, quantity) pairs.
-type ResourceList api.ResourceList
+type ResourceList v1.ResourceList
 
-// ServicePlan defines how resources could be managed and distributed
-type ServicePlan struct {
-	unversioned.TypeMeta `json:",inline"`
-	api.ObjectMeta       `json:"metadata,omitempty"`
+// Plan defines how resources could be managed and distributed
+type Plan struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
 
-	Spec ServicePlanSpec `json:"spec"`
+	Spec PlanSpec `json:"spec"`
 }
 
-// ServicePlanList is a list of ServicePlans
-type ServicePlanList struct {
-	unversioned.TypeMeta `json:",inline"`
-	unversioned.ListMeta `json:"metadata,omitempty"`
+// PlanList is a list of ServicePlans
+type PlanList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 
-	Items []ServicePlan `json:"items"`
+	Items []Plan `json:"items"`
 }
 
-// ServicePlanSpec holds specification parameters of an ServicePlan
-type ServicePlanSpec struct {
+// PlanSpec holds specification parameters of an Plan
+type PlanSpec struct {
 	// Compute Resources required by containers.
-	Resources api.ResourceRequirements `json:"resources,omitempty"`
+	Resources v1.ResourceRequirements `json:"resources,omitempty"`
 	// Hard is the set of desired hard limits for each named resource.
 	Hard  ResourceList   `json:"hard,omitempty"`
 	Roles []PlatformRole `json:"roles,omitempty"`
@@ -54,23 +55,6 @@ const (
 	RoleAddonManagement PlatformRole = "addon-management"
 )
 
-// ServicePlanStatus is information about the current status of a ServicePlan.
-type ServicePlanStatus struct {
-	unversioned.TypeMeta `json:",inline"`
-	api.ObjectMeta       `json:"metadata,omitempty"`
-
-	// Phase is the current lifecycle phase of the namespace.
-	Phase ServicePlanPhase `json:"phase"`
-}
-
-// ServicePlanStatusList is a list of ServicePlanStatus
-type ServicePlanStatusList struct {
-	unversioned.TypeMeta `json:",inline"`
-	unversioned.ListMeta `json:"metadata,omitempty"`
-
-	Items []ServicePlanStatus `json:"items"`
-}
-
 // ServicePlanPhase is the current lifecycle phase of the Service Plan.
 type ServicePlanPhase string
 
@@ -87,36 +71,36 @@ const (
 
 // Addon defines integration with external resources
 type Addon struct {
-	unversioned.TypeMeta `json:",inline"`
-	api.ObjectMeta       `json:"metadata,omitempty"`
-	Spec                 AddonSpec `json:"spec"`
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              AddonSpec `json:"spec"`
 }
 
 // AddonList is a list of Addons.
 type AddonList struct {
-	unversioned.TypeMeta `json:",inline"`
-	unversioned.ListMeta `json:"metadata,omitempty"`
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
 
 	Items []Addon `json:"items"`
 }
 
 // AddonSpec holds specification parameters of an addon
 type AddonSpec struct {
-	Type      string       `json:"type"`
-	BaseImage string       `json:"baseImage"`
-	Version   string       `json:"version"`
-	Replicas  int32        `json:"replicas"`
-	Port      int32        `json:"port"`
-	Env       []api.EnvVar `json:"env"`
+	Type      string      `json:"type"`
+	BaseImage string      `json:"baseImage"`
+	Version   string      `json:"version"`
+	Replicas  int32       `json:"replicas"`
+	Port      int32       `json:"port"`
+	Env       []v1.EnvVar `json:"env"`
 	// More info: http://releases.k8s.io/HEAD/docs/user-guide/containers.md#containers-and-commands
 	Args []string `json:"args,omitempty"`
 }
 
 // Release refers to compiled slug file versions
 type Release struct {
-	unversioned.TypeMeta `json:",inline"`
-	api.ObjectMeta       `json:"metadata,omitempty"`
-	Spec                 ReleaseSpec `json:"spec"`
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+	Spec              ReleaseSpec `json:"spec"`
 }
 
 // SourceType refers to the source of the build
@@ -146,9 +130,9 @@ type ReleaseSpec struct {
 
 // ReleaseList is a list of Release
 type ReleaseList struct {
-	unversioned.TypeMeta `json:",inline"`
-	unversioned.ListMeta `json:"metadata,omitempty"`
-	Items                []Release `json:"items"`
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+	Items           []Release `json:"items"`
 }
 
 // User identifies an user on the platform

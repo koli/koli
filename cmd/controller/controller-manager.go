@@ -18,9 +18,9 @@ import (
 
 	"encoding/json"
 
-	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
-	"k8s.io/kubernetes/pkg/labels"
-	"k8s.io/kubernetes/pkg/util/wait"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/client-go/kubernetes"
 )
 
 var cfg controller.Config
@@ -58,7 +58,7 @@ func startControllers(stop <-chan struct{}) error {
 	// if os.Getenv("SUPER_USER_TOKEN") == "" {
 	// 	return fmt.Errorf("SUPER_USER_TOKEN env not defined")
 	// }
-	client, err := kclientset.NewForConfig(kcfg)
+	client, err := kubernetes.NewForConfig(kcfg)
 	if err != nil {
 		return err
 	}
@@ -71,8 +71,7 @@ func startControllers(stop <-chan struct{}) error {
 	controller.CreatePlatformRoles(client)
 	// Create required third party resources
 	controller.CreateAddonTPRs(cfg.Host, client)
-	controller.CreateServicePlan3PRs(cfg.Host, client)
-	controller.CreateServicePlanStatus3PRs(cfg.Host, client)
+	controller.CreatePlan3PRs(cfg.Host, client)
 	controller.CreateReleaseTPRs(cfg.Host, client)
 
 	sysClient, err := clientset.NewSysRESTClient(kcfg)
@@ -83,21 +82,15 @@ func startControllers(stop <-chan struct{}) error {
 	sharedInformers := informers.NewSharedInformerFactory(client, 30*time.Second)
 
 	// TODO: should we use the same client instance??
-	go controller.NewAddonController(
-		sharedInformers.Addons().Informer(sysClient),
-		sharedInformers.PetSets().Informer(),
-		sharedInformers.ServicePlans().Informer(sysClient),
-		client,
-	).Run(1, wait.NeverStop)
+	// go controller.NewAddonController(
+	// 	sharedInformers.Addons().Informer(sysClient),
+	// 	sharedInformers.PetSets().Informer(),
+	// 	sharedInformers.ServicePlans().Informer(sysClient),
+	// 	client,
+	// ).Run(1, wait.NeverStop)
 
 	go controller.NewNamespaceController(
 		sharedInformers.Namespaces().Informer(),
-		sharedInformers.ServicePlans().Informer(sysClient),
-		client,
-		sysClient,
-	).Run(1, wait.NeverStop)
-
-	go controller.NewServicePlanController(
 		sharedInformers.ServicePlans().Informer(sysClient),
 		client,
 		sysClient,

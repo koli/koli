@@ -4,14 +4,13 @@ import (
 	"encoding/json"
 	"errors"
 
-	"github.com/golang/glog"
 	"kolihub.io/koli/pkg/spec"
 
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/api/unversioned"
-	"k8s.io/kubernetes/pkg/client/restclient"
-	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/watch"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/rest"
 )
 
 // ServicePlanGetter has a method to return an ServicePlanInterface.
@@ -22,24 +21,24 @@ type ServicePlanGetter interface {
 
 // ServicePlanInterface has methods to work with ServicePlan resources.
 type ServicePlanInterface interface {
-	List(opts *api.ListOptions) (*spec.ServicePlanList, error)
-	Get(name string) (*spec.ServicePlan, error)
-	Delete(name string, options *api.DeleteOptions) error
-	Create(data *spec.ServicePlan) (*spec.ServicePlan, error)
-	Update(data *spec.ServicePlan) (*spec.ServicePlan, error)
-	Watch(opts *api.ListOptions) (watch.Interface, error)
+	List(opts *metav1.ListOptions) (*spec.PlanList, error)
+	Get(name string) (*spec.Plan, error)
+	Delete(name string, options *metav1.DeleteOptions) error
+	Create(data *spec.Plan) (*spec.Plan, error)
+	Update(data *spec.Plan) (*spec.Plan, error)
+	Watch(opts *metav1.ListOptions) (watch.Interface, error)
 }
 
 // servicePlan implements ServicePlanInterface
 type servicePlan struct {
-	client    restclient.Interface
+	client    rest.Interface
 	namespace string
-	resource  *unversioned.APIResource
+	resource  *metav1.APIResource
 }
 
 // Get gets the resource with the specified name.
-func (s *servicePlan) Get(name string) (*spec.ServicePlan, error) {
-	sps := &spec.ServicePlan{}
+func (s *servicePlan) Get(name string) (*spec.Plan, error) {
+	sps := &spec.Plan{}
 	err := s.client.Get().
 		NamespaceIfScoped(s.namespace, s.resource.Namespaced).
 		Resource(s.resource.Name).
@@ -50,11 +49,8 @@ func (s *servicePlan) Get(name string) (*spec.ServicePlan, error) {
 }
 
 // List returns a list of objects for this resource.
-func (s *servicePlan) List(opts *api.ListOptions) (*spec.ServicePlanList, error) {
-	if opts == nil {
-		opts = &api.ListOptions{}
-	}
-	spList := &spec.ServicePlanList{}
+func (s *servicePlan) List(opts *metav1.ListOptions) (*spec.PlanList, error) {
+	spList := &spec.PlanList{}
 	err := s.client.Get().
 		NamespaceIfScoped(s.namespace, s.resource.Namespaced).
 		Resource(s.resource.Name).
@@ -65,10 +61,7 @@ func (s *servicePlan) List(opts *api.ListOptions) (*spec.ServicePlanList, error)
 }
 
 // Delete deletes the resource with the specified name.
-func (s *servicePlan) Delete(name string, opts *api.DeleteOptions) error {
-	if opts == nil {
-		opts = &api.DeleteOptions{}
-	}
+func (s *servicePlan) Delete(name string, opts *metav1.DeleteOptions) error {
 	return s.client.Delete().
 		NamespaceIfScoped(s.namespace, s.resource.Namespaced).
 		Resource(s.resource.Name).
@@ -81,8 +74,8 @@ func (s *servicePlan) Delete(name string, opts *api.DeleteOptions) error {
 }
 
 // Create creates the provided resource.
-func (s *servicePlan) Create(data *spec.ServicePlan) (*spec.ServicePlan, error) {
-	sps := &spec.ServicePlan{}
+func (s *servicePlan) Create(data *spec.Plan) (*spec.Plan, error) {
+	sps := &spec.Plan{}
 	err := s.client.Post().
 		NamespaceIfScoped(s.namespace, s.resource.Namespaced).
 		Resource(s.resource.Name).
@@ -93,8 +86,8 @@ func (s *servicePlan) Create(data *spec.ServicePlan) (*spec.ServicePlan, error) 
 }
 
 // Update updates the provided resource.
-func (s *servicePlan) Update(data *spec.ServicePlan) (*spec.ServicePlan, error) {
-	sps := &spec.ServicePlan{}
+func (s *servicePlan) Update(data *spec.Plan) (*spec.Plan, error) {
+	sps := &spec.Plan{}
 	if len(data.GetName()) == 0 {
 		return data, errors.New("object missing name")
 	}
@@ -109,12 +102,12 @@ func (s *servicePlan) Update(data *spec.ServicePlan) (*spec.ServicePlan, error) 
 }
 
 // Watch returns a watch.Interface that watches the resource.
-func (s *servicePlan) Watch(opts *api.ListOptions) (watch.Interface, error) {
+func (s *servicePlan) Watch(opts *metav1.ListOptions) (watch.Interface, error) {
 	stream, err := s.client.Get().
 		Prefix("watch").
 		NamespaceIfScoped(s.namespace, s.resource.Namespaced).
 		Resource(s.resource.Name).
-		VersionedParams(opts, api.ParameterCodec).
+		VersionedParams(opts, metav1.ParameterCodec).
 		Stream()
 	if err != nil {
 		return nil, err
@@ -126,8 +119,8 @@ func (s *servicePlan) Watch(opts *api.ListOptions) (watch.Interface, error) {
 }
 
 // Patch updates the provided resource
-func (s *servicePlan) Patch(name string, pt api.PatchType, data []byte) (*spec.ServicePlan, error) {
-	sps := &spec.ServicePlan{}
+func (s *servicePlan) Patch(name string, pt types.PatchType, data []byte) (*spec.Plan, error) {
+	sps := &spec.Plan{}
 	err := s.client.Patch(pt).
 		NamespaceIfScoped(s.namespace, s.resource.Namespaced).
 		Resource(s.resource.Name).
@@ -153,10 +146,9 @@ func (d *servicePlanDecoder) Close() {
 func (d *servicePlanDecoder) Decode() (watch.EventType, runtime.Object, error) {
 	var e struct {
 		Type   watch.EventType
-		Object spec.ServicePlan
+		Object spec.Plan
 	}
 	if err := d.dec.Decode(&e); err != nil {
-		glog.Errorf("failed decoding service plan '%s': %s", e.Object.Name, err)
 		return watch.Error, nil, err
 	}
 	return e.Type, &e.Object, nil

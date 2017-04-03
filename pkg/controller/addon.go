@@ -9,42 +9,40 @@ import (
 	"kolihub.io/koli/pkg/spec"
 	koliapps "kolihub.io/koli/pkg/spec/apps"
 
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/client/cache"
-	"k8s.io/kubernetes/pkg/labels"
-	"k8s.io/kubernetes/pkg/util/wait"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 
-	apierrors "k8s.io/kubernetes/pkg/api/errors"
-	apps "k8s.io/kubernetes/pkg/apis/apps"
-	extensions "k8s.io/kubernetes/pkg/apis/extensions"
-	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
-	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
-)
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/pkg/apis/apps"
 
-const (
-	tprAddons = "addon.platform.koli.io"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	v1beta1 "k8s.io/client-go/pkg/apis/apps/v1beta1"
 )
 
 // AddonController controller
 type AddonController struct {
-	kclient clientset.Interface
+	kclient kubernetes.Interface
 
 	addonInf cache.SharedIndexInformer
 	spInf    cache.SharedIndexInformer
 	psetInf  cache.SharedIndexInformer
 
-	queue *queue
+	queue    *TaskQueue
+	recorder record.EventRecorder
 }
 
 // NewAddonController creates a new addon controller
-func NewAddonController(addonInformer, psetInformer, spInformer cache.SharedIndexInformer, client clientset.Interface) *AddonController {
+func NewAddonController(addonInformer, psetInformer, spInformer cache.SharedIndexInformer, client kubernetes.Interface) *AddonController {
 	ac := &AddonController{
 		kclient:  client,
 		addonInf: addonInformer,
 		psetInf:  psetInformer,
 		spInf:    spInformer,
-		queue:    newQueue(200),
+		recorder: newRecorder(client, "apps-controller"),
 	}
+	ac.queue = NewTaskQueue(ac.syncHandler)
 
 	ac.addonInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    ac.addAddon,
@@ -69,7 +67,7 @@ func (c *AddonController) Run(workers int, stopc <-chan struct{}) {
 	// don't let panics crash the process
 	defer utilruntime.HandleCrash()
 	// make sure the work queue is shutdown which will trigger workers to end
-	defer c.queue.close()
+	defer c.queue.shutdown()
 
 	glog.Info("Starting Addon Controller...")
 
@@ -80,7 +78,8 @@ func (c *AddonController) Run(workers int, stopc <-chan struct{}) {
 	for i := 0; i < workers; i++ {
 		// runWorker will loop until "something bad" happens.
 		// The .Until will then rekick the worker after one second
-		go wait.Until(c.runWorker, time.Second, stopc)
+		go c.queue.run(time.Second, stopc)
+		// go wait.Until(c.runWorker, time.Second, stopc)
 	}
 
 	// wait until we're told to stop
@@ -91,9 +90,9 @@ func (c *AddonController) Run(workers int, stopc <-chan struct{}) {
 // enqueueForNamespace enqueues all Deployments object keys that belong to the given namespace.
 func (c *AddonController) enqueueForNamespace(namespace string) {
 	cache.ListAll(c.psetInf.GetStore(), labels.Everything(), func(obj interface{}) {
-		d := obj.(*apps.StatefulSet)
+		d := obj.(*v1beta1.StatefulSet)
 		if d.Namespace == namespace {
-			c.queue.add(d)
+			c.queue.Add(d)
 		}
 	})
 }
@@ -123,8 +122,8 @@ func (c *AddonController) deleteAddon(a interface{}) {
 }
 
 func (c *AddonController) updateStatefulSet(o, n interface{}) {
-	old := o.(*apps.StatefulSet)
-	new := n.(*apps.StatefulSet)
+	old := o.(*v1beta1.StatefulSet)
+	new := n.(*v1beta1.StatefulSet)
 	// Periodic resync may resend the deployment without changes in-between.
 	// Also breaks loops created by updating the resource ourselves.
 	if old.ResourceVersion == new.ResourceVersion {
@@ -138,7 +137,7 @@ func (c *AddonController) updateStatefulSet(o, n interface{}) {
 }
 
 func (c *AddonController) deleteStatefulSet(a interface{}) {
-	d := a.(*apps.StatefulSet)
+	d := a.(*v1beta1.StatefulSet)
 	glog.Infof("deleteDeployment: (%s/%s)", d.Namespace, d.Name)
 	if addon := c.addonForDeployment(d); addon != nil {
 		c.enqueueAddon(addon)
@@ -146,27 +145,12 @@ func (c *AddonController) deleteStatefulSet(a interface{}) {
 }
 
 func (c *AddonController) enqueueAddon(addon *spec.Addon) {
-	c.queue.add(addon)
+	c.queue.Add(addon)
 }
 
-// runWorker runs a worker thread that just dequeues items, processes them, and marks them done.
-// It enforces that the syncHandler is never invoked concurrently with the same key.
-func (c *AddonController) runWorker() {
-	for {
-		a, ok := c.queue.pop(&spec.Addon{})
-		if !ok {
-			return
-		}
-		// Get the app based on its type
-		app, err := koliapps.GetType(a.(*spec.Addon), c.kclient, c.psetInf)
-		if err != nil {
-			// If an add-on is provided without a known type
-			utilruntime.HandleError(err)
-		}
-		if err := c.reconcile(app); err != nil {
-			utilruntime.HandleError(err)
-		}
-	}
+// Not implemented yet
+func (c *AddonController) syncHandler(key string) error {
+	return nil
 }
 
 func (c *AddonController) reconcile(app koliapps.AddonInterface) error {
@@ -214,7 +198,7 @@ func (c *AddonController) reconcile(app koliapps.AddonInterface) error {
 	}
 
 	// Ensure we have a replica set running
-	psetQ := &apps.StatefulSet{}
+	psetQ := &v1beta1.StatefulSet{}
 	psetQ.Namespace = addon.Namespace
 	psetQ.Name = addon.Name
 
@@ -224,7 +208,7 @@ func (c *AddonController) reconcile(app koliapps.AddonInterface) error {
 	}
 
 	planName := ""
-	var sp *spec.ServicePlan
+	var sp *spec.Plan
 	selector := spec.NewLabel().Add(map[string]string{"default": "true"}).AsSelector()
 	clusterPlanPrefix := spec.KoliPrefix("clusterplan")
 	if psetExists {
@@ -241,7 +225,7 @@ func (c *AddonController) reconcile(app koliapps.AddonInterface) error {
 		cache.ListAll(c.spInf.GetStore(), selector, func(obj interface{}) {
 			// it will not handle multiple results
 			// TODO: check for nil
-			splan := obj.(*spec.ServicePlan)
+			splan := obj.(*spec.Plan)
 			if splan.Namespace == pns.GetSystemNamespace() {
 				planName = splan.Labels[clusterPlanPrefix]
 			}
@@ -252,7 +236,7 @@ func (c *AddonController) reconcile(app koliapps.AddonInterface) error {
 	}
 
 	// Search for the cluster plan by its name
-	spQ := &spec.ServicePlan{}
+	spQ := &spec.Plan{}
 	spQ.SetName(planName)
 	spQ.SetNamespace(platform.SystemNamespace)
 	obj, spExists, err := c.spInf.GetStore().Get(spQ)
@@ -266,7 +250,7 @@ func (c *AddonController) reconcile(app koliapps.AddonInterface) error {
 		cache.ListAll(c.spInf.GetStore(), selector, func(obj interface{}) {
 			// it will not handle multiple results
 			// TODO: check for nil
-			splan := obj.(*spec.ServicePlan)
+			splan := obj.(*spec.Plan)
 			if splan.Namespace == platform.SystemNamespace {
 				sp = splan
 			}
@@ -275,7 +259,7 @@ func (c *AddonController) reconcile(app koliapps.AddonInterface) error {
 			return fmt.Errorf("%s - couldn't find a default cluster plan", logHeader)
 		}
 	} else {
-		sp = obj.(*spec.ServicePlan)
+		sp = obj.(*spec.Plan)
 		glog.Infof("%s - found a cluster service plan: '%s'", logHeader, sp.Name)
 	}
 
@@ -285,7 +269,7 @@ func (c *AddonController) reconcile(app koliapps.AddonInterface) error {
 	return app.UpdatePetSet(nil, sp)
 }
 
-func (c *AddonController) addonForDeployment(p *apps.StatefulSet) *spec.Addon {
+func (c *AddonController) addonForDeployment(p *v1beta1.StatefulSet) *spec.Addon {
 	key, err := keyFunc(p)
 	if err != nil {
 		utilruntime.HandleError(fmt.Errorf("creating key: %s", err))
@@ -302,29 +286,4 @@ func (c *AddonController) addonForDeployment(p *apps.StatefulSet) *spec.Addon {
 		return nil
 	}
 	return a.(*spec.Addon)
-}
-
-// CreateAddonTPRs generates the third party resource required for interacting with addons
-func CreateAddonTPRs(host string, kclient clientset.Interface) error {
-	tprs := []*extensions.ThirdPartyResource{
-		{
-			ObjectMeta: api.ObjectMeta{
-				Name: tprAddons,
-			},
-			Versions: []extensions.APIVersion{
-				{Name: "v1alpha1"},
-			},
-			Description: "Addon external service integration",
-		},
-	}
-	tprClient := kclient.Extensions().ThirdPartyResources()
-	for _, tpr := range tprs {
-		if _, err := tprClient.Create(tpr); err != nil && !apierrors.IsAlreadyExists(err) {
-			return err
-		}
-		glog.Infof("Third Party Resource '%s' provisioned", tpr.Name)
-	}
-
-	// We have to wait for the TPRs to be ready. Otherwise the initial watch may fail.
-	return watch3PRs(host, "/apis/platform.koli.io/v1alpha1/addons", kclient)
 }

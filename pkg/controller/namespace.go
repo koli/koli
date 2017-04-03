@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -11,91 +10,81 @@ import (
 	"kolihub.io/koli/pkg/spec"
 	"kolihub.io/koli/pkg/spec/util"
 
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/apis/rbac"
-	"k8s.io/kubernetes/pkg/client/cache"
-	"k8s.io/kubernetes/pkg/util/wait"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/pkg/api/v1"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 
-	apierrors "k8s.io/kubernetes/pkg/api/errors"
-	extensions "k8s.io/kubernetes/pkg/apis/extensions"
-	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
-	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
-
-	"k8s.io/kubernetes/pkg/api/unversioned"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	extensions "k8s.io/client-go/pkg/apis/extensions/v1beta1"
+	rbac "k8s.io/client-go/pkg/apis/rbac/v1beta1"
 )
 
 // NamespaceController controller
 type NamespaceController struct {
-	kclient   kclientset.Interface
+	kclient   kubernetes.Interface
 	sysClient clientset.CoreInterface
 
 	nsInf cache.SharedIndexInformer
 	spInf cache.SharedIndexInformer
 
-	queue *queue
+	queue    *TaskQueue
+	recorder record.EventRecorder
 }
-
-const (
-	// the ammount of namespaces which a user is able to provision
-	hardLimitNamespace = 2
-)
 
 // NewNamespaceController creates a NamespaceController
 func NewNamespaceController(nsInf, spInf cache.SharedIndexInformer,
-	kclient kclientset.Interface, sysClient clientset.CoreInterface) *NamespaceController {
+	kclient kubernetes.Interface, sysClient clientset.CoreInterface) *NamespaceController {
 	nc := &NamespaceController{
 		kclient:   kclient,
 		sysClient: sysClient,
 		nsInf:     nsInf,
 		spInf:     spInf,
-		queue:     newQueue(200),
+		recorder:  newRecorder(kclient, "namespace-controller"),
 	}
+	nc.queue = NewTaskQueue(nc.syncHandler)
 	nc.nsInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    nc.addNamespace,
 		UpdateFunc: nc.updateNamespace,
-		DeleteFunc: nc.deleteNamespace,
+		// DeleteFunc: nc.deleteNamespace,
 	})
 
-	nc.spInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: nc.updateServicePlan,
-	})
+	// TODO: do not process system broker plans
+	// nc.spInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	// 	UpdateFunc: nc.updateServicePlan,
+	// })
 
 	return nc
 }
 
 func (c *NamespaceController) addNamespace(n interface{}) {
-	new := n.(*api.Namespace)
-	glog.Infof("%s(%s) - add-namespace", new.Name, new.ResourceVersion)
-	c.queue.add(new)
+	new := n.(*v1.Namespace)
+	glog.V(2).Infof("%s(%s) - add-namespace", new.Name, new.ResourceVersion)
+	c.queue.Add(new)
 }
 
 func (c *NamespaceController) updateNamespace(o, n interface{}) {
-	old := o.(*api.Namespace)
-	new := n.(*api.Namespace)
+	old := o.(*v1.Namespace)
+	new := n.(*v1.Namespace)
 
 	if old.ResourceVersion == new.ResourceVersion {
 		return
 	}
 
-	// Prevent infinite loop on updateFunc
-	// TODO: test this behavior with delete handler
-	if old.ResourceVersion == new.Annotations[spec.KoliPrefix("resourceVersion")] {
-		glog.Infof("%s(%s) - skipping internal update...", new.Name, new.ResourceVersion)
-		return
-	}
-
-	glog.Infof("%s(%s) - update-namespace", new.Name, new.ResourceVersion)
-	c.queue.add(new)
+	glog.V(2).Infof("%s(%s) - update-namespace", new.Name, new.ResourceVersion)
+	c.queue.Add(new)
 }
 
-func (c *NamespaceController) deleteNamespace(n interface{}) {
-	ns := n.(*api.Namespace)
-	glog.Infof("%s(%s) - delete-namespace", ns.Name, ns.ResourceVersion)
-}
+// func (c *NamespaceController) deleteNamespace(n interface{}) {
+// 	ns := n.(*v1.Namespace)
+// 	glog.V(2).Infof("%s(%s) - delete-namespace", ns.Name, ns.ResourceVersion)
+// }
 
 func (c *NamespaceController) updateServicePlan(o, n interface{}) {
-	old := o.(*spec.ServicePlan)
-	new := n.(*spec.ServicePlan)
+	old := o.(*spec.Plan)
+	new := n.(*spec.Plan)
 
 	if old.ResourceVersion == new.ResourceVersion {
 		return
@@ -108,7 +97,7 @@ func (c *NamespaceController) updateServicePlan(o, n interface{}) {
 	}
 	// Process only broker serviceplans
 	if pns.IsSystem() {
-		glog.Infof("%s/%s - update-service-plan", new.Namespace, new.Name)
+		glog.V(2).Infof("%s/%s - update-service-plan", new.Namespace, new.Name)
 		c.enqueueForServicePlan(new.Name, pns)
 	}
 }
@@ -121,12 +110,11 @@ func (c *NamespaceController) enqueueForServicePlan(spName string, pns *platform
 	})
 	cache.ListAll(c.nsInf.GetStore(), options.AsSelector(), func(obj interface{}) {
 		// TODO: check for nil
-		ns := obj.(*api.Namespace)
+		ns := obj.(*v1.Namespace)
 		if pns.GetSystemNamespace() == ns.Name {
-			// skip the system namespace
 			return
 		}
-		c.queue.add(ns)
+		c.queue.Add(ns)
 	})
 }
 
@@ -135,7 +123,7 @@ func (c *NamespaceController) Run(workers int, stopc <-chan struct{}) {
 	// don't let panics crash the process
 	defer utilruntime.HandleCrash()
 	// make sure the work queue is shutdown which will trigger workers to end
-	defer c.queue.close()
+	defer c.queue.shutdown()
 
 	glog.Info("Starting Namespace Controller...")
 
@@ -146,7 +134,8 @@ func (c *NamespaceController) Run(workers int, stopc <-chan struct{}) {
 	for i := 0; i < workers; i++ {
 		// runWorker will loop until "something bad" happens.
 		// The .Until will then rekick the worker after one second
-		go wait.Until(c.runWorker, time.Second, stopc)
+		go c.queue.run(time.Second, stopc)
+		// go wait.Until(c.runWorker, time.Second, stopc)
 	}
 
 	// wait until we're told to stop
@@ -154,121 +143,76 @@ func (c *NamespaceController) Run(workers int, stopc <-chan struct{}) {
 	glog.Info("Shutting down Namespace Controller")
 }
 
-// var keyFunc = cache.DeletionHandlingMetaNamespaceKeyFunc
-
-// runWorker runs a worker thread that just dequeues items, processes them, and marks them done.
-// It enforces that the syncHandler is never invoked concurrently with the same key.
-func (c *NamespaceController) runWorker() {
-	for {
-		obj, ok := c.queue.pop(&api.Namespace{})
-		if !ok {
-			return
-		}
-		if err := c.reconcile(obj.(*api.Namespace)); err != nil {
-			utilruntime.HandleError(err)
-		}
-	}
-}
-
-func (c *NamespaceController) reconcile(ns *api.Namespace) error {
-	key, err := keyFunc(ns)
-	if err != nil {
-		return err
-	}
-	identity := ns.Annotations[spec.KoliPrefix("identity")]
-	logHeader := fmt.Sprintf("%s(%s)", ns.Name, ns.ResourceVersion)
-	if identity == "" {
-		glog.Infof("%s - empty identity, ignoring...", logHeader)
-		return nil
-	}
-
-	_, exists, err := c.nsInf.GetStore().GetByKey(key)
+func (c *NamespaceController) syncHandler(key string) error {
+	obj, exists, err := c.nsInf.GetStore().GetByKey(key)
 	if err != nil {
 		return err
 	}
 
-	// TODO: Should we manage several users using annotations?
-	// A third party resource could exist to manage the users
-	user := &spec.User{}
-	if err := json.Unmarshal([]byte(identity), user); err != nil {
-		return fmt.Errorf("%s - failed decoding user (%s)", logHeader, err)
+	if !exists {
+		glog.V(2).Infof("%s - namespace doesn't exist", key)
+		return nil
 	}
 
-	label := spec.NewLabel().Add(map[string]string{
-		"default":  "true",
-		"customer": user.Customer,
-		"org":      user.Organization,
-	})
-
-	// try to update the default namespace for the user
-	if !exists || ns.Status.Phase == api.NamespaceTerminating {
-		glog.Infof("%s - namespace doesn't exist", logHeader)
-		label.Remove(spec.KoliPrefix("default"))
-		// TODO: use cache to list!
-		nss, err := c.kclient.Core().Namespaces().List(api.ListOptions{LabelSelector: label.AsSelector()})
-		if err != nil {
-			return fmt.Errorf("%s - failed retrieving list of namespaces (%s)", logHeader, err)
-		}
-		// Updates only if there's one namespace
-		if len(nss.Items) == 1 {
-			glog.Infof("%s - found one namespace, configuring it to default ...", logHeader)
-			n, err := util.NamespaceDeepCopy(&nss.Items[0])
-			if err != nil {
-				return fmt.Errorf("%s - failed creating a namespace copy (%s)", logHeader, err)
-			}
-			n.Labels[spec.KoliPrefix("default")] = "true"
-
-			if _, err := c.kclient.Core().Namespaces().Update(n); err != nil {
-				return fmt.Errorf("%s - failed updating a default namespace (%s)", logHeader, err)
-			}
-			glog.Infof("%s - default namespace updated for user '%s'", logHeader, user.Username)
-		}
+	ns := obj.(*v1.Namespace)
+	if ns.DeletionTimestamp != nil {
+		glog.V(2).Infof("%s - the namespace is being deleted", key)
 		return nil
+	}
+	user := &spec.User{
+		Customer:     ns.Labels["kolihub.io/customer"],
+		Organization: ns.Labels["kolihub.io/org"],
+		Username:     ns.Annotations["kolihub.io/owner"],
 	}
 	pns, err := platform.NewNamespace(ns.Name)
 	if err != nil {
-		glog.Info("%s - %s", logHeader, err)
+		glog.Infof("%s - %s", key, err)
 		return nil
 	}
-
+	if len(user.Username) == 0 {
+		c.recorder.Event(ns, v1.EventTypeWarning, "IdentityMismatch", "The namespace doesn't have any owner.")
+		return nil
+	}
 	if pns.Organization != user.Organization || pns.Customer != user.Customer {
-		msg := "identity mismatch. user=%s customer=%s org=%s ns=%s"
-		return fmt.Errorf(msg, user.Username, user.Customer, user.Organization, pns.GetNamespace())
+		msg := "%s - Identity mismatch: the user belongs to the customer '%s' and organization '%s', " +
+			"but the namespace was created for the customer '%s' and organization '%s'."
+		msg = fmt.Sprintf(msg, key, user.Customer, user.Organization, pns.Customer, pns.Organization)
+		c.recorder.Event(ns, v1.EventTypeWarning, "IdentityMismatch", msg)
+		return nil
 	}
 
 	// TODO: updating a serviceplan must enqueue all namespaces (label match)
 	// TODO: add a label in the namespace indicating the service plan
-
-	var sp *spec.ServicePlan
-	options := spec.NewLabel().Add(label.Set)
+	var sp *spec.Plan
+	options := spec.NewLabel().Add(make(map[string]string))
 	planName := ns.Annotations[spec.KoliPrefix("brokerplan")]
 	if planName == "" {
 		options.Add(map[string]string{spec.KoliPrefix("default"): "true"})
 		cache.ListAll(c.spInf.GetStore(), options.AsSelector(), func(obj interface{}) {
 			// it will not handle multiple results
 			if obj != nil {
-				splan := obj.(*spec.ServicePlan)
+				splan := obj.(*spec.Plan)
 				if splan.Namespace == pns.GetSystemNamespace() {
 					sp = splan
 				}
 			}
 		})
 	} else {
-		spQ := &spec.ServicePlan{}
+		spQ := &spec.Plan{}
 		spQ.Name = planName
 		spQ.Namespace = pns.GetSystemNamespace()
 		obj, exists, err := c.spInf.GetStore().Get(spQ)
 		if err != nil || !exists {
-			glog.Infof("%s - failed retrieving service plan from the store. %s", err)
+			glog.Infof("failed retrieving service plan from the store [%s]", err)
 		} else {
 			if obj != nil {
-				sp = obj.(*spec.ServicePlan)
+				sp = obj.(*spec.Plan)
 			}
 		}
 	}
 	if sp == nil {
-		sp = &spec.ServicePlan{
-			ObjectMeta: api.ObjectMeta{
+		sp = &spec.Plan{
+			ObjectMeta: metav1.ObjectMeta{
 				Name: "",
 			},
 		}
@@ -276,56 +220,32 @@ func (c *NamespaceController) reconcile(ns *api.Namespace) error {
 	// Deep-Copy, otherwise we're mutating our cache
 	spCopy, err := util.ServicePlanDeepCopy(sp)
 	if err != nil {
-		return fmt.Errorf("%s - failed deep copying service plan '%s': %s", logHeader, sp.Name, err)
+		c.recorder.Event(ns, v1.EventTypeWarning, "SetupPlanError", err.Error())
+		return fmt.Errorf("%s - failed deep copying service plan '%s' [%s]", key, sp.Name, err)
 	}
 	spCopy.Spec.Hard.RemoveUnregisteredResources()
 
 	// TODO: test resource quota, update/delete
 	// TODO: enqueue all namespaces when updating a service plan - TEST
 	// TODO: update or create new quotas
-	// TODO: requeue on errors?
 
 	// Those rules doesn't apply to system broker namespaces
 	if !pns.IsSystem() {
 		if err := c.enforceQuota(ns.Name, spCopy); err != nil {
-			glog.Warningf("%s - %s", logHeader, err)
+			c.recorder.Event(ns, v1.EventTypeWarning, "SetupQuotaError", err.Error())
+			return fmt.Errorf("SetupQuota [%s]", err)
 		}
-		c.enforceRoleBindings(logHeader, ns, user, spCopy)
+		// TODO: check for errors!
+		c.enforceRoleBindings(key, ns, user, spCopy)
 	}
 
 	if err := c.createDefaultPermissions(ns.Name, user); err != nil {
-		return fmt.Errorf("%s - %s", logHeader, err)
+		c.recorder.Event(ns, v1.EventTypeWarning, "SetupRolesError", err.Error())
+		return fmt.Errorf("SetupRoles [%s]", err)
 	}
 	if err := c.createNetworkPolicy(ns.Name); err != nil {
-		return fmt.Errorf("%s - %s", logHeader, err)
-	}
-
-	// update the namespace
-	nsCopy, err := util.NamespaceDeepCopy(ns)
-	if err != nil {
-		return fmt.Errorf("%s - failed copying namespace: %s", logHeader, err)
-	}
-
-	// TODO: use cache store to list
-	nss, err := c.kclient.Core().Namespaces().List(api.ListOptions{LabelSelector: label.AsSelector()})
-	if err != nil {
-		return fmt.Errorf("%s - failed listing namespaces: %s", logHeader, err)
-	}
-
-	// Remove the key 'default' because a default namespace already exists for this customer
-	if len(nss.Items) > 0 {
-		label.Remove(spec.KoliPrefix("default"))
-	}
-	nsCopy.Annotations["net.beta.kubernetes.io/network-policy"] = `{"ingress": {"isolation": "DefaultDeny"}}`
-	// Prevent infinite loop on updateFunc
-	nsCopy.Annotations[spec.KoliPrefix("resourceVersion")] = nsCopy.ResourceVersion
-	if sp.Name != "" && !pns.IsSystem() {
-		label.Add(map[string]string{"brokerplan": sp.Name})
-	}
-	nsCopy.Labels = label.Set
-
-	if _, err := c.kclient.Core().Namespaces().Update(nsCopy); err != nil {
-		return fmt.Errorf("%s - failed updating namespace: %s", logHeader, err)
+		c.recorder.Event(ns, v1.EventTypeWarning, "SetupNetworkError", err.Error())
+		return fmt.Errorf("SetupNetwork [%s]", err)
 	}
 	return nil
 }
@@ -334,7 +254,7 @@ func (c *NamespaceController) reconcile(ns *api.Namespace) error {
 // to access the resources of the namespace.
 func (c *NamespaceController) createDefaultPermissions(ns string, usr *spec.User) error {
 	role := &rbac.Role{
-		ObjectMeta: api.ObjectMeta{Name: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: "default"},
 		Rules: []rbac.PolicyRule{
 			{
 				APIGroups: []string{"*"},
@@ -344,11 +264,11 @@ func (c *NamespaceController) createDefaultPermissions(ns string, usr *spec.User
 		},
 	}
 	if _, err := c.kclient.Rbac().Roles(ns).Create(role); err != nil && !apierrors.IsAlreadyExists(err) {
-		return fmt.Errorf("failed creating role: %s", err)
+		return fmt.Errorf("Failed creating role: %s", err)
 	}
 
 	roleBinding := &rbac.RoleBinding{
-		ObjectMeta: api.ObjectMeta{Name: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: "default"},
 		Subjects: []rbac.Subject{
 			{
 				Kind: "User",
@@ -361,7 +281,7 @@ func (c *NamespaceController) createDefaultPermissions(ns string, usr *spec.User
 		},
 	}
 	if _, err := c.kclient.Rbac().RoleBindings(ns).Create(roleBinding); err != nil && !apierrors.IsAlreadyExists(err) {
-		return fmt.Errorf("failed creating rolebinding: %s", err)
+		return fmt.Errorf("Failed creating rolebinding: %s", err)
 	}
 	return nil
 }
@@ -369,14 +289,14 @@ func (c *NamespaceController) createDefaultPermissions(ns string, usr *spec.User
 func (c *NamespaceController) createNetworkPolicy(ns string) error {
 	// allow traffic between all pods in the namespace only
 	networkPolicy := &extensions.NetworkPolicy{
-		ObjectMeta: api.ObjectMeta{Name: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: "default"},
 		Spec: extensions.NetworkPolicySpec{
-			PodSelector: unversioned.LabelSelector{},
+			PodSelector: metav1.LabelSelector{},
 			Ingress: []extensions.NetworkPolicyIngressRule{
 				{
 					From: []extensions.NetworkPolicyPeer{
 						{
-							PodSelector: &unversioned.LabelSelector{
+							PodSelector: &metav1.LabelSelector{
 								MatchLabels: nil,
 							},
 						},
@@ -385,34 +305,44 @@ func (c *NamespaceController) createNetworkPolicy(ns string) error {
 			},
 		},
 	}
-	if _, err := c.kclient.Extensions().NetworkPolicies(ns).Create(networkPolicy); err != nil && !apierrors.IsAlreadyExists(err) {
-		return fmt.Errorf("failed creating network policy: %s", err)
+	_, err := c.kclient.Extensions().RESTClient().
+		Post().
+		NamespaceIfScoped(ns, true).
+		Resource("networkpolicies").
+		Body(networkPolicy).
+		DoRaw()
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return fmt.Errorf("Failed creating network policy: %s", err)
 	}
+	// client-go does not have registered client for creating networking policies
+	// if _, err := c.kclient.Extensions().NetworkPolicies(ns).Create(networkPolicy); err != nil && !apierrors.IsAlreadyExists(err) {
+	// 	return fmt.Errorf("failed creating network policy: %s", err)
+	// }
 	return nil
 }
 
-func (c *NamespaceController) enforceQuota(ns string, sp *spec.ServicePlan) error {
-	rq := &api.ResourceQuota{
-		ObjectMeta: api.ObjectMeta{
+func (c *NamespaceController) enforceQuota(ns string, sp *spec.Plan) error {
+	rq := &v1.ResourceQuota{
+		ObjectMeta: metav1.ObjectMeta{
 			Name: "default",
 		},
-		Spec: api.ResourceQuotaSpec{
-			Hard: api.ResourceList(sp.Spec.Hard),
+		Spec: v1.ResourceQuotaSpec{
+			Hard: v1.ResourceList(sp.Spec.Hard),
 		},
 	}
 	_, err := c.kclient.Core().ResourceQuotas(ns).Update(rq)
 	if err != nil && !apierrors.IsNotFound(err) {
-		return fmt.Errorf("failed updating quota using service plan '%s': %s", sp.Name, err)
+		return fmt.Errorf("Failed updating quota using service plan '%s': %s", sp.Name, err)
 	}
 	if apierrors.IsNotFound(err) {
 		if _, err := c.kclient.Core().ResourceQuotas(ns).Create(rq); err != nil {
-			return fmt.Errorf("failed creating quota using service plan '%s': %s", sp.Name, err)
+			return fmt.Errorf("Failed creating quota using service plan '%s': %s", sp.Name, err)
 		}
 	}
 	return nil
 }
 
-func (c *NamespaceController) enforceRoleBindings(logHeader string, ns *api.Namespace, user *spec.User, sp *spec.ServicePlan) {
+func (c *NamespaceController) enforceRoleBindings(logHeader string, ns *v1.Namespace, user *spec.User, sp *spec.Plan) {
 	// Platform Roles
 	userRoles := spec.NewPlatformRoles(ns.Annotations[spec.KoliPrefix("roles")])
 	hasUserRoles := false
@@ -442,7 +372,7 @@ func (c *NamespaceController) enforceRoleBindings(logHeader string, ns *api.Name
 				}
 				glog.Infof("%s - manual role binding created '%s'", logHeader, role)
 			} else {
-				opts := &api.DeleteOptions{}
+				opts := &metav1.DeleteOptions{}
 				err := c.kclient.Rbac().RoleBindings(ns.Name).Delete(string(role), opts)
 				if err != nil && !apierrors.IsNotFound(err) {
 					// TODO: requeue on errors?
@@ -457,7 +387,7 @@ func (c *NamespaceController) enforceRoleBindings(logHeader string, ns *api.Name
 
 		// Automatic Operation - inherit from a service plan
 		if role.Exists(sp.Spec.Roles) {
-			roleBinding := role.GetRoleBinding([]rbac.Subject{{Kind: "User", Name: "sandromello"}})
+			roleBinding := role.GetRoleBinding([]rbac.Subject{{Kind: "User", Name: user.Username}})
 			_, err := c.kclient.Rbac().RoleBindings(ns.Name).Create(roleBinding)
 			if err != nil && !apierrors.IsAlreadyExists(err) {
 				glog.Warningf("%s - failed creating role binding '%s': %s", logHeader, role, err)
@@ -465,7 +395,7 @@ func (c *NamespaceController) enforceRoleBindings(logHeader string, ns *api.Name
 			}
 			glog.Infof("%s - role binding created '%s'", logHeader, role)
 		} else {
-			opts := &api.DeleteOptions{}
+			opts := &metav1.DeleteOptions{}
 			err := c.kclient.Rbac().RoleBindings(ns.Name).Delete(string(role), opts)
 			if err != nil && !apierrors.IsNotFound(err) {
 				glog.Warningf("%s - failed removing role binding '%s'", logHeader, role)

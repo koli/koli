@@ -6,9 +6,9 @@ import (
 
 	"kolihub.io/koli/pkg/spec"
 
-	"k8s.io/kubernetes/pkg/api/unversioned"
-	"k8s.io/kubernetes/pkg/client/restclient"
-	"k8s.io/kubernetes/pkg/client/typed/dynamic"
+	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/rest"
 )
 
 // Interface core
@@ -30,17 +30,17 @@ func (c *Clientset) Core() CoreInterface {
 	return c.CoreClient
 }
 
-// NewClusterConfig creates a new customized *restclient.Config
-func NewClusterConfig(host string, tlsInsecure bool, tlsConfig *restclient.TLSClientConfig) (*restclient.Config, error) {
-	var cfg *restclient.Config
+// NewClusterConfig creates a new customized *kubernetes.Config
+func NewClusterConfig(host string, tlsInsecure bool, tlsConfig *rest.TLSClientConfig) (*rest.Config, error) {
+	var cfg *rest.Config
 	var err error
 
 	if len(host) == 0 {
-		if cfg, err = restclient.InClusterConfig(); err != nil {
+		if cfg, err = rest.InClusterConfig(); err != nil {
 			return nil, err
 		}
 	} else {
-		cfg = &restclient.Config{
+		cfg = &rest.Config{
 			Host: host,
 		}
 		hostURL, err := url.Parse(host)
@@ -58,11 +58,11 @@ func NewClusterConfig(host string, tlsInsecure bool, tlsConfig *restclient.TLSCl
 	return cfg, nil
 }
 
-// NewSysRESTClient generates a new *restclient.Interface to communicate with system third party resources
-func NewSysRESTClient(c *restclient.Config) (*CoreClient, error) {
+// NewSysRESTClient generates a new *kubernetes.Interface to communicate with system third party resources
+func NewSysRESTClient(c *rest.Config) (*CoreClient, error) {
 	c.APIPath = "/apis"
 
-	c.GroupVersion = &unversioned.GroupVersion{
+	c.GroupVersion = &schema.GroupVersion{
 		Group:   spec.GroupName,
 		Version: spec.SchemeGroupVersion.Version,
 	}
@@ -71,7 +71,7 @@ func NewSysRESTClient(c *restclient.Config) (*CoreClient, error) {
 	c.ContentConfig = contentConfig
 
 	// c.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: api.Codecs}
-	cl, err := restclient.RESTClientFor(c)
+	cl, err := rest.RESTClientFor(c)
 	if err != nil {
 		return nil, err
 	}

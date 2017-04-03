@@ -6,14 +6,15 @@ import (
 	"kolihub.io/koli/pkg/clientset"
 	"kolihub.io/koli/pkg/spec"
 
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/client/cache"
-	"k8s.io/kubernetes/pkg/labels"
-	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/watch"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/pkg/api/v1"
+	"k8s.io/client-go/tools/cache"
 
-	apps "k8s.io/kubernetes/pkg/apis/apps"
-	extensions "k8s.io/kubernetes/pkg/apis/extensions"
+	v1beta1 "k8s.io/client-go/pkg/apis/apps/v1beta1"
+	extensions "k8s.io/client-go/pkg/apis/extensions/v1beta1"
 )
 
 // AddonInformer is a type of SharedIndexInformer which watches and lists all addons.
@@ -38,11 +39,11 @@ func (f *addonInformer) Informer(sysClient *clientset.CoreClient) cache.SharedIn
 
 	informer = cache.NewSharedIndexInformer(
 		&cache.ListWatch{
-			ListFunc: func(options api.ListOptions) (runtime.Object, error) {
-				return sysClient.Addon(api.NamespaceAll).List(&options)
+			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+				return sysClient.Addon(metav1.NamespaceAll).List(&options)
 			},
-			WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
-				return sysClient.Addon(api.NamespaceAll).Watch(&options)
+			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+				return sysClient.Addon(metav1.NamespaceAll).Watch(&options)
 			},
 		},
 		&spec.Addon{},
@@ -66,7 +67,7 @@ func (f *servicePlanInformer) Informer(sysClient *clientset.CoreClient) cache.Sh
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	informerType := reflect.TypeOf(&spec.ServicePlan{})
+	informerType := reflect.TypeOf(&spec.Plan{})
 	informer, exists := f.informers[informerType]
 	if exists {
 		return informer
@@ -74,14 +75,14 @@ func (f *servicePlanInformer) Informer(sysClient *clientset.CoreClient) cache.Sh
 
 	informer = cache.NewSharedIndexInformer(
 		&cache.ListWatch{
-			ListFunc: func(options api.ListOptions) (runtime.Object, error) {
-				return sysClient.ServicePlan(api.NamespaceAll).List(&options)
+			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+				return sysClient.ServicePlan(metav1.NamespaceAll).List(&options)
 			},
-			WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
-				return sysClient.ServicePlan(api.NamespaceAll).Watch(&options)
+			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+				return sysClient.ServicePlan(metav1.NamespaceAll).Watch(&options)
 			},
 		},
-		&spec.ServicePlan{},
+		&spec.Plan{},
 		f.defaultResync,
 		cache.Indexers{},
 	)
@@ -111,11 +112,11 @@ func (f *releaseInformer) Informer(sysClient *clientset.CoreClient) cache.Shared
 
 	informer = cache.NewSharedIndexInformer(
 		&cache.ListWatch{
-			ListFunc: func(options api.ListOptions) (runtime.Object, error) {
-				return sysClient.Release(api.NamespaceAll).List(&options)
+			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+				return sysClient.Release(metav1.NamespaceAll).List(&options)
 			},
-			WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
-				return sysClient.Release(api.NamespaceAll).Watch(&options)
+			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+				return sysClient.Release(metav1.NamespaceAll).Watch(&options)
 			},
 		},
 		&spec.Release{},
@@ -147,7 +148,7 @@ func (f *deploymentInformer) Informer() cache.SharedIndexInformer {
 	}
 
 	informer = cache.NewSharedIndexInformer(
-		cache.NewListWatchFromClient(f.client.Extensions().RESTClient(), "deployments", api.NamespaceAll, nil),
+		cache.NewListWatchFromClient(f.client.Extensions().RESTClient(), "deployments", metav1.NamespaceAll, nil),
 		&extensions.Deployment{}, f.defaultResync, cache.Indexers{},
 	)
 	f.informers[informerType] = informer
@@ -168,15 +169,15 @@ func (f *petSetInformer) Informer() cache.SharedIndexInformer {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	informerType := reflect.TypeOf(&apps.StatefulSet{})
+	informerType := reflect.TypeOf(&v1beta1.StatefulSet{})
 	informer, exists := f.informers[informerType]
 	if exists {
 		return informer
 	}
 
 	informer = cache.NewSharedIndexInformer(
-		cache.NewListWatchFromClient(f.client.Apps().RESTClient(), "statefulsets", api.NamespaceAll, nil),
-		&apps.StatefulSet{}, f.defaultResync, cache.Indexers{},
+		cache.NewListWatchFromClient(f.client.Apps().RESTClient(), "statefulsets", metav1.NamespaceAll, nil),
+		&v1beta1.StatefulSet{}, f.defaultResync, cache.Indexers{},
 	)
 	f.informers[informerType] = informer
 	return informer
@@ -196,15 +197,15 @@ func (f *namespaceInformer) Informer() cache.SharedIndexInformer {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	informerType := reflect.TypeOf(&api.Namespace{})
+	informerType := reflect.TypeOf(&v1.Namespace{})
 	informer, exists := f.informers[informerType]
 	if exists {
 		return informer
 	}
 
 	informer = cache.NewSharedIndexInformer(
-		cache.NewListWatchFromClient(f.client.Core().RESTClient(), "namespaces", api.NamespaceAll, nil),
-		&api.Namespace{}, f.defaultResync, cache.Indexers{},
+		cache.NewListWatchFromClient(f.client.Core().RESTClient(), "namespaces", v1.NamespaceAll, nil),
+		&v1.Namespace{}, f.defaultResync, cache.Indexers{},
 	)
 	f.informers[informerType] = informer
 	return informer
@@ -224,7 +225,7 @@ func (f *podInformer) Informer(selector labels.Selector) cache.SharedIndexInform
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	informerType := reflect.TypeOf(&api.Pod{})
+	informerType := reflect.TypeOf(&v1.Pod{})
 	informer, exists := f.informers[informerType]
 	if exists {
 		return informer
@@ -232,16 +233,16 @@ func (f *podInformer) Informer(selector labels.Selector) cache.SharedIndexInform
 
 	informer = cache.NewSharedIndexInformer(
 		&cache.ListWatch{
-			ListFunc: func(options api.ListOptions) (runtime.Object, error) {
-				options.LabelSelector = selector
-				return f.client.Core().Pods(api.NamespaceAll).List(options)
+			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+				options.LabelSelector = selector.String()
+				return f.client.Core().Pods(metav1.NamespaceAll).List(options)
 			},
-			WatchFunc: func(options api.ListOptions) (watch.Interface, error) {
-				options.LabelSelector = selector
-				return f.client.Core().Pods(api.NamespaceAll).Watch(options)
+			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+				options.LabelSelector = selector.String()
+				return f.client.Core().Pods(metav1.NamespaceAll).Watch(options)
 			},
 		},
-		&api.Pod{},
+		&v1.Pod{},
 		f.defaultResync,
 		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
 	)
