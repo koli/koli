@@ -17,7 +17,7 @@ type ErrInvalidGitSha struct {
 
 // Error is the error interface implementation.
 func (e ErrInvalidGitSha) Error() string {
-	return fmt.Sprintf("git sha %s was invalid", e.sha)
+	return fmt.Sprintf("Git sha %s was invalid", e.sha)
 }
 
 // SHA is the representaton of a git sha

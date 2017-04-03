@@ -6,11 +6,11 @@ import (
 
 	"kolihub.io/koli/pkg/spec"
 
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/api/unversioned"
-	"k8s.io/kubernetes/pkg/client/restclient"
-	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/watch"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/rest"
 )
 
 // ReleaseGetter has a method to return an ReleaseInterface.
@@ -21,20 +21,20 @@ type ReleaseGetter interface {
 
 // ReleaseInterface has methods to work with Release resources.
 type ReleaseInterface interface {
-	List(opts *api.ListOptions) (*spec.ReleaseList, error)
+	List(opts *metav1.ListOptions) (*spec.ReleaseList, error)
 	Get(name string) (*spec.Release, error)
-	Delete(name string, options *api.DeleteOptions) error
+	Delete(name string, options *metav1.DeleteOptions) error
 	Create(data *spec.Release) (*spec.Release, error)
 	Update(data *spec.Release) (*spec.Release, error)
-	Watch(opts *api.ListOptions) (watch.Interface, error)
-	Patch(name string, pt api.PatchType, data []byte, subresources ...string) (*spec.Release, error)
+	Watch(opts *metav1.ListOptions) (watch.Interface, error)
+	Patch(name string, pt types.PatchType, data []byte, subresources ...string) (*spec.Release, error)
 }
 
 // release implements ReleaseInterface
 type release struct {
-	client    restclient.Interface
+	client    rest.Interface
 	namespace string
-	resource  *unversioned.APIResource
+	resource  *metav1.APIResource
 }
 
 // Get gets the resource with the specified name.
@@ -50,26 +50,20 @@ func (r *release) Get(name string) (*spec.Release, error) {
 }
 
 // List returns a list of objects for this resource.
-func (r *release) List(opts *api.ListOptions) (*spec.ReleaseList, error) {
-	if opts == nil {
-		opts = &api.ListOptions{}
-	}
+func (r *release) List(opts *metav1.ListOptions) (*spec.ReleaseList, error) {
 	releaseList := &spec.ReleaseList{}
 	err := r.client.Get().
 		NamespaceIfScoped(r.namespace, r.resource.Namespaced).
 		Resource(r.resource.Name).
 		FieldsSelectorParam(nil).
-		VersionedParams(opts, api.ParameterCodec). // TODO: test this option
+		VersionedParams(opts, metav1.ParameterCodec). // TODO: test this option
 		Do().
 		Into(releaseList)
 	return releaseList, err
 }
 
 // Delete deletes the resource with the specified name.
-func (r *release) Delete(name string, opts *api.DeleteOptions) error {
-	if opts == nil {
-		opts = &api.DeleteOptions{}
-	}
+func (r *release) Delete(name string, opts *metav1.DeleteOptions) error {
 	return r.client.Delete().
 		NamespaceIfScoped(r.namespace, r.resource.Namespaced).
 		Resource(r.resource.Name).
@@ -108,7 +102,7 @@ func (r *release) Update(data *spec.Release) (*spec.Release, error) {
 }
 
 // Watch returns a watch.Interface that watches the resource.
-func (r *release) Watch(opts *api.ListOptions) (watch.Interface, error) {
+func (r *release) Watch(opts *metav1.ListOptions) (watch.Interface, error) {
 	// TODO: Using Watch method gives the following error on creation and deletion of resources:
 	// expected type X, but watch event object had type *runtime.Unstructured
 	stream, err := r.client.Get().
@@ -116,7 +110,7 @@ func (r *release) Watch(opts *api.ListOptions) (watch.Interface, error) {
 		NamespaceIfScoped(r.namespace, r.resource.Namespaced).
 		Resource(r.resource.Name).
 		// VersionedParams(opts, spec.DefaultParameterEncoder).
-		VersionedParams(opts, api.ParameterCodec).
+		VersionedParams(opts, metav1.ParameterCodec).
 		Stream()
 	if err != nil {
 		return nil, err
@@ -129,7 +123,7 @@ func (r *release) Watch(opts *api.ListOptions) (watch.Interface, error) {
 }
 
 // Patch applies the patch and returns the patched release.
-func (r *release) Patch(name string, pt api.PatchType, data []byte, subresources ...string) (*spec.Release, error) {
+func (r *release) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (*spec.Release, error) {
 	release := &spec.Release{}
 	err := r.client.Patch(pt).
 		Namespace(r.namespace).

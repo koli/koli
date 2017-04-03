@@ -6,11 +6,11 @@ import (
 
 	"kolihub.io/koli/pkg/spec"
 
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/api/unversioned"
-	"k8s.io/kubernetes/pkg/client/restclient"
-	"k8s.io/kubernetes/pkg/runtime"
-	"k8s.io/kubernetes/pkg/watch"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/watch"
+	"k8s.io/client-go/rest"
 )
 
 // AddonGetter has a method to return an AddonInterface.
@@ -21,19 +21,19 @@ type AddonGetter interface {
 
 // AddonInterface has methods to work with Addon resources.
 type AddonInterface interface {
-	List(opts *api.ListOptions) (*spec.AddonList, error)
+	List(opts *metav1.ListOptions) (*spec.AddonList, error)
 	Get(name string) (*spec.Addon, error)
-	Delete(name string, options *api.DeleteOptions) error
+	Delete(name string, options *metav1.DeleteOptions) error
 	Create(data *spec.Addon) (*spec.Addon, error)
 	Update(data *spec.Addon) (*spec.Addon, error)
-	Watch(opts *api.ListOptions) (watch.Interface, error)
+	Watch(opts *metav1.ListOptions) (watch.Interface, error)
 }
 
 // addon implements AddonInterface
 type addon struct {
-	client    restclient.Interface
+	client    rest.Interface
 	namespace string
-	resource  *unversioned.APIResource
+	resource  *metav1.APIResource
 }
 
 // Get gets the resource with the specified name.
@@ -49,26 +49,20 @@ func (a *addon) Get(name string) (*spec.Addon, error) {
 }
 
 // List returns a list of objects for this resource.
-func (a *addon) List(opts *api.ListOptions) (*spec.AddonList, error) {
-	if opts == nil {
-		opts = &api.ListOptions{}
-	}
+func (a *addon) List(opts *metav1.ListOptions) (*spec.AddonList, error) {
 	addonList := &spec.AddonList{}
 	err := a.client.Get().
 		NamespaceIfScoped(a.namespace, a.resource.Namespaced).
 		Resource(a.resource.Name).
 		FieldsSelectorParam(nil).
-		VersionedParams(opts, api.ParameterCodec). // TODO: test this option
+		// VersionedParams(opts, scheme.ParameterCodec). // TODO: test this option
 		Do().
 		Into(addonList)
 	return addonList, err
 }
 
 // Delete deletes the resource with the specified name.
-func (a *addon) Delete(name string, opts *api.DeleteOptions) error {
-	if opts == nil {
-		opts = &api.DeleteOptions{}
-	}
+func (a *addon) Delete(name string, opts *metav1.DeleteOptions) error {
 	return a.client.Delete().
 		NamespaceIfScoped(a.namespace, a.resource.Namespaced).
 		Resource(a.resource.Name).
@@ -109,15 +103,14 @@ func (a *addon) Update(data *spec.Addon) (*spec.Addon, error) {
 }
 
 // Watch returns a watch.Interface that watches the resource.
-func (a *addon) Watch(opts *api.ListOptions) (watch.Interface, error) {
+func (a *addon) Watch(opts *metav1.ListOptions) (watch.Interface, error) {
 	// TODO: Using Watch method gives the following error on creation and deletion of resources:
 	// expected type X, but watch event object had type *runtime.Unstructured
 	stream, err := a.client.Get().
 		Prefix("watch").
 		NamespaceIfScoped(a.namespace, a.resource.Namespaced).
 		Resource(a.resource.Name).
-		// VersionedParams(opts, spec.DefaultParameterEncoder).
-		VersionedParams(opts, api.ParameterCodec).
+		VersionedParams(opts, metav1.ParameterCodec).
 		Stream()
 	if err != nil {
 		return nil, err
@@ -130,7 +123,7 @@ func (a *addon) Watch(opts *api.ListOptions) (watch.Interface, error) {
 }
 
 // Patch updates the provided resource
-func (a *addon) Patch(name string, pt api.PatchType, data []byte) (*spec.Addon, error) {
+func (a *addon) Patch(name string, pt types.PatchType, data []byte) (*spec.Addon, error) {
 	addon := &spec.Addon{}
 	err := a.client.Patch(pt).
 		NamespaceIfScoped(a.namespace, a.resource.Namespaced).

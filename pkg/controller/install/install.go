@@ -1,8 +1,8 @@
 package install
 
 import (
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/client-go/pkg/api/v1"
 	"kolihub.io/koli/pkg/spec"
 )
 
@@ -15,9 +15,9 @@ func init() {
 		spec.RoleAddonManagement,
 	}
 	spec.PlatformRegisteredResources = &spec.ResourceList{
-		api.ResourcePods:       resource.Quantity{},
-		api.ResourceConfigMaps: resource.Quantity{},
-		api.ResourceSecrets:    resource.Quantity{},
+		v1.ResourcePods:       resource.Quantity{},
+		v1.ResourceConfigMaps: resource.Quantity{},
+		v1.ResourceSecrets:    resource.Quantity{},
 		// TODO: vfuture
 		// api.ResourcePersistentVolumeClaims: resource.Quantity{},
 		// api.ResourceRequestsCPU:            resource.Quantity{},

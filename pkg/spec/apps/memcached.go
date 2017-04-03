@@ -7,11 +7,11 @@ import (
 	"kolihub.io/koli/pkg/spec"
 	"kolihub.io/koli/pkg/spec/util"
 
-	"k8s.io/kubernetes/pkg/api"
-	apps "k8s.io/kubernetes/pkg/apis/apps"
-	"k8s.io/kubernetes/pkg/client/cache"
-	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
-	"k8s.io/kubernetes/pkg/labels"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	clientset "k8s.io/client-go/kubernetes"
+
+	v1beta1 "k8s.io/client-go/pkg/apis/apps/v1beta1"
+	"k8s.io/client-go/tools/cache"
 )
 
 // Memcached add-on in memory key value store database
@@ -27,7 +27,7 @@ func (m *Memcached) CreateConfigMap() error {
 }
 
 // CreatePetSet add a new memcached PetSet
-func (m *Memcached) CreatePetSet(sp *spec.ServicePlan) error {
+func (m *Memcached) CreatePetSet(sp *spec.Plan) error {
 	labels := map[string]string{
 		"koli.io/type": "addon",
 		"koli.io/app":  m.addon.Name,
@@ -36,6 +36,7 @@ func (m *Memcached) CreatePetSet(sp *spec.ServicePlan) error {
 	petset.Spec.Template.Spec.Containers[0].Resources.Limits = sp.Spec.Resources.Limits
 	petset.Spec.Template.Spec.Containers[0].Resources.Requests = sp.Spec.Resources.Requests
 	petset.Labels = spec.NewLabel().Add(map[string]string{"clusterplan": sp.Name}).Set
+
 	if _, err := m.client.Apps().StatefulSets(m.addon.Namespace).Create(petset); err != nil {
 		return fmt.Errorf("failed creating petset (%s)", err)
 	}
@@ -43,7 +44,7 @@ func (m *Memcached) CreatePetSet(sp *spec.ServicePlan) error {
 }
 
 // UpdatePetSet update a memcached PetSet
-func (m *Memcached) UpdatePetSet(old *apps.StatefulSet, sp *spec.ServicePlan) error {
+func (m *Memcached) UpdatePetSet(old *v1beta1.StatefulSet, sp *spec.Plan) error {
 	labels := map[string]string{
 		"koli.io/type": "addon",
 		"koli.io/app":  m.addon.Name,
@@ -71,26 +72,21 @@ func (m *Memcached) DeleteApp() error {
 		return err
 	}
 	// Deep-copy otherwise we are mutating our cache.
-	oldPset, err := util.StatefulSetDeepCopy(obj.(*apps.StatefulSet))
+	oldPset, err := util.StatefulSetDeepCopy(obj.(*v1beta1.StatefulSet))
 	if err != nil {
 		return err
 	}
-	oldPset.Spec.Replicas = 0
+	oldPset.Spec.Replicas = new(int32)
 
 	if _, err := psetClient.Update(oldPset); err != nil {
 		return err
 	}
 
-	selector, err := m.getSelector()
-	if err != nil {
-		return err
-	}
 	podClient := m.client.Core().Pods(m.addon.Namespace)
-
 	// TODO: temprorary solution until Deployment status provides necessary info to know
 	// whether scale-down completed.
 	for {
-		pods, err := podClient.List(api.ListOptions{LabelSelector: selector})
+		pods, err := podClient.List(metav1.ListOptions{LabelSelector: m.getSelector()})
 		if err != nil {
 			return err
 		}
@@ -113,6 +109,6 @@ func (m *Memcached) GetAddon() *spec.Addon {
 }
 
 // getSelector retrieves the a selector for the memcached app based on its name
-func (m *Memcached) getSelector() (labels.Selector, error) {
-	return labels.Parse("koli.io/type=addon,koli.io/app=" + m.addon.Name)
+func (m *Memcached) getSelector() string {
+	return "koli.io/type=addon,koli.io/app=" + m.addon.Name
 }

@@ -11,9 +11,9 @@ func (a *Addon) GetImage() string {
 }
 
 // GetReplicas returns the size of replicas, if is less than 1 sets a default value
-func (a *Addon) GetReplicas() int32 {
+func (a *Addon) GetReplicas() *int32 {
 	if a.Spec.Replicas < 1 {
 		a.Spec.Replicas = 1
 	}
-	return a.Spec.Replicas
+	return &a.Spec.Replicas
 }

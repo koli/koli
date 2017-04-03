@@ -3,6 +3,8 @@ package version
 import (
 	"fmt"
 	"runtime"
+
+	k8sversion "k8s.io/kubernetes/pkg/version"
 )
 
 // Info contains versioning information.
@@ -10,10 +12,11 @@ import (
 // how we'll want to distribute that information.
 type Info struct {
 	// KubernetesVersion string `json:"kubernetesVersion"`
-	GitVersion string `json:"gitVersion"`
-	GitCommit  string `json:"gitCommit"`
-	BuildDate  string `json:"buildDate"`
-	GoVersion  string `json:"goVersion"`
+	K8SVersion string `json:"k8s_lib_version"`
+	GitVersion string `json:"git_version"`
+	GitCommit  string `json:"git_commit"`
+	BuildDate  string `json:"build_date"`
+	GoVersion  string `json:"go_version"`
 	Compiler   string `json:"compiler"`
 	Platform   string `json:"platform"`
 }
@@ -32,6 +35,7 @@ func Get() Info {
 	// their absence fallback to the settings in pkg/version/base.go
 	return Info{
 		// KubernetesVersion: kubernetesClientVersion,
+		K8SVersion: fmt.Sprintf("v%s.%s.0", k8sversion.Get().Major, k8sversion.Get().Minor),
 		GitVersion: gitVersion,
 		GitCommit:  gitCommit,
 		BuildDate:  buildDate,

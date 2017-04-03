@@ -10,12 +10,13 @@ import (
 	"kolihub.io/koli/pkg/spec"
 	"kolihub.io/koli/pkg/spec/util"
 
-	"k8s.io/kubernetes/pkg/api"
-	apierrors "k8s.io/kubernetes/pkg/api/errors"
-	apps "k8s.io/kubernetes/pkg/apis/apps"
-	"k8s.io/kubernetes/pkg/client/cache"
-	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
-	"k8s.io/kubernetes/pkg/labels"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/pkg/api/v1"
+	v1beta1 "k8s.io/client-go/pkg/apis/apps/v1beta1"
+
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
 )
 
 const (
@@ -25,7 +26,7 @@ const (
 
 // Redis add-on in memory key value store database
 type Redis struct {
-	client  clientset.Interface
+	client  kubernetes.Interface
 	addon   *spec.Addon
 	psetInf cache.SharedIndexInformer
 }
@@ -37,9 +38,9 @@ func (r *Redis) CreateConfigMap() error {
 	if err != nil {
 		return err
 	}
-	var cm *api.ConfigMap
-	cm = &api.ConfigMap{
-		ObjectMeta: api.ObjectMeta{
+	var cm *v1.ConfigMap
+	cm = &v1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:   r.addon.Name,
 			Labels: map[string]string{"koli.io/app": r.addon.Name},
 		},
@@ -49,7 +50,7 @@ func (r *Redis) CreateConfigMap() error {
 	}
 
 	cmClient := r.client.Core().ConfigMaps(r.addon.Namespace)
-	_, err = cmClient.Get(r.addon.Name)
+	_, err = cmClient.Get(r.addon.Name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		_, err = cmClient.Create(cm)
 	} else if err == nil {
@@ -71,12 +72,12 @@ func (r *Redis) getConfigTemplate() (string, error) {
 
 func (r *Redis) makeVolumes() *VolumeSpec {
 	return &VolumeSpec{
-		Volumes: []api.Volume{
+		Volumes: []v1.Volume{
 			{
 				Name: "config",
-				VolumeSource: api.VolumeSource{
-					ConfigMap: &api.ConfigMapVolumeSource{
-						LocalObjectReference: api.LocalObjectReference{
+				VolumeSource: v1.VolumeSource{
+					ConfigMap: &v1.ConfigMapVolumeSource{
+						LocalObjectReference: v1.LocalObjectReference{
 							// The ConfigMap has the same name of the PetSet
 							Name: r.addon.Name,
 						},
@@ -84,7 +85,7 @@ func (r *Redis) makeVolumes() *VolumeSpec {
 				},
 			},
 		},
-		VolumeMounts: []api.VolumeMount{
+		VolumeMounts: []v1.VolumeMount{
 			{
 				Name:      "config",
 				ReadOnly:  true,
@@ -95,7 +96,7 @@ func (r *Redis) makeVolumes() *VolumeSpec {
 }
 
 // CreatePetSet add a new redis PetSet
-func (r *Redis) CreatePetSet(sp *spec.ServicePlan) error {
+func (r *Redis) CreatePetSet(sp *spec.Plan) error {
 	labels := map[string]string{
 		"koli.io/type": "addon",
 		"koli.io/app":  r.addon.Name,
@@ -111,7 +112,7 @@ func (r *Redis) CreatePetSet(sp *spec.ServicePlan) error {
 }
 
 // UpdatePetSet update a redis PetSet
-func (r *Redis) UpdatePetSet(old *apps.StatefulSet, sp *spec.ServicePlan) error {
+func (r *Redis) UpdatePetSet(old *v1beta1.StatefulSet, sp *spec.Plan) error {
 	labels := map[string]string{
 		"koli.io/type": "addon",
 		"koli.io/app":  r.addon.Name,
@@ -139,26 +140,21 @@ func (r *Redis) DeleteApp() error {
 		return err
 	}
 	// Deep-copy otherwise we are mutating our cache.
-	oldPset, err := util.StatefulSetDeepCopy(obj.(*apps.StatefulSet))
+	oldPset, err := util.StatefulSetDeepCopy(obj.(*v1beta1.StatefulSet))
 	if err != nil {
 		return err
 	}
-	oldPset.Spec.Replicas = 0
+	oldPset.Spec.Replicas = new(int32)
 
 	if _, err := psetClient.Update(oldPset); err != nil {
 		return err
 	}
 
-	selector, err := r.GetSelector()
-	if err != nil {
-		return err
-	}
 	podClient := r.client.Core().Pods(r.addon.Namespace)
-
 	// TODO: temprorary solution until Deployment status provides necessary info to know
 	// whether scale-down completed.
 	for {
-		pods, err := podClient.List(api.ListOptions{LabelSelector: selector})
+		pods, err := podClient.List(metav1.ListOptions{LabelSelector: r.GetSelector()})
 		if err != nil {
 			return err
 		}
@@ -181,6 +177,6 @@ func (r *Redis) GetAddon() *spec.Addon {
 }
 
 // GetSelector retrieves the a selector for the redis app based on its name
-func (r *Redis) GetSelector() (labels.Selector, error) {
-	return labels.Parse("koli.io/type=addon,koli.io/app=" + r.addon.Name)
+func (r *Redis) GetSelector() string {
+	return "koli.io/type=addon,koli.io/app=" + r.addon.Name
 }

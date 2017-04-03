@@ -1,13 +1,13 @@
 package controller
 
-import "k8s.io/kubernetes/pkg/client/restclient"
+import "k8s.io/client-go/rest"
 
 // Config defines configuration parameters for the Operator.
 type Config struct {
 	Host            string
 	GitReleaseHost  string
 	TLSInsecure     bool
-	TLSConfig       restclient.TLSClientConfig
+	TLSConfig       rest.TLSClientConfig
 	SlugBuildImage  string
 	SlugRunnerImage string
 	ClusterName     string

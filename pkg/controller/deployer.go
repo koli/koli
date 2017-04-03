@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/golang/glog"
@@ -11,13 +12,13 @@ import (
 	"kolihub.io/koli/pkg/spec"
 	specutil "kolihub.io/koli/pkg/spec/util"
 
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/client/cache"
-	"k8s.io/kubernetes/pkg/util/wait"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/cache"
+	"k8s.io/client-go/tools/record"
 
-	extensions "k8s.io/kubernetes/pkg/apis/extensions"
-	kclientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
-	utilruntime "k8s.io/kubernetes/pkg/util/runtime"
+	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	"k8s.io/client-go/pkg/api/v1"
+	extensions "k8s.io/client-go/pkg/apis/extensions/v1beta1"
 )
 
 const (
@@ -27,13 +28,15 @@ const (
 
 // DeployerController controller
 type DeployerController struct {
-	kclient   kclientset.Interface
+	kclient   kubernetes.Interface
 	clientset clientset.CoreInterface
 	podInf    cache.SharedIndexInformer
 	dpInf     cache.SharedIndexInformer
 	relInf    cache.SharedIndexInformer
-	queue     *queue
 	config    *Config
+
+	queue    *TaskQueue
+	recorder record.EventRecorder
 }
 
 // NewDeployerController creates a new DeployerController
@@ -41,43 +44,44 @@ func NewDeployerController(
 	config *Config, podInf,
 	dpInf, relInf cache.SharedIndexInformer,
 	sysClient clientset.CoreInterface,
-	kclient kclientset.Interface) *DeployerController {
+	kclient kubernetes.Interface) *DeployerController {
 	d := &DeployerController{
 		kclient:   kclient,
 		clientset: sysClient,
 		podInf:    podInf,
 		dpInf:     dpInf,
 		relInf:    relInf,
-		queue:     newQueue(200),
 		config:    config,
+		recorder:  newRecorder(kclient, "apps-controller"),
 	}
+	d.queue = NewTaskQueue(d.syncHandler)
 
 	d.podInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    d.addPod,
 		UpdateFunc: d.updatePod,
-		DeleteFunc: d.deletePod,
+		// DeleteFunc: d.deletePod,
 	})
 	return d
 }
 
 func (d *DeployerController) addPod(obj interface{}) {
-	pod := obj.(*api.Pod)
-	glog.Infof("add-pod - %s/%s", pod.Namespace, pod.Name)
-	d.queue.add(pod)
+	pod := obj.(*v1.Pod)
+	glog.V(2).Infof("add-pod - %s/%s", pod.Namespace, pod.Name)
+	d.queue.Add(pod)
 }
 
 func (d *DeployerController) updatePod(o, n interface{}) {
-	old := o.(*api.Pod)
-	new := n.(*api.Pod)
+	old := o.(*v1.Pod)
+	new := n.(*v1.Pod)
 	if old.ResourceVersion == new.ResourceVersion || old.Status.Phase == new.Status.Phase {
 		return
 	}
-	glog.Infof("update-pod - %s/%s", new.Namespace, new.Name)
-	d.queue.add(new)
+	glog.V(2).Infof("update-pod - %s/%s", new.Namespace, new.Name)
+	d.queue.Add(new)
 }
 
 func (d *DeployerController) deletePod(obj interface{}) {
-	// pod := obj.(*api.Pod)
+	// pod := obj.(*v1.Pod)
 	// glog.Infof("delete-pod - %s/%s noop", pod.Namespace, pod.Name)
 	// d.queue.add(pod)
 }
@@ -87,7 +91,7 @@ func (d *DeployerController) Run(workers int, stopc <-chan struct{}) {
 	// don't let panics crash the process
 	defer utilruntime.HandleCrash()
 	// make sure the work queue is shutdown which will trigger workers to end
-	defer d.queue.close()
+	defer d.queue.shutdown()
 
 	glog.Info("Starting Deployer Controller...")
 
@@ -98,7 +102,8 @@ func (d *DeployerController) Run(workers int, stopc <-chan struct{}) {
 	for i := 0; i < workers; i++ {
 		// runWorker will loop until "something bad" happens.
 		// The .Until will then rekick the worker after one second
-		go wait.Until(d.runWorker, time.Second, stopc)
+		go d.queue.run(time.Second, stopc)
+		// go wait.Until(d.runWorker, time.Second, stopc)
 	}
 
 	// wait until we're told to stop
@@ -106,45 +111,32 @@ func (d *DeployerController) Run(workers int, stopc <-chan struct{}) {
 	glog.Info("shutting down Deployer controller...")
 }
 
-// runWorker runs a worker thread that just dequeues items, processes them, and marks them done.
-// It enforces that the syncHandler is never invoked concurrently with the same key.
-func (d *DeployerController) runWorker() {
-	for {
-		pod, ok := d.queue.pop(&api.Pod{})
-		if !ok {
-			return
-		}
-
-		if err := d.reconcile(pod.(*api.Pod)); err != nil {
-			utilruntime.HandleError(err)
-		}
-	}
-}
-
-func (d *DeployerController) reconcile(pod *api.Pod) error {
-	key, err := keyFunc(pod)
+func (d *DeployerController) syncHandler(key string) error {
+	obj, exists, err := d.podInf.GetStore().GetByKey(key)
 	if err != nil {
+		glog.Warningf("%s - failed retrieving object from store [%s]", key, err)
 		return err
 	}
 
-	logHeader := fmt.Sprintf("%s/%s", pod.Namespace, pod.Name)
+	if !exists {
+		glog.V(2).Infof("%s - the pod doesn't exists")
+		return nil
+	}
+
+	pod := obj.(*v1.Pod)
 	_, err = platform.NewNamespace(pod.Namespace)
 	if err != nil {
-		glog.V(4).Infof("%s - noop, it's not a valid namespace", logHeader)
+		glog.V(2).Infof("%s - noop, it's not a valid namespace", key)
 		return nil
 	}
 
-	_, exists, err := d.podInf.GetStore().GetByKey(key)
-	if err != nil {
-		return err
-	}
-
-	if !exists || pod.DeletionTimestamp != nil {
-		return nil
-	}
 	releaseName := pod.Annotations[spec.KoliPrefix("releasename")]
 	if releaseName == "" {
-		return fmt.Errorf("%s - missing 'releasename' annotation on pod", logHeader)
+		msg := "Couldn't find the release for the build, an annotation is missing on pod. " +
+			"The build must be manually deployed."
+		d.recorder.Event(pod, v1.EventTypeWarning, "ReleaseNotFound", msg)
+		glog.Warningf("%s - missing 'releasename' annotation on pod", key)
+		return nil
 	}
 
 	releaseQ := &spec.Release{}
@@ -152,78 +144,104 @@ func (d *DeployerController) reconcile(pod *api.Pod) error {
 	releaseQ.SetNamespace(pod.Namespace)
 	releaseO, exists, err := d.relInf.GetStore().Get(releaseQ)
 	if err != nil {
+		d.recorder.Eventf(pod, v1.EventTypeWarning, "DeployError",
+			"Found an error retrieving the release from cache [%s].", err)
+		glog.Warningf("%s - found an error retrieving the release from cache [%s]", key, err)
 		return err
 	}
 
 	if !exists {
-		return fmt.Errorf("%s - release '%s' doesn't exists anymore", logHeader, releaseName)
+		d.recorder.Event(pod, v1.EventTypeWarning, "ReleaseNotFound",
+			"The release wasn't found for this build, the build must be manually deployed.")
+		glog.Warningf("%s - release '%s' doesn't exist anymore", key, releaseName)
+		return nil
 	}
-
-	// Release expires with time, otherwise we could have wrong behavior
-	// with old releases being deployed due to the async behavior of controllers.
 	release := releaseO.(*spec.Release)
-	if release.Expired() {
-		glog.V(4).Infof("%s - auto deploy expired for release '%s'", logHeader, release.Name)
-	}
-
-	if pod.Status.Phase == api.PodSucceeded && release.Spec.AutoDeploy && !release.Expired() {
-		if err := d.deploySlug(release); err != nil {
-			glog.Infof("%s - failed deploying: %s", logHeader, err)
-		} else {
-			glog.Infof("%s - deployed successfully", logHeader)
+	if pod.Status.Phase == v1.PodSucceeded && release.Spec.AutoDeploy {
+		deploymentQ := &extensions.Deployment{}
+		deploymentQ.SetName(release.Spec.DeployName)
+		deploymentQ.SetNamespace(release.Namespace)
+		deploymentO, exists, err := d.dpInf.GetStore().Get(deploymentQ)
+		if err != nil {
+			return fmt.Errorf("failed retrieving deploy from cache [%s]", err)
 		}
+		if !exists {
+			d.recorder.Eventf(release, v1.EventTypeWarning,
+				"DeployNotFound", "Deploy '%s' not found", release.Spec.DeployName)
+			// There's any resource to deploy, do not requeue
+			return nil
+		}
+		deploy := deploymentO.(*extensions.Deployment)
+		deployBuildRev, _ := strconv.Atoi(deploy.Annotations["kolihub.io/buildrevision"])
+		releaseBuildRev := release.BuildRevision()
+		// The release revision must be greater or equal than the current deployment and
+		// it must have distinct git revisions, otherwise it will deploy an old
+		// app version. This will prevent old pod resources (completed)
+		// trigerring unwanted deploys
+		if releaseBuildRev < deployBuildRev {
+			glog.V(2).Infof("%s - found release revision [%d] and deploy revision as [%d], skipping autodeploy",
+				key, releaseBuildRev, deployBuildRev)
+			return nil
+		}
+
+		if deploy.Annotations["kolihub.io/deployed-git-revision"] == release.Spec.GitRevision {
+			glog.V(2).Infof("%s - this release was already deployed [%s], skipping autodeploy", key, release.Spec.GitRevision)
+			return nil
+		}
+
+		if err := d.deploySlug(release, deploy); err != nil {
+			d.recorder.Eventf(release, v1.EventTypeWarning, "DeployError",
+				"Failed deploying release [%s]", err)
+			return fmt.Errorf("failed deploying release [%s]", err)
+		}
+		d.recorder.Eventf(release, v1.EventTypeNormal,
+			"Deployed", "Deploy '%s' updated with the new revision [%s]", release.Spec.DeployName, release.Spec.GitRevision[:7])
 	}
 
 	releaseCopy, err := specutil.ReleaseDeepCopy(release)
 	if err != nil {
-		return fmt.Errorf("%s - failed deep copying: %s", logHeader, err)
+		return fmt.Errorf("failed deep copying [%s]", err)
 	}
 	// turn-off build, otherwise it will trigger unwanted builds
 	releaseCopy.Spec.Build = false
 	releaseCopy.Labels[spec.KoliPrefix("buildstatus")] = string(pod.Status.Phase)
 	if _, err := d.clientset.Release(pod.Namespace).Update(releaseCopy); err != nil {
-		return fmt.Errorf("%s - failed updating pod status: %s", logHeader, err)
+		return fmt.Errorf("failed updating pod status [%s]", err)
 	}
 	return nil
 }
 
-func (d *DeployerController) deploySlug(release *spec.Release) error {
-	deploymentQ := &extensions.Deployment{}
-	deploymentQ.SetName(release.Spec.DeployName)
-	deploymentQ.SetNamespace(release.Namespace)
-	deploymentO, exists, err := d.dpInf.GetStore().Get(deploymentQ)
-	if err != nil {
-		return fmt.Errorf("failed retrieving deploy from cache: %s", err)
-	}
-	if !exists {
-		return fmt.Errorf("deploy '%s' doesn't exists", deploymentQ.Name)
-	}
-	dpCopy, err := specutil.DeploymentDeepCopy(deploymentO.(*extensions.Deployment))
+func (d *DeployerController) deploySlug(release *spec.Release, deploy *extensions.Deployment) error {
+	dpCopy, err := specutil.DeploymentDeepCopy(deploy)
 	if err != nil {
 		return fmt.Errorf("failed deep copying: %s", err)
 	}
 	dpCopy.Spec.Paused = false
+	if dpCopy.Annotations == nil {
+		dpCopy.Annotations = make(map[string]string)
+	}
+	dpCopy.Annotations["kolihub.io/deployed-git-revision"] = release.Spec.GitRevision
 	c := dpCopy.Spec.Template.Spec.Containers
 	// TODO: hard-coded
-	c[0].Ports = []api.ContainerPort{
+	c[0].Ports = []v1.ContainerPort{
 		{
 			Name:          "http",
 			ContainerPort: 5000,
-			Protocol:      api.ProtocolTCP,
+			Protocol:      v1.ProtocolTCP,
 		},
 	}
 	c[0].Args = []string{"start", "web"} // TODO: hard-coded, it must come from Procfile
 	c[0].Image = d.config.SlugRunnerImage
 	c[0].Name = dpCopy.Name
 	slugURL := release.GitReleaseURL(d.config.GitReleaseHost) + "/slug.tgz"
-	c[0].Env = []api.EnvVar{
+	c[0].Env = []v1.EnvVar{
 		{
 			Name:  "SLUG_URL",
 			Value: slugURL,
 		},
 		{
 			Name:  "AUTH_TOKEN",
-			Value: release.Spec.AuthToken,
+			Value: release.Spec.AuthToken, // TODO: this token mustn't be expirable!
 		},
 		{
 			Name:  "DEBUG",

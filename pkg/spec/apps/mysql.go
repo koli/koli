@@ -11,13 +11,12 @@ import (
 
 	"github.com/renstrom/dedent"
 
-	"k8s.io/kubernetes/pkg/api"
-	apierrors "k8s.io/kubernetes/pkg/api/errors"
-	// "k8s.io/kubernetes/pkg/api"
-	apps "k8s.io/kubernetes/pkg/apis/apps"
-	"k8s.io/kubernetes/pkg/client/cache"
-	clientset "k8s.io/kubernetes/pkg/client/clientset_generated/internalclientset"
-	"k8s.io/kubernetes/pkg/labels"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/pkg/api/v1"
+	v1beta1 "k8s.io/client-go/pkg/apis/apps/v1beta1"
+	"k8s.io/client-go/tools/cache"
 )
 
 const (
@@ -27,7 +26,7 @@ const (
 
 // MySQL add-on relational database management system
 type MySQL struct {
-	client  clientset.Interface
+	client  kubernetes.Interface
 	addon   *spec.Addon
 	psetInf cache.SharedIndexInformer
 }
@@ -39,9 +38,9 @@ func (m *MySQL) CreateConfigMap() error {
 	if err != nil {
 		return err
 	}
-	var cm *api.ConfigMap
-	cm = &api.ConfigMap{
-		ObjectMeta: api.ObjectMeta{
+	var cm *v1.ConfigMap
+	cm = &v1.ConfigMap{
+		ObjectMeta: metav1.ObjectMeta{
 			Name:   m.addon.Name,
 			Labels: map[string]string{"koli.io/app": m.addon.Name},
 		},
@@ -51,7 +50,7 @@ func (m *MySQL) CreateConfigMap() error {
 	}
 
 	cmClient := m.client.Core().ConfigMaps(m.addon.Namespace)
-	_, err = cmClient.Get(m.addon.Name)
+	_, err = cmClient.Get(m.addon.Name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		_, err = cmClient.Create(cm)
 	} else if err == nil {
@@ -73,12 +72,12 @@ func (m *MySQL) getConfigTemplate() (string, error) {
 
 func (m *MySQL) makeVolumes() *VolumeSpec {
 	return &VolumeSpec{
-		Volumes: []api.Volume{
+		Volumes: []v1.Volume{
 			{
 				Name: "config",
-				VolumeSource: api.VolumeSource{
-					ConfigMap: &api.ConfigMapVolumeSource{
-						LocalObjectReference: api.LocalObjectReference{
+				VolumeSource: v1.VolumeSource{
+					ConfigMap: &v1.ConfigMapVolumeSource{
+						LocalObjectReference: v1.LocalObjectReference{
 							// The ConfigMap has the same name of the PetSet
 							Name: m.addon.Name,
 						},
@@ -86,7 +85,7 @@ func (m *MySQL) makeVolumes() *VolumeSpec {
 				},
 			},
 		},
-		VolumeMounts: []api.VolumeMount{
+		VolumeMounts: []v1.VolumeMount{
 			{
 				Name:      "config",
 				ReadOnly:  true,
@@ -97,7 +96,7 @@ func (m *MySQL) makeVolumes() *VolumeSpec {
 }
 
 // CreatePetSet add a new mySQL PetSet
-func (m *MySQL) CreatePetSet(sp *spec.ServicePlan) error {
+func (m *MySQL) CreatePetSet(sp *spec.Plan) error {
 	labels := map[string]string{
 		"koli.io/type": "addon",
 		"koli.io/app":  m.addon.Name,
@@ -113,7 +112,7 @@ func (m *MySQL) CreatePetSet(sp *spec.ServicePlan) error {
 }
 
 // UpdatePetSet update a mySQL PetSet
-func (m *MySQL) UpdatePetSet(old *apps.StatefulSet, sp *spec.ServicePlan) error {
+func (m *MySQL) UpdatePetSet(old *v1beta1.StatefulSet, sp *spec.Plan) error {
 	labels := map[string]string{
 		"koli.io/type": "addon",
 		"koli.io/app":  m.addon.Name,
@@ -142,26 +141,21 @@ func (m *MySQL) DeleteApp() error {
 		return err
 	}
 	// Deep-copy otherwise we are mutating our cache.
-	oldPset, err := util.StatefulSetDeepCopy(obj.(*apps.StatefulSet))
+	oldPset, err := util.StatefulSetDeepCopy(obj.(*v1beta1.StatefulSet))
 	if err != nil {
 		return err
 	}
-	oldPset.Spec.Replicas = 0
+	oldPset.Spec.Replicas = new(int32)
 
 	if _, err := psetClient.Update(oldPset); err != nil {
 		return err
 	}
 
-	selector, err := m.getSelector()
-	if err != nil {
-		return err
-	}
 	podClient := m.client.Core().Pods(m.addon.Namespace)
-
 	// TODO: temprorary solution until Deployment status provides necessary info to know
 	// whether scale-down completed.
 	for {
-		pods, err := podClient.List(api.ListOptions{LabelSelector: selector})
+		pods, err := podClient.List(metav1.ListOptions{LabelSelector: m.getSelector()})
 		if err != nil {
 			return err
 		}
@@ -184,6 +178,6 @@ func (m *MySQL) GetAddon() *spec.Addon {
 }
 
 // getSelector retrieves the a selector for the redis app based on its name
-func (m *MySQL) getSelector() (labels.Selector, error) {
-	return labels.Parse("koli.io/type=addon,koli.io/app=" + m.addon.Name)
+func (m *MySQL) getSelector() string {
+	return "koli.io/type=addon,koli.io/app=" + m.addon.Name
 }

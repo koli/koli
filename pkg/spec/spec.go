@@ -2,15 +2,16 @@ package spec
 
 import (
 	"fmt"
+	"net/url"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
-	"net/url"
+	"k8s.io/apimachinery/pkg/labels"
 
-	"k8s.io/kubernetes/pkg/api"
-	"k8s.io/kubernetes/pkg/apis/rbac"
-	"k8s.io/kubernetes/pkg/labels"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	rbac "k8s.io/client-go/pkg/apis/rbac/v1beta1"
 )
 
 // KoliPrefixValue is used for creating annotations and labels
@@ -77,7 +78,7 @@ func KoliPrefix(value string) string {
 // GetRoleBinding retrieves a role binding for this role
 func (r PlatformRole) GetRoleBinding(subjects []rbac.Subject) *rbac.RoleBinding {
 	return &rbac.RoleBinding{
-		ObjectMeta: api.ObjectMeta{Name: string(r)},
+		ObjectMeta: metav1.ObjectMeta{Name: string(r)},
 		Subjects:   subjects,
 		RoleRef: rbac.RoleRef{
 			Kind: "ClusterRole",
@@ -135,11 +136,17 @@ func (r *Release) Expired() bool {
 	if expireAfter == 0 {
 		expireAfter = ReleaseExpireAfter
 	}
-	createdAt := r.GetCreationTimestamp().Add(time.Duration(expireAfter) * time.Minute)
+	createdAt := r.CreationTimestamp.Add(time.Duration(expireAfter) * time.Minute)
 	if createdAt.Before(time.Now().UTC()) {
 		return true
 	}
 	return false
+}
+
+// BuildRevision returns the revision as int, if the conversion fails returns 0
+func (r *Release) BuildRevision() int {
+	buildRev, _ := strconv.Atoi(r.Spec.BuildRevision)
+	return buildRev
 }
 
 // IsGitHubSource check if the source of the build is from github
@@ -161,7 +168,7 @@ func (r *Release) GitCloneURL() (string, error) {
 func (r *Release) GitReleaseURL(host string) string {
 	repository := r.Spec.GitRepository
 	if r.IsGitHubSource() {
-		repository = filepath.Join(r.GetNamespace(), r.Spec.DeployName)
+		repository = filepath.Join(r.Namespace, r.Spec.DeployName)
 	}
 	urlPath := filepath.Join("releases", repository, r.Spec.GitRevision)
 	return fmt.Sprintf("%s/%s", host, urlPath)
