@@ -289,7 +289,7 @@ func (c *NamespaceController) createDefaultPermissions(ns string, usr *spec.User
 func (c *NamespaceController) createNetworkPolicy(ns string) error {
 	// allow traffic between all pods in the namespace only
 	networkPolicy := &extensions.NetworkPolicy{
-		ObjectMeta: metav1.ObjectMeta{Name: "default"},
+		ObjectMeta: metav1.ObjectMeta{Name: "allow-traffic-between-pods"},
 		Spec: extensions.NetworkPolicySpec{
 			PodSelector: metav1.LabelSelector{},
 			Ingress: []extensions.NetworkPolicyIngressRule{
@@ -312,12 +312,34 @@ func (c *NamespaceController) createNetworkPolicy(ns string) error {
 		Body(networkPolicy).
 		DoRaw()
 	if err != nil && !apierrors.IsAlreadyExists(err) {
-		return fmt.Errorf("Failed creating network policy: %s", err)
+		return fmt.Errorf("Failed creating network policy (allow-traffic-between-pods): %s", err)
 	}
-	// client-go does not have registered client for creating networking policies
-	// if _, err := c.kclient.Extensions().NetworkPolicies(ns).Create(networkPolicy); err != nil && !apierrors.IsAlreadyExists(err) {
-	// 	return fmt.Errorf("failed creating network policy: %s", err)
-	// }
+	networkPolicy = &extensions.NetworkPolicy{
+		ObjectMeta: metav1.ObjectMeta{Name: "allow-traffic-between-kong"},
+		Spec: extensions.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			Ingress: []extensions.NetworkPolicyIngressRule{
+				{
+					From: []extensions.NetworkPolicyPeer{
+						{
+							NamespaceSelector: &metav1.LabelSelector{
+								MatchLabels: map[string]string{"kolihub.io/kong-system": "true"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	_, err = c.kclient.Extensions().RESTClient().
+		Post().
+		NamespaceIfScoped(ns, true).
+		Resource("networkpolicies").
+		Body(networkPolicy).
+		DoRaw()
+	if err != nil && !apierrors.IsAlreadyExists(err) {
+		return fmt.Errorf("Failed creating network policy (allow-traffic-between-kong): %s", err)
+	}
 	return nil
 }
 
