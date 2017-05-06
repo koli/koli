@@ -24,6 +24,11 @@ LDFLAGS := "-s -w \
 -X kolihub.io/koli/pkg/version.gitCommit=${GITCOMMIT} \
 -X kolihub.io/koli/pkg/version.buildDate=${DATE}"
 
+build-local:
+	mkdir -p ${BINARY_DEST_DIR}
+	go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/koli-controller cmd/controller/controller-manager.go
+	upx -9 ${BINARY_DEST_DIR}/koli-controller
+	
 build:
 	mkdir -p ${BINARY_DEST_DIR}
 	${DEV_ENV_CMD} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/koli-controller cmd/controller/controller-manager.go
