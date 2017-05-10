@@ -10,9 +10,6 @@ DEV_ENV_CMD := ${DEV_ENV_PREFIX} ${DEV_ENV_IMAGE}
 
 BINARY_DEST_DIR := rootfs/usr/bin
 
-# # It's necessary to set this because some environments don't link sh -> bash.
-SHELL := /bin/bash
-
 # Common flags passed into Go's linker.
 GOTEST := go test --race -v
 KUBECLIVERSION ?= unknown # glide.yaml
@@ -25,11 +22,12 @@ LDFLAGS := "-s -w \
 -X kolihub.io/koli/pkg/version.buildDate=${DATE}"
 
 build-local:
+	export SHELL=/bin/sh
 	mkdir -p ${BINARY_DEST_DIR}
 	go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/koli-controller cmd/controller/controller-manager.go
-	upx -9 ${BINARY_DEST_DIR}/koli-controller
 	
 build:
+	export SHELL=/bin/bash
 	mkdir -p ${BINARY_DEST_DIR}
 	${DEV_ENV_CMD} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/koli-controller cmd/controller/controller-manager.go
 	${DEV_ENV_CMD} upx -9 ${BINARY_DEST_DIR}/koli-controller
