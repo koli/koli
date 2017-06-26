@@ -6,8 +6,8 @@ import (
 
 	"github.com/golang/glog"
 
+	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 	clientset "kolihub.io/koli/pkg/clientset"
-	"kolihub.io/koli/pkg/platform"
 	"kolihub.io/koli/pkg/spec"
 	koliutil "kolihub.io/koli/pkg/util"
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/url"
 
-	"kolihub.io/koli/pkg/spec"
+	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
@@ -63,11 +63,11 @@ func NewSysRESTClient(c *rest.Config) (*CoreClient, error) {
 	c.APIPath = "/apis"
 
 	c.GroupVersion = &schema.GroupVersion{
-		Group:   spec.GroupName,
-		Version: spec.SchemeGroupVersion.Version,
+		Group:   platform.GroupName,
+		Version: platform.SchemeGroupVersion.Version,
 	}
 	contentConfig := dynamic.ContentConfig()
-	contentConfig.GroupVersion = &spec.SchemeGroupVersion
+	contentConfig.GroupVersion = &platform.SchemeGroupVersion
 	c.ContentConfig = contentConfig
 
 	// c.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: api.Codecs}
@@ -76,4 +76,13 @@ func NewSysRESTClient(c *rest.Config) (*CoreClient, error) {
 		return nil, err
 	}
 	return &CoreClient{restClient: cl}, nil
+}
+
+// NewTprRESTClientOrDie creates a client or die for testing purposes
+func NewTprRESTClientOrDie(c *rest.Config) CoreInterface {
+	cl, err := NewSysRESTClient(c)
+	if err != nil {
+		panic(err)
+	}
+	return cl
 }

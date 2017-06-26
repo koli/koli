@@ -14,6 +14,7 @@ import (
 type SharedInformerFactory interface {
 	// Start starts informers that can start AFTER the API server and controllers have started
 	Start(stopCh <-chan struct{})
+	WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool
 
 	Addons() AddonInformer
 	ServicePlans() ServicePlanInformer
@@ -58,6 +59,28 @@ func (f *sharedInformerFactory) Start(stopCh <-chan struct{}) {
 	}
 }
 
+// WaitForCacheSync waits for all started informers' cache were synced.
+func (f *sharedInformerFactory) WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool {
+	informers := func() map[reflect.Type]cache.SharedIndexInformer {
+		f.lock.Lock()
+		defer f.lock.Unlock()
+
+		informers := map[reflect.Type]cache.SharedIndexInformer{}
+		for informerType, informer := range f.informers {
+			if f.startedInformers[informerType] {
+				informers[informerType] = informer
+			}
+		}
+		return informers
+	}()
+
+	res := map[reflect.Type]bool{}
+	for informType, informer := range informers {
+		res[informType] = cache.WaitForCacheSync(stopCh, informer.HasSynced)
+	}
+	return res
+}
+
 // Addons returns a SharedIndexInformer that lists and watches all addons
 func (f *sharedInformerFactory) Addons() AddonInformer {
 	return &addonInformer{sharedInformerFactory: f}
@@ -65,6 +88,11 @@ func (f *sharedInformerFactory) Addons() AddonInformer {
 
 // ServicePlans returns a SharedIndexInformer that lists and watches all service plans
 func (f *sharedInformerFactory) ServicePlans() ServicePlanInformer {
+	return &servicePlanInformer{sharedInformerFactory: f}
+}
+
+// Plan returns a SharedIndexInformer that lists and watches all service plans
+func (f *sharedInformerFactory) Plan() ServicePlanInformer {
 	return &servicePlanInformer{sharedInformerFactory: f}
 }
 

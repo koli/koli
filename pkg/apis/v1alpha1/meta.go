@@ -1,4 +1,4 @@
-package spec
+package v1alpha1
 
 import (
 	"fmt"
@@ -8,8 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/labels"
-
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	rbac "k8s.io/client-go/pkg/apis/rbac/v1beta1"
 )
@@ -20,60 +19,17 @@ const (
 	ReleaseExpireAfter = 20
 )
 
+// IsValid validates if the user is valid verifying the email, customer and organization
+func (u User) IsValid() bool {
+	return len(u.Customer) > 0 && len(u.Organization) > 0 && len(u.Email) > 0
+}
+
 // PlatformRegisteredRoles contains all the cluster roles provisioned on the platform
 var PlatformRegisteredRoles []PlatformRole
 
 // PlatformRegisteredResources contains all the resources allowed for a user to configure
 // in resource quotas: http://kubernetes.io/docs/admin/resourcequota/#Object-Count-Quota
 var PlatformRegisteredResources *ResourceList
-
-// Label wraps a labels.Set
-type Label struct {
-	labels.Set
-	Prefix string
-}
-
-// Remove a key from the labels.Set using a pre-defined prefix
-func (l *Label) Remove(key string) *Label {
-	delete(l.Set, fmt.Sprintf("%s/%s", KoliPrefixValue, key))
-	return l
-}
-
-// Exists verifies if the given key exists
-func (l *Label) Exists(key string) bool {
-	_, hasKey := l.Set[fmt.Sprintf("%s/%s", l.Prefix, key)]
-	if hasKey {
-		return true
-	}
-	return false
-}
-
-// Add values to a labels.Set using a pre-defined prefix
-func (l *Label) Add(mapLabels map[string]string) *Label {
-	for key, value := range mapLabels {
-		l.Set[fmt.Sprintf("%s/%s", l.Prefix, key)] = value
-	}
-	return l
-}
-
-// NewLabel generates a new *spec.Label, if a prefix isn't provided
-// it will use the the default one: spec.KoliPrefixValue.
-func NewLabel(prefixS ...string) *Label {
-	var prefix string
-	if len(prefixS) == 0 {
-		prefix = KoliPrefixValue
-	}
-	if prefix == "" {
-		// Default prefix if it's empty
-		prefix = prefixS[0]
-	}
-	return &Label{Set: map[string]string{}, Prefix: prefix}
-}
-
-// KoliPrefix returns a value with the default prefix - spec.KoliPrefix
-func KoliPrefix(value string) string {
-	return fmt.Sprintf("%s/%s", KoliPrefixValue, value)
-}
 
 // GetRoleBinding retrieves a role binding for this role
 func (r PlatformRole) GetRoleBinding(subjects []rbac.Subject) *rbac.RoleBinding {
@@ -236,4 +192,31 @@ func (d *Domain) IsOK() bool {
 		return true
 	}
 	return false
+}
+
+// CPU return the CPU from limits and requests respectively
+func (p *Plan) CPU() (*resource.Quantity, *resource.Quantity) {
+	return p.Spec.Resources.Limits.Cpu(),
+		p.Spec.Resources.Requests.Cpu()
+}
+
+// Memory returns the memory from limits and requests respectively
+func (p *Plan) Memory() (*resource.Quantity, *resource.Quantity) {
+	return p.Spec.Resources.Limits.Memory(),
+		p.Spec.Resources.Requests.Memory()
+}
+
+// Storage returns the storage ammount from the spec
+func (p *Plan) Storage() *resource.Quantity {
+	return &p.Spec.Storage
+}
+
+// IsDefaultType validate if the plan is PlanTypeDefault
+func (p *Plan) IsDefaultType() bool {
+	return p.Spec.Type == PlanTypeDefault
+}
+
+// IsStorageType validate if the plan is PlanTypeStorage
+func (p *Plan) IsStorageType() bool {
+	return p.Spec.Type == PlanTypeStorage
 }

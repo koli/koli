@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 	"kolihub.io/koli/pkg/clientset"
-	"kolihub.io/koli/pkg/platform"
 	"kolihub.io/koli/pkg/spec"
 	"kolihub.io/koli/pkg/spec/util"
 

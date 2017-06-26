@@ -1,6 +1,7 @@
-package spec
+package v1alpha1
 
 import (
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/pkg/api"
 	"k8s.io/client-go/pkg/api/v1"
@@ -8,6 +9,17 @@ import (
 
 // ResourceList is a set of (resource name, quantity) pairs.
 type ResourceList v1.ResourceList
+
+// PlanType describes the rules how resources are going to be provisioned
+type PlanType string
+
+const (
+	// PlanTypeDefault means a plan will consider only compute (memory, CPU) and
+	// Kubernetes resources (pods, services, etc)
+	PlanTypeDefault PlanType = ""
+	// PlanTypeStorage means a plan will consider only storage resources
+	PlanTypeStorage PlanType = "Storage"
+)
 
 // Plan defines how resources could be managed and distributed
 type Plan struct {
@@ -27,11 +39,18 @@ type PlanList struct {
 
 // PlanSpec holds specification parameters of an Plan
 type PlanSpec struct {
+	// Type determine how resources are provisioned by the controller,
+	// defaults to Compute and Kubernetes Object resources. Valid options are: "" and Storage.
+	// "" means the spec will provision memory and CPU from the 'resources' attribute,
+	// 'hard' could be used to limit the usage of Kubernetes resources
+	Type PlanType `json:"type,omitempty"`
 	// Compute Resources required by containers.
 	Resources v1.ResourceRequirements `json:"resources,omitempty"`
-	// Hard is the set of desired hard limits for each named resource.
-	Hard  ResourceList   `json:"hard,omitempty"`
-	Roles []PlatformRole `json:"roles,omitempty"`
+	// Hard is the set of desired hard limits for Kubernetes objects resources.
+	Hard ResourceList `json:"hard,omitempty"`
+	// Storage is the ammount of storage requested
+	Storage resource.Quantity `json:"storage,omitempty"`
+	Roles   []PlatformRole    `json:"roles,omitempty"`
 }
 
 const (
@@ -137,17 +156,11 @@ type ReleaseList struct {
 
 // User identifies an user on the platform
 type User struct {
-	ID           string `json:"id"`
-	Username     string `json:"username"`
-	Customer     string `json:"customer"`
-	Organization string `json:"org"`
-	// Groups are a set of strings which associate users with as set of commonly grouped users.
-	// A group name is unique in the cluster and it's formed by it's namespace, customer or the organization name:
-	// [org] - Matches all the namespaces of the broker
-	// [customer]-[org] - Matches all namespaces from the customer broker
-	// [name]-[customer]-[org] - Matches a specific namespace
-	// http://kubernetes.io/docs/admin/authentication/
-	Groups []string `json:"groups"`
+	Email        string   `json:"email"`
+	Customer     string   `json:"customer"`
+	Organization string   `json:"org"`
+	Sub          string   `json:"sub"`
+	Groups       []string `json:"groups"`
 }
 
 // Domain are a way for users to "claim" a domain and be able to create

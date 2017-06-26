@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"kolihub.io/koli/pkg/platform"
+	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -70,8 +70,11 @@ type TaskQueue struct {
 }
 
 func (t *TaskQueue) run(period time.Duration, stopCh <-chan struct{}) {
-	wait.Until(t.worker, period, stopCh)
+	wait.Until(t.runWorker, period, stopCh)
 }
+
+// Len retrieves the lenght of the queue
+func (t *TaskQueue) Len() int { return t.queue.Len() }
 
 // Add enqueues ns/name of the given api object in the task queue.
 func (t *TaskQueue) Add(obj interface{}) {
@@ -83,26 +86,32 @@ func (t *TaskQueue) Add(obj interface{}) {
 	t.queue.Add(key)
 }
 
-// worker processes work in the queue through sync.
-func (t *TaskQueue) worker() {
+func (t *TaskQueue) runWorker() {
 	for {
-		key, quit := t.queue.Get()
-		if quit {
-			close(t.workerDone)
-			return
-		}
-		if key == nil {
-			continue
-		}
-		glog.V(3).Infof("Syncing %v", key)
-		if err := t.sync(key.(string)); err != nil {
-			glog.Errorf("Requeuing %v, err: %v", key, err)
-			t.queue.AddRateLimited(key)
-		} else {
-			t.queue.Forget(key)
-		}
-		t.queue.Done(key)
+		// hot loop until we're told to stop.  processNextWorkItem will automatically
+		// wait until there's work available, so we don't worry about secondary waits
+		t.processNextWorkItem()
 	}
+}
+
+// worker processes work in the queue through sync.
+func (t *TaskQueue) processNextWorkItem() {
+	key, quit := t.queue.Get()
+	if quit {
+		close(t.workerDone)
+		return
+	}
+	if key == nil {
+		return
+	}
+	glog.V(3).Infof("Syncing %v", key)
+	if err := t.sync(key.(string)); err != nil {
+		glog.Errorf("Requeuing %v, err: %v", key, err)
+		t.queue.AddRateLimited(key)
+	} else {
+		t.queue.Forget(key)
+	}
+	t.queue.Done(key)
 }
 
 // shutdown shuts down the work queue and waits for the worker to ACK
