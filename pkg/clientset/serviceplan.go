@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"kolihub.io/koli/pkg/spec"
+	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -21,11 +21,11 @@ type ServicePlanGetter interface {
 
 // ServicePlanInterface has methods to work with ServicePlan resources.
 type ServicePlanInterface interface {
-	List(opts *metav1.ListOptions) (*spec.PlanList, error)
-	Get(name string) (*spec.Plan, error)
+	List(opts *metav1.ListOptions) (*platform.PlanList, error)
+	Get(name string) (*platform.Plan, error)
 	Delete(name string, options *metav1.DeleteOptions) error
-	Create(data *spec.Plan) (*spec.Plan, error)
-	Update(data *spec.Plan) (*spec.Plan, error)
+	Create(data *platform.Plan) (*platform.Plan, error)
+	Update(data *platform.Plan) (*platform.Plan, error)
 	Watch(opts *metav1.ListOptions) (watch.Interface, error)
 }
 
@@ -37,8 +37,8 @@ type servicePlan struct {
 }
 
 // Get gets the resource with the specified name.
-func (s *servicePlan) Get(name string) (*spec.Plan, error) {
-	sps := &spec.Plan{}
+func (s *servicePlan) Get(name string) (*platform.Plan, error) {
+	sps := &platform.Plan{}
 	err := s.client.Get().
 		NamespaceIfScoped(s.namespace, s.resource.Namespaced).
 		Resource(s.resource.Name).
@@ -49,8 +49,8 @@ func (s *servicePlan) Get(name string) (*spec.Plan, error) {
 }
 
 // List returns a list of objects for this resource.
-func (s *servicePlan) List(opts *metav1.ListOptions) (*spec.PlanList, error) {
-	spList := &spec.PlanList{}
+func (s *servicePlan) List(opts *metav1.ListOptions) (*platform.PlanList, error) {
+	spList := &platform.PlanList{}
 	err := s.client.Get().
 		NamespaceIfScoped(s.namespace, s.resource.Namespaced).
 		Resource(s.resource.Name).
@@ -74,8 +74,8 @@ func (s *servicePlan) Delete(name string, opts *metav1.DeleteOptions) error {
 }
 
 // Create creates the provided resource.
-func (s *servicePlan) Create(data *spec.Plan) (*spec.Plan, error) {
-	sps := &spec.Plan{}
+func (s *servicePlan) Create(data *platform.Plan) (*platform.Plan, error) {
+	sps := &platform.Plan{}
 	err := s.client.Post().
 		NamespaceIfScoped(s.namespace, s.resource.Namespaced).
 		Resource(s.resource.Name).
@@ -86,8 +86,8 @@ func (s *servicePlan) Create(data *spec.Plan) (*spec.Plan, error) {
 }
 
 // Update updates the provided resource.
-func (s *servicePlan) Update(data *spec.Plan) (*spec.Plan, error) {
-	sps := &spec.Plan{}
+func (s *servicePlan) Update(data *platform.Plan) (*platform.Plan, error) {
+	sps := &platform.Plan{}
 	if len(data.GetName()) == 0 {
 		return data, errors.New("object missing name")
 	}
@@ -119,8 +119,8 @@ func (s *servicePlan) Watch(opts *metav1.ListOptions) (watch.Interface, error) {
 }
 
 // Patch updates the provided resource
-func (s *servicePlan) Patch(name string, pt types.PatchType, data []byte) (*spec.Plan, error) {
-	sps := &spec.Plan{}
+func (s *servicePlan) Patch(name string, pt types.PatchType, data []byte) (*platform.Plan, error) {
+	sps := &platform.Plan{}
 	err := s.client.Patch(pt).
 		NamespaceIfScoped(s.namespace, s.resource.Namespaced).
 		Resource(s.resource.Name).
@@ -146,7 +146,7 @@ func (d *servicePlanDecoder) Close() {
 func (d *servicePlanDecoder) Decode() (watch.EventType, runtime.Object, error) {
 	var e struct {
 		Type   watch.EventType
-		Object spec.Plan
+		Object platform.Plan
 	}
 	if err := d.dec.Decode(&e); err != nil {
 		return watch.Error, nil, err

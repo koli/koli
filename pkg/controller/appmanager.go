@@ -126,12 +126,12 @@ func (c *AppManagerController) syncHandler(key string) error {
 
 	d := draft.NewDeployment(obj.(*v1beta1.Deployment))
 	if d.DeletionTimestamp != nil {
-		glog.V(3).Infof("%s - object marked for deletion")
+		glog.V(3).Infof("%s - object marked for deletion", key)
 		return nil
 	}
 
 	if !d.GetNamespaceMetadata().Valid() {
-		glog.V(3).Infof("%s - it's not a valid resource")
+		glog.V(3).Infof("%s - it's not a valid resource", key)
 		return nil
 	}
 
@@ -144,7 +144,7 @@ func (c *AppManagerController) syncHandler(key string) error {
 
 	planName, exists := d.GetStoragePlan().Value()
 	if !exists || !d.HasSetupPVCAnnotation() {
-		glog.V(3).Infof("%s - the object doesn't have a storage plan or an annotation to setup a PVC")
+		glog.V(3).Infof("%s - the object doesn't have a storage plan or an annotation to setup a PVC", key)
 		return nil
 	}
 	var plan *platform.Plan
