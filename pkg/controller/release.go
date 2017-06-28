@@ -185,8 +185,8 @@ func (r *ReleaseController) syncHandler(key string) error {
 		// Deploy it after the build
 		autoDeploy = true
 	}
-	sourceType := spec.SourceType(dp.Annotations[spec.KoliPrefix("source")])
-	release := &spec.Release{
+	sourceType := platform.SourceType(dp.Annotations[spec.KoliPrefix("source")])
+	release := &platform.Release{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Release",
 			APIVersion: spec.SchemeGroupVersion.String(),
@@ -200,7 +200,7 @@ func (r *ReleaseController) syncHandler(key string) error {
 				spec.KoliPrefix("gitrevision"): gitSha.Short(),
 			},
 		},
-		Spec: spec.ReleaseSpec{
+		Spec: platform.ReleaseSpec{
 			BuildRevision: dp.Annotations[spec.KoliPrefix("buildrevision")],
 			GitRemote:     dp.Annotations[spec.KoliPrefix("gitremote")],
 			GitRepository: dp.Annotations[spec.KoliPrefix("gitrepository")],
