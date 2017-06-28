@@ -82,13 +82,6 @@ func startControllers(stop <-chan struct{}) error {
 	sharedInformers := informers.NewSharedInformerFactory(client, 30*time.Second)
 
 	// TODO: should we use the same client instance??
-	// go controller.NewAddonController(
-	// 	sharedInformers.Addons().Informer(sysClient),
-	// 	sharedInformers.PetSets().Informer(),
-	// 	sharedInformers.ServicePlans().Informer(sysClient),
-	// 	client,
-	// ).Run(1, wait.NeverStop)
-
 	go controller.NewNamespaceController(
 		sharedInformers.Namespaces().Informer(),
 		sharedInformers.ServicePlans().Informer(sysClient),
@@ -96,12 +89,11 @@ func startControllers(stop <-chan struct{}) error {
 		sysClient,
 	).Run(1, wait.NeverStop)
 
-	go controller.NewResourceAllocatorCtrl(
+	go controller.NewAppManagerController(
 		sharedInformers.Deployments().Informer(),
 		sharedInformers.ServicePlans().Informer(sysClient),
 		client,
-		sysClient,
-	).Run(1, wait.NeverStop)
+	)
 
 	go controller.NewReleaseController(
 		sharedInformers.Releases().Informer(sysClient),

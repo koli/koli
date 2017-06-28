@@ -1,4 +1,4 @@
-FROM quay.io/koli/base:v0.2.0
+FROM quay.io/koli/ubuntu:16.04
 
 RUN adduser --system \
     --shell /bin/bash \

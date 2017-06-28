@@ -18,15 +18,44 @@ import (
 	"github.com/gorilla/mux"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/pkg/api"
 	"k8s.io/client-go/pkg/api/v1"
 	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/rest/fake"
+	fakerest "k8s.io/client-go/rest/fake"
+	core "k8s.io/client-go/testing"
 	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 )
+
+func newDeployment(name, ns string, notes, labels, selector map[string]string, container v1.Container) *v1beta1.Deployment {
+	return &v1beta1.Deployment{
+		TypeMeta: metav1.TypeMeta{APIVersion: api.Registry.GroupOrDie(v1beta1.GroupName).GroupVersion.String()},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:        name,
+			Namespace:   ns,
+			Annotations: notes,
+			Labels:      labels,
+		},
+		Spec: v1beta1.DeploymentSpec{
+			Template: v1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{Labels: selector},
+				Spec:       v1.PodSpec{Containers: []v1.Container{container}},
+			},
+		},
+	}
+}
+
+func newImmutableAnnotations(value string) map[string]string {
+	obj := map[string]string{}
+	for _, immutableKey := range immutableAnnotations {
+		obj[immutableKey] = value
+	}
+	return obj
+}
 
 func objBody(object interface{}) io.ReadCloser {
 	output, err := json.MarshalIndent(object, "", "")
@@ -74,18 +103,19 @@ func doRequest(method, url string, obj interface{}) ([]byte, *http.Response, err
 
 func TestDeploymentOnCreate(t *testing.T) {
 	var (
-		planName         = "foo-plan"
-		storagePlan      = "foo-plan-5g"
-		requestStorage   = resource.MustParse("5Gi")
-		computeResources = newComputeResources()
+		planName                   = "foo-plan"
+		storagePlan                = "foo-plan-5g"
+		requestStorage             = resource.MustParse("5Gi")
+		computeResources           = newComputeResources()
+		expectedTemplateObjectMeta = metav1.ObjectMeta{Labels: map[string]string{"app": "foo"}}
 	)
-	h := Handler{}
+	h := Handler{allowedImages: []string{"busybox"}}
 	// Fake Clients
 	responseHeader := http.Header{"Content-Type": []string{"application/json"}}
-	h.tprClient = &fake.RESTClient{
+	h.tprClient = &fakerest.RESTClient{
 		APIRegistry:          api.Registry,
 		NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: api.Codecs},
-		Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
+		Client: fakerest.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			if req.URL.Path != "/namespaces/koli-system/plans" {
 				t.Fatalf("unexpected url path: %v", req.URL.Path)
 			}
@@ -113,7 +143,7 @@ func TestDeploymentOnCreate(t *testing.T) {
 		t.Fatalf("unexpected error getting rest client: %v", err)
 	}
 
-	extensionsClient := fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
+	extensionsClient := fakerest.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 		d := &v1beta1.Deployment{}
 		if err := json.NewDecoder(req.Body).Decode(d); err != nil {
 			t.Fatalf("failed encoding deployment request: %v", err)
@@ -135,6 +165,7 @@ func TestDeploymentOnCreate(t *testing.T) {
 		Name:   "test",
 		Labels: map[string]string{platform.LabelStoragePlan: storagePlan},
 	}}
+	new.Spec.Template.ObjectMeta = expectedTemplateObjectMeta
 	podSpec := &new.Spec.Template.Spec
 	podSpec.Volumes = []v1.Volume{{Name: "avolume"}}
 	podSpec.Containers = []v1.Container{{Name: "test", Image: "busybox"}}
@@ -169,6 +200,11 @@ func TestDeploymentOnCreate(t *testing.T) {
 		t.Errorf("GOT: %#v, EXPECTED: %v", got.Labels[platform.LabelClusterPlan], planName)
 	}
 
+	// allow .spec.template.metadata
+	if !reflect.DeepEqual(got.Spec.Template.ObjectMeta, expectedTemplateObjectMeta) {
+		t.Errorf("GOT: %#v, EXPECTED: %#v", got.Spec.Template.ObjectMeta, expectedTemplateObjectMeta)
+	}
+
 	podSpec = &got.Spec.Template.Spec
 	if len(podSpec.Containers) != 1 {
 		t.Errorf("GOT: %d, EXPECTED: 1", len(podSpec.Containers))
@@ -189,41 +225,26 @@ func TestDeploymentOnCreate(t *testing.T) {
 
 func TestDeploymentOnPatch(t *testing.T) {
 	var (
-		namespace, appName      = "default", "foo-app"
-		expectedAnnotationValue = "customvalue"
-		expectedPlan            = "foo-plan"
-		expectedStoragePlan     = "foo-plan-5g"
-		expectedMinReadySeconds = 250
-		expectedPaused          = true
-		expectedImage           = "quay.io/koli/postgres"
-		expectedEnvVars         = []v1.EnvVar{{Name: "MYENV", Value: "env-value"}}
-		expectedArgs            = []string{"--args", "myargument"}
-		expectedCommand         = []string{"/bin/sh", "-c", "mycommand"}
-		expectedVolumeMount     = []v1.VolumeMount{{Name: "an-existing-volume", MountPath: "/tmp"}}
-		computeResources        = newComputeResources()
+		expectedAnnotations = newImmutableAnnotations("customvalue")
+		ns, appName         = "default", "foo-app"
+		expectedPlan        = "foo-plan"
+		expectedStoragePlan = "foo-plan-5g"
+		expectedImage       = "quay.io/koli/postgres"
+		computeResources    = newComputeResources()
+		h                   = Handler{allowedImages: []string{expectedImage}}
+		router              = mux.NewRouter()
 	)
-	// Mux Fake Server
-	h := Handler{allowedImages: []string{"quay.io/koli/postgres"}}
-	r := mux.NewRouter()
-	r.HandleFunc("/{namespace}/deployments/{deploy}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("/{namespace}/deployments/{deploy}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.DeploymentsOnMod(w, r)
 	})).Methods("PATCH")
-	ts := httptest.NewServer(r)
+	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	var err error
-	h.clientset, err = kubernetes.NewForConfig(&rest.Config{})
-	if err != nil {
-		t.Fatalf("unexpected error getting rest client: %v", err)
-	}
-
-	responseHeader := http.Header{"Content-Type": []string{"application/json"}}
-
 	// Fake TPR Client
-	h.tprClient = &fake.RESTClient{
+	h.tprClient = &fakerest.RESTClient{
 		APIRegistry:          api.Registry,
 		NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: api.Codecs},
-		Client: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
+		Client: fakerest.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			var plan *platform.Plan
 			switch req.URL.Path {
 			case "/namespaces/koli-system/plans/" + expectedStoragePlan:
@@ -242,39 +263,19 @@ func TestDeploymentOnPatch(t *testing.T) {
 			default:
 				t.Fatalf("unexpected url path: %v", req.URL.Path)
 			}
-			return &http.Response{StatusCode: 200, Header: responseHeader, Body: objBody(plan)}, nil
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       objBody(plan),
+			}, nil
 		}),
 	}
 
-	// Fake Extension Client
-	extensionsClient := fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
-		obj := &v1beta1.Deployment{}
-		switch req.Method {
-		case "GET":
-			obj.ObjectMeta = metav1.ObjectMeta{Name: appName, Namespace: namespace}
-			obj.Annotations = map[string]string{}
-			for _, immutableKey := range immutableAnnotations {
-				obj.Annotations[immutableKey] = expectedAnnotationValue
-			}
-		case "PATCH":
-			// simulating a PATCH responses
-			if err := json.NewDecoder(req.Body).Decode(obj); err != nil {
-				t.Fatalf("failed encoding deployment request: %v", err)
-			}
-		default:
-			return &http.Response{StatusCode: 501, Header: responseHeader}, nil
-		}
-		return &http.Response{StatusCode: 200, Header: responseHeader, Body: objBody(obj)}, nil
-	})
-	h.clientset.Extensions().RESTClient().(*rest.RESTClient).Client = extensionsClient
-	h.usrClientset = h.clientset
+	original := newDeployment(appName, ns, expectedAnnotations, nil, nil, v1.Container{})
+	h.clientset = fake.NewSimpleClientset([]runtime.Object{original}...)
+	h.usrClientset = fake.NewSimpleClientset()
 
-	new := &v1beta1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: appName, Annotations: map[string]string{}}}
-	// Try to mutate all immutable annotations
-	for _, a := range immutableAnnotations {
-		new.Annotations[a] = "mutate-me"
-	}
-
+	new := newDeployment(appName, ns, nil, nil, nil, v1.Container{})
 	// Add storage and a default plan
 	new.Labels = map[string]string{
 		platform.LabelStoragePlan: expectedStoragePlan,
@@ -282,113 +283,65 @@ func TestDeploymentOnPatch(t *testing.T) {
 	}
 
 	// Mutate DeploymentSpec
-	new.Spec.Paused = expectedPaused
-	new.Spec.MinReadySeconds = int32(expectedMinReadySeconds)
+	new.Spec.Paused = true
+	new.Spec.MinReadySeconds = int32(250)
 
 	podSpec := &new.Spec.Template.Spec
-
 	// Mutate podSpec
 	podSpec.Containers = []v1.Container{{
-		Args:         expectedArgs,
-		Command:      expectedCommand,
-		Env:          expectedEnvVars,
+		Name:         appName,
+		Args:         []string{"--args", "myargument"},
+		Command:      []string{"/bin/sh", "-c", "mycommand"},
+		Env:          []v1.EnvVar{{Name: "MYENV", Value: "env-value"}},
 		Image:        expectedImage,
-		VolumeMounts: expectedVolumeMount,
+		VolumeMounts: []v1.VolumeMount{{Name: "an-existing-volume", MountPath: "/tmp"}},
 	}}
 
-	respBody, _, err := doRequest("PATCH", ts.URL+"/default/deployments/"+appName, new)
+	_, _, err := doRequest("PATCH", ts.URL+"/default/deployments/"+appName, new)
 	if err != nil {
 		t.Fatalf("unexpected error executing request: %v", err)
 	}
 
-	got := &v1beta1.Deployment{}
-	if err := json.Unmarshal(respBody, got); err != nil {
-		t.Fatalf("unexpected error unmarshaling response: %v. Obj: %v", err, string(respBody))
+	// setup-storage annotation will be set when a storage plan (label) exists
+	new.Annotations = map[string]string{platform.AnnotationSetupStorage: "true"}
+	// compute resources will be set when a cluster plan (label) exists
+	podSpec.Containers[0].Resources = computeResources
+	// the original annotations only have immutable keys, it must be cleared otherwise
+	// the merge patch will contain the immutable keys
+	original.Annotations = make(map[string]string)
+	expectedPatch, err := StrategicMergePatch(api.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion), original, new)
+	if err != nil {
+		t.Fatalf("unexpected error merging patch: %v", err)
 	}
-
-	// Annotations mutate
-	for _, immutableKey := range immutableAnnotations {
-		if got.Annotations[immutableKey] != expectedAnnotationValue {
-			// Skip because we're testing this annotation key above
-			if immutableKey == platform.AnnotationSetupStorage {
-				continue
+	for _, action := range h.usrClientset.(*fake.Clientset).Actions() {
+		switch tp := action.(type) {
+		case core.PatchActionImpl:
+			if string(tp.GetPatch()) != string(expectedPatch) {
+				t.Errorf("GOT: %s, EXPECTED: %s", string(tp.GetPatch()), string(expectedPatch))
 			}
-			t.Errorf("GOT: %#v, EXPECTED VALUE: %#v FOR KEY: %s", got.Annotations[immutableKey], expectedAnnotationValue, immutableKey)
+		default:
+			t.Errorf("unexpected type of action: %T, OBJ: %s", tp, action)
 		}
-	}
-
-	// Test storage plan
-	if got.Annotations[platform.AnnotationSetupStorage] != "true" {
-		t.Errorf("GOT: %#v, EXPECTED: %v FOR KEY: %v", got.Annotations[platform.AnnotationSetupStorage], "true", platform.AnnotationSetupStorage)
-	}
-
-	// DeploymentSpec mutate
-	if got.Spec.MinReadySeconds != int32(expectedMinReadySeconds) {
-		t.Errorf("GOT: %#v, EXPECTED: %#v", got.Spec.MinReadySeconds, expectedMinReadySeconds)
-	}
-
-	if got.Spec.Paused != expectedPaused {
-		t.Errorf("GOT: %#v, EXPECTED: %#v", got.Spec.Paused, expectedPaused)
-	}
-
-	// Containers
-	gotC := got.Spec.Template.Spec.Containers[0]
-	if !reflect.DeepEqual(gotC.Args, expectedArgs) {
-		t.Errorf("GOT: %#v, EXPECTED: %#v", gotC.Args, expectedArgs)
-	}
-	if !reflect.DeepEqual(gotC.Command, expectedCommand) {
-		t.Errorf("GOT: %#v, EXPECTED: %#v", gotC.Command, expectedCommand)
-	}
-	if !reflect.DeepEqual(gotC.Env, expectedEnvVars) {
-		t.Errorf("GOT: %#v, EXPECTED: %#v", gotC.Env, expectedEnvVars)
-	}
-	if gotC.Image != expectedImage {
-		t.Errorf("GOT: %#v, EXPECTED: %#v", gotC.Image, expectedImage)
-	}
-	if !reflect.DeepEqual(gotC.VolumeMounts, expectedVolumeMount) {
-		t.Errorf("GOT: %#v, EXPECTED: %#v", gotC.VolumeMounts, expectedVolumeMount)
-	}
-
-	// Test If container is in the right compute plan
-	if !reflect.DeepEqual(gotC.Resources, computeResources) {
-		t.Errorf("GOT: %#v, EXPECTED: %#v", gotC.Resources, computeResources)
 	}
 }
+
 func TestDeploymentOnPatchImageError(t *testing.T) {
-	// Mux Fake Server
-	badImage := "bad-image"
-	expectedMsg := fmt.Sprintf(`the image "%s" is not allowed to run in the cluster`, badImage)
-	h := Handler{}
-	r := mux.NewRouter()
-	r.HandleFunc("/{namespace}/deployments/{deploy}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var (
+		badImage    = "bad-image"
+		expectedMsg = fmt.Sprintf(`the image "%s" is not allowed to run in the cluster`, badImage)
+		h           = Handler{}
+		router      = mux.NewRouter()
+	)
+	router.HandleFunc("/{namespace}/deployments/{deploy}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.DeploymentsOnMod(w, r)
 	})).Methods("PATCH")
-	ts := httptest.NewServer(r)
+	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	var err error
-	h.clientset, err = kubernetes.NewForConfig(&rest.Config{})
-	if err != nil {
-		t.Fatalf("unexpected error getting rest client: %v", err)
-	}
+	h.clientset = fake.NewSimpleClientset(newDeployment("myapp", "default", nil, nil, nil, v1.Container{}))
+	h.usrClientset = fake.NewSimpleClientset()
 
-	extensionsClient := fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
-		obj := &v1beta1.Deployment{}
-		switch req.Method {
-		case "GET":
-			obj.ObjectMeta = metav1.ObjectMeta{Name: "myapp"}
-		case "PATCH":
-			if err := json.NewDecoder(req.Body).Decode(obj); err != nil {
-				t.Fatalf("failed encoding deployment request: %v", err)
-			}
-		}
-		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: objBody(obj)}, nil
-	})
-	h.clientset.Extensions().RESTClient().(*rest.RESTClient).Client = extensionsClient
-	h.usrClientset = h.clientset
-
-	new := &v1beta1.Deployment{}
-	new.Spec.Template.Spec.Containers = []v1.Container{{Image: badImage}}
+	new := newDeployment("myapp", "default", nil, nil, nil, v1.Container{Image: badImage})
 	respBody, _, err := doRequest("PATCH", ts.URL+"/default/deployments/myapp", new)
 	if err != nil {
 		t.Fatalf("unexpected error executing request: %v", err)
@@ -405,40 +358,23 @@ func TestDeploymentOnPatchImageError(t *testing.T) {
 }
 
 func TestDeploymentOnPatchScaleError(t *testing.T) {
-	image := "stateful-image"
-	expectedMsg := "found a persistent volume, unable to scale"
-	h := &Handler{allowedImages: []string{image}}
-	r := mux.NewRouter()
-	r.HandleFunc("/{namespace}/deployments/{deploy}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var (
+		image       = "stateful-image"
+		expectedMsg = "found a persistent volume, unable to scale"
+		h           = &Handler{allowedImages: []string{image}}
+		router      = mux.NewRouter()
+	)
+	router.HandleFunc("/{namespace}/deployments/{deploy}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.DeploymentsOnMod(w, r)
 	})).Methods("PATCH")
-	ts := httptest.NewServer(r)
+	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	var err error
-	h.clientset, err = kubernetes.NewForConfig(&rest.Config{})
-	if err != nil {
-		t.Fatalf("unexpected error getting rest client: %v", err)
-	}
-
-	extensionsClient := fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
-		obj := &v1beta1.Deployment{}
-		switch req.Method {
-		case "GET":
-			obj.ObjectMeta = metav1.ObjectMeta{Name: "myapp"}
-			obj.Spec.Template.Spec.Containers = []v1.Container{{Image: image}}
-			obj.Spec.Template.Spec.Volumes = []v1.Volume{{Name: "a-volume"}}
-			scaleUp := int32(3)
-			obj.Spec.Replicas = &scaleUp
-		case "PATCH":
-			if err := json.NewDecoder(req.Body).Decode(obj); err != nil {
-				t.Fatalf("failed encoding deployment request: %v", err)
-			}
-		}
-		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: objBody(obj)}, nil
-	})
-	h.clientset.Extensions().RESTClient().(*rest.RESTClient).Client = extensionsClient
-	h.usrClientset = h.clientset
+	original := newDeployment("myapp", "default", nil, nil, nil, v1.Container{Image: image})
+	original.Spec.Replicas = func() *int32 { scaleUp := int32(3); return &scaleUp }()
+	original.Spec.Template.Spec.Volumes = []v1.Volume{{Name: "a-volume"}}
+	h.clientset = fake.NewSimpleClientset(original)
+	h.usrClientset = fake.NewSimpleClientset()
 
 	new := &v1beta1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "myapp"}}
 	respBody, _, err := doRequest("PATCH", ts.URL+"/default/deployments/myapp", new)
@@ -456,71 +392,54 @@ func TestDeploymentOnPatchScaleError(t *testing.T) {
 }
 
 func TestDeploymentOnPatchMutateContainers(t *testing.T) {
-	image := "valid-image"
-	h := &Handler{allowedImages: []string{image}}
-	computeResources := newComputeResources()
-	mutateContainer := v1.Container{
-		Name:                     "mutate-name",
-		Resources:                computeResources,
-		LivenessProbe:            &v1.Probe{PeriodSeconds: 10},
-		ReadinessProbe:           &v1.Probe{SuccessThreshold: 50},
-		Lifecycle:                &v1.Lifecycle{PreStop: &v1.Handler{Exec: &v1.ExecAction{Command: []string{"a-command"}}}},
-		TerminationMessagePath:   v1.TerminationMessagePathDefault,
-		TerminationMessagePolicy: v1.TerminationMessageReadFile,
-		ImagePullPolicy:          v1.PullNever,
-		Image:                    image,
-		// Args:                     []string{"mycommand"},
-		Stdin:     true,
-		StdinOnce: true,
-		TTY:       true,
-	}
-	expectedContainer := v1.Container{Name: "myapp", Image: image}
-	r := mux.NewRouter()
-	r.HandleFunc("/{namespace}/deployments/{deploy}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	var (
+		image             = "valid-image"
+		expectedContainer = v1.Container{Name: "myapp", Image: image}
+		computeResources  = newComputeResources()
+		mutateContainer   = v1.Container{
+			Name:                     "myapp",
+			Resources:                computeResources,
+			LivenessProbe:            &v1.Probe{PeriodSeconds: 10},
+			ReadinessProbe:           &v1.Probe{SuccessThreshold: 50},
+			Lifecycle:                &v1.Lifecycle{PreStop: &v1.Handler{Exec: &v1.ExecAction{Command: []string{"a-command"}}}},
+			TerminationMessagePath:   v1.TerminationMessagePathDefault,
+			TerminationMessagePolicy: v1.TerminationMessageReadFile,
+			ImagePullPolicy:          v1.PullNever,
+			Image:                    image,
+			Stdin:                    true,
+			StdinOnce:                true,
+			TTY:                      true,
+		}
+		h      = &Handler{allowedImages: []string{image}}
+		router = mux.NewRouter()
+	)
+	router.HandleFunc("/{namespace}/deployments/{deploy}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.DeploymentsOnMod(w, r)
 	})).Methods("PATCH")
-	ts := httptest.NewServer(r)
+	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	var err error
-	h.clientset, err = kubernetes.NewForConfig(&rest.Config{})
-	if err != nil {
-		t.Fatalf("unexpected error getting rest client: %v", err)
-	}
+	h.clientset = fake.NewSimpleClientset(newDeployment("myapp", "default", nil, nil, nil, expectedContainer))
+	h.usrClientset = fake.NewSimpleClientset()
 
-	extensionsClient := fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
-		obj := &v1beta1.Deployment{}
-		switch req.Method {
-		case "GET":
-			obj.ObjectMeta = metav1.ObjectMeta{Name: "myapp"}
-			obj.Spec.Template.Spec.Containers = []v1.Container{expectedContainer}
-		case "PATCH":
-			if err := json.NewDecoder(req.Body).Decode(obj); err != nil {
-				t.Fatalf("failed encoding deployment request: %v", err)
-			}
-		}
-		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: objBody(obj)}, nil
-	})
-	h.clientset.Extensions().RESTClient().(*rest.RESTClient).Client = extensionsClient
-	h.usrClientset = h.clientset
-
-	new := &v1beta1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "myapp"}}
-	new.Spec.Template.Spec.Containers = []v1.Container{mutateContainer}
-	respBody, _, err := doRequest("PATCH", ts.URL+"/default/deployments/myapp", new)
+	new := newDeployment("myapp", "default", nil, nil, nil, mutateContainer)
+	_, _, err := doRequest("PATCH", ts.URL+"/default/deployments/myapp", new)
 	if err != nil {
 		t.Fatalf("unexpected error executing request: %#v", err)
 	}
 
-	got := &v1beta1.Deployment{}
-	if err := json.Unmarshal(respBody, got); err != nil {
-		t.Fatalf("unexpected error unmarshaling response: %v. Obj: %v", err, string(respBody))
+	fakeclientset := h.usrClientset.(*fake.Clientset)
+	if len(fakeclientset.Actions()) != 1 {
+		t.Errorf("GOT: %d action(s), EXPECTED: 1 action", len(fakeclientset.Actions()))
 	}
-
-	gotC := got.Spec.Template.Spec.Containers[0]
-	if !reflect.DeepEqual(gotC, expectedContainer) {
-		t.Errorf("GOT: %#v, EXPECTED: %#v", gotC, expectedContainer)
+	for _, action := range fakeclientset.Actions() {
+		switch tp := action.(type) {
+		case core.PatchActionImpl:
+			if string(tp.GetPatch()) != "{}" {
+				t.Errorf("GOT: %s, EXPECTED: {}", string(tp.GetPatch()))
+			}
+		}
 	}
-
 }
 
 func TestDeploymentOnPatchAPIErrors(t *testing.T) {
@@ -545,13 +464,13 @@ func TestDeploymentOnPatchAPIErrors(t *testing.T) {
 		expectedMsg string
 	}{
 		{
-			extClient: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
+			extClient: fakerest.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 				return nil, fmt.Errorf("failed creating request")
 			}),
 			expectedMsg: "failed creating request",
 		},
 		{
-			extClient: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
+			extClient: fakerest.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 				obj := &metav1.Status{Status: "error", Message: "failed retrieving deployment"}
 				return &http.Response{
 					StatusCode: 404,
@@ -562,7 +481,7 @@ func TestDeploymentOnPatchAPIErrors(t *testing.T) {
 			expectedMsg: fmt.Sprintf(`deployment "%s" not found`, appName),
 		},
 		{
-			extClient: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
+			extClient: fakerest.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 				response := &http.Response{Header: responseHeaders}
 				switch req.Method {
 				case "GET":
@@ -581,7 +500,7 @@ func TestDeploymentOnPatchAPIErrors(t *testing.T) {
 			expectedMsg: "deployment not found",
 		},
 		{
-			extClient: fake.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
+			extClient: fakerest.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 				response := &http.Response{Header: responseHeaders}
 				switch req.Method {
 				case "GET":

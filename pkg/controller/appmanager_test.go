@@ -75,6 +75,9 @@ func TestSyncPersistentVolume(t *testing.T) {
 		t.Fatalf("unexpected error syncing: %v", err)
 	}
 
+	if len(f.client.Actions()) != 2 {
+		t.Errorf("GOT: %d action(s), EXPECTED: 2 actions", len(f.client.Actions()))
+	}
 	for _, action := range f.client.Actions() {
 		switch actionT := action.(type) {
 		case core.CreateAction:

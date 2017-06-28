@@ -51,8 +51,8 @@ func init() {
 }
 
 func main() {
+	version := version.Get()
 	if showVersion {
-		version := version.Get()
 		b, err := json.Marshal(&version)
 		if err != nil {
 			glog.Fatalf("failed decoding version: %s", err)
@@ -60,6 +60,7 @@ func main() {
 		fmt.Println(string(b))
 		return
 	}
+	glog.Infof("Version: %s, GitCommit: %s, GoVersion: %s, BuildDate: %s", version.GitVersion, version.GitCommit, version.GoVersion, version.BuildDate)
 
 	var config *rest.Config
 	var err error

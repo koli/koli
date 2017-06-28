@@ -47,7 +47,7 @@ func (c *Config) GetServeAddress() (string, bool) {
 func (c *Config) GetImages() []string {
 	images := []string{}
 	for _, img := range strings.Split(c.AllowedImages, ",") {
-		images = append(images, filepath.Join(c.RegistryImages, img))
+		images = append(images, filepath.Join(c.RegistryImages, strings.Split(img, ":")[0]))
 	}
 	return images
 }
@@ -219,5 +219,21 @@ func StrategicMergePatch(codec runtime.Codec, original, new runtime.Object) ([]b
 	if err != nil {
 		return nil, fmt.Errorf("failed creating two way merge patch: %v", err)
 	}
-	return strategicpatch.StrategicMergePatch(originalObjData, currentPatch, new)
+	return currentPatch, nil
+	// return strategicpatch.StrategicMergePatch(originalObjData, currentPatch, new)
+}
+
+// DeleteNullKeysFromObjectMeta will remove any key with an empty string in .metadata.labels
+// and .metadata.annotations
+func DeleteNullKeysFromObjectMeta(obj *metav1.ObjectMeta) {
+	for key, value := range obj.Labels {
+		if len(value) == 0 {
+			delete(obj.Labels, key)
+		}
+	}
+	for key, value := range obj.Annotations {
+		if len(value) == 0 {
+			delete(obj.Annotations, key)
+		}
+	}
 }

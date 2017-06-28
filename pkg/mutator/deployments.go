@@ -62,6 +62,12 @@ func (h *Handler) DeploymentsOnCreate(w http.ResponseWriter, r *http.Request) {
 		delete(new.Annotations, immutableKey)
 	}
 
+	if errStatus := h.validateContainerImage(new); errStatus != nil {
+		glog.Infof("%s - %s", key, errStatus.Message)
+		writeResponseError(w, errStatus)
+		return
+	}
+
 	var plan *platform.Plan
 	setupStorage := false
 	clusterPlanName := new.GetClusterPlan()
@@ -120,8 +126,10 @@ func (h *Handler) DeploymentsOnCreate(w http.ResponseWriter, r *http.Request) {
 		new.SetAnnotation(platform.AnnotationSetupStorage, "true")
 	}
 
+	// allow .spec.template.spec.containers
 	defaultsC, newCs := v1.Container{}, new.Spec.Template.Spec.Containers
 	if len(newCs) > 0 {
+		defaultsC.Name = new.Name
 		defaultsC.Args = newCs[0].Args
 		defaultsC.Command = newCs[0].Command
 		defaultsC.Env = newCs[0].Env
@@ -132,8 +140,12 @@ func (h *Handler) DeploymentsOnCreate(w http.ResponseWriter, r *http.Request) {
 		defaultsC.Resources = plan.Spec.Resources
 	}
 
+	// allow .spec.template.metadata
+	podTemplateMeta := new.Spec.Template.ObjectMeta
+
 	// Mutate PodTemplateSpec
 	new.Spec.Template = v1.PodTemplateSpec{}
+	new.Spec.Template.ObjectMeta = podTemplateMeta
 	new.Spec.Template.Spec.Containers = []v1.Container{defaultsC}
 	new.SetClusterPlan(plan.Name)
 
@@ -177,7 +189,6 @@ func (h *Handler) DeploymentsOnMod(w http.ResponseWriter, r *http.Request) {
 			writeResponseError(w, errStatus)
 			return
 		}
-
 		new, err := old.DeepCopy()
 		if err != nil {
 			msg := fmt.Sprintf("failed deep copying obj [%v]", err)
@@ -202,21 +213,10 @@ func (h *Handler) DeploymentsOnMod(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		if len(new.Spec.Template.Spec.Containers) > 0 {
-			hasAllowedImage := false
-			for _, img := range h.allowedImages {
-				if new.Spec.Template.Spec.Containers[0].Image == img {
-					hasAllowedImage = true
-					break
-				}
-			}
-			if !hasAllowedImage {
-				msg := fmt.Sprintf(`the image "%s" is not allowed to run in the cluster`,
-					new.Spec.Template.Spec.Containers[0].Image)
-				glog.V(3).Infof("%s -  %s", key, msg)
-				writeResponseError(w, StatusBadRequest(msg, &v1beta1.Deployment{}, metav1.StatusReasonBadRequest))
-				return
-			}
+		if errStatus := h.validateContainerImage(new); errStatus != nil {
+			glog.Infof("%s - %s", key, errStatus.Message)
+			writeResponseError(w, errStatus)
+			return
 		}
 
 		// metadata.annotations
@@ -275,6 +275,7 @@ func (h *Handler) DeploymentsOnMod(w http.ResponseWriter, r *http.Request) {
 
 		if len(newCs) > 0 {
 			// change only allowed attributes
+			defaultsC.Name = newCs[0].Name
 			defaultsC.Args = newCs[0].Args
 			defaultsC.Command = newCs[0].Command
 			defaultsC.Env = newCs[0].Env
@@ -293,6 +294,14 @@ func (h *Handler) DeploymentsOnMod(w http.ResponseWriter, r *http.Request) {
 		new.Spec.Template = old.Spec.Template
 		new.Spec.Template.Spec.Containers = []v1.Container{defaultsC}
 
+		// Remove empty keys from map[string]string, it's required because
+		// a strategic merge is decoded to an object and every directive is lost.
+		// A directive for removing a key from a map[string]string is converted to
+		// []byte(`{"metadata": {"labels": "key": ""}}`) and these are not removed
+		// when reapplying a merge patch.
+		DeleteNullKeysFromObjectMeta(&new.ObjectMeta)
+		DeleteNullKeysFromObjectMeta(&new.Spec.Template.ObjectMeta)
+
 		patch, err := StrategicMergePatch(scheme.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion), old.GetObject(), new.GetObject())
 		if err != nil {
 			msg := fmt.Sprintf("failed merging patch data [%v]", err)
@@ -300,6 +309,7 @@ func (h *Handler) DeploymentsOnMod(w http.ResponseWriter, r *http.Request) {
 			writeResponseError(w, StatusInternalError(msg, &v1beta1.Deployment{}))
 			return
 		}
+
 		glog.V(4).Infof("%s, DIFF: %s", key, string(patch))
 		resp, err := h.usrClientset.Extensions().Deployments(params["namespace"]).Patch(new.Name, types.StrategicMergePatchType, patch)
 		switch e := err.(type) {
@@ -385,6 +395,24 @@ func (h *Handler) getPlan(planName string) (*platform.Plan, *metav1.Status) {
 		return nil, StatusInternalError(fmt.Sprintf("unknown error retrieving plan [%v]", err), &platform.Plan{})
 	}
 	return plan, nil
+}
+
+func (h *Handler) validateContainerImage(obj *draft.Deployment) *metav1.Status {
+	if len(obj.Spec.Template.Spec.Containers) > 0 {
+		hasAllowedImage := false
+		for _, img := range h.allowedImages {
+			if obj.Spec.Template.Spec.Containers[0].Image == img {
+				hasAllowedImage = true
+				break
+			}
+		}
+		if !hasAllowedImage {
+			msg := fmt.Sprintf(`the image "%s" is not allowed to run in the cluster`,
+				obj.Spec.Template.Spec.Containers[0].Image)
+			return StatusBadRequest(msg, &v1beta1.Deployment{}, metav1.StatusReasonBadRequest)
+		}
+	}
+	return nil
 }
 
 // mustFetchClusterPlan verifies if the plan has changed or a new one was added,

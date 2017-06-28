@@ -27,7 +27,7 @@ LDFLAGS := "-s -w \
 GOOS ?= linux
 GOARCH ?= amd64
 
-build-controller:
+build-controller: clean
 	mkdir -p ${BINARY_DEST_DIR}
 	go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/koli-controller cmd/controller/controller-manager.go
 
@@ -48,6 +48,9 @@ docker-build-mutator:
 	docker build -f rootfs/Dockerfile.mutator --rm -t ${IMAGE} rootfs
 	docker tag ${IMAGE} ${MUTABLE_IMAGE}
 
+docker-build-controller:
+	docker build -f rootfs/Dockerfile.controller --rm -t ${IMAGE} rootfs
+	docker tag ${IMAGE} ${MUTABLE_IMAGE}
 
 clean:
 	rm -f ${BINARY_DEST_DIR}/*
