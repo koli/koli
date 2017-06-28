@@ -29,7 +29,7 @@ GOARCH ?= amd64
 
 build-controller: clean
 	mkdir -p ${BINARY_DEST_DIR}
-	go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/koli-controller cmd/controller/controller-manager.go
+	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/koli-controller cmd/controller/controller-manager.go
 
 build-mutator: clean
 	mkdir -p ${BINARY_DEST_DIR}

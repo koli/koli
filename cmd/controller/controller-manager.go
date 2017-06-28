@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -14,12 +15,11 @@ import (
 	"kolihub.io/koli/pkg/controller/informers"
 	_ "kolihub.io/koli/pkg/controller/install"
 	_ "kolihub.io/koli/pkg/spec/install"
-	"kolihub.io/koli/pkg/version"
-
-	"encoding/json"
+	koliversion "kolihub.io/koli/pkg/version"
 
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -50,6 +50,14 @@ func init() {
 	pflag.Parse()
 }
 
+func printSystemVersion(kubeVersion *version.Info) {
+	glog.Infof("Kubernetes -> Version: %s, GitCommit: %s, GoVersion: %s, BuildDate: %s",
+		kubeVersion.GitVersion, kubeVersion.GitCommit, kubeVersion.GoVersion, kubeVersion.BuildDate)
+	v := koliversion.Get()
+	glog.Infof("Koli -> Version: %s, GitCommit: %s, GoVersion: %s, BuildDate: %s",
+		v.GitVersion, v.GitCommit, v.GoVersion, v.BuildDate)
+}
+
 func startControllers(stop <-chan struct{}) error {
 	kcfg, err := clientset.NewClusterConfig(cfg.Host, cfg.TLSInsecure, &cfg.TLSConfig)
 	if err != nil {
@@ -63,10 +71,11 @@ func startControllers(stop <-chan struct{}) error {
 		return err
 	}
 
-	_, err = client.Discovery().ServerVersion()
+	kubeServerVersion, err := client.Discovery().ServerVersion()
 	if err != nil {
 		return fmt.Errorf("communicating with server failed: %s", err)
 	}
+	printSystemVersion(kubeServerVersion)
 
 	controller.CreatePlatformRoles(client)
 	// Create required third party resources
@@ -127,7 +136,7 @@ func startControllers(stop <-chan struct{}) error {
 
 func main() {
 	if showVersion {
-		version := version.Get()
+		version := koliversion.Get()
 		b, err := json.Marshal(&version)
 		if err != nil {
 			fmt.Printf("failed decoding version: %s\n", err)
