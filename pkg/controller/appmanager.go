@@ -166,7 +166,7 @@ func (c *AppManagerController) syncHandler(key string) error {
 		return fmt.Errorf(msg)
 	}
 
-	glog.Infof(`%s - PVC "d-%s" created with "%s"`, key, d.Name, plan.Spec.Storage)
+	glog.Infof(`%s - PVC "d-%s" created with "%s"`, key, d.Name, plan.Spec.Storage.String())
 	patchData := []byte(fmt.Sprintf(`{"metadata": {"annotations": {"%s": "false"}}}`, platform.AnnotationSetupStorage))
 	_, err = c.kclient.Extensions().Deployments(d.Namespace).Patch(d.Name, types.MergePatchType, patchData)
 	if err != nil {
