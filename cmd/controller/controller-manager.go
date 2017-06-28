@@ -102,7 +102,7 @@ func startControllers(stop <-chan struct{}) error {
 		sharedInformers.Deployments().Informer(),
 		sharedInformers.ServicePlans().Informer(sysClient),
 		client,
-	)
+	).Run(1, wait.NeverStop)
 
 	go controller.NewReleaseController(
 		sharedInformers.Releases().Informer(sysClient),
