@@ -10,7 +10,6 @@ import (
 	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 	clientset "kolihub.io/koli/pkg/clientset"
 	"kolihub.io/koli/pkg/spec"
-	specutil "kolihub.io/koli/pkg/spec/util"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
@@ -212,7 +211,7 @@ func (d *DeployerController) syncHandler(key string) error {
 }
 
 func (d *DeployerController) deploySlug(release *platform.Release, deploy *extensions.Deployment) error {
-	dpCopy, err := specutil.DeploymentDeepCopy(deploy)
+	dpCopy, err := platform.DeploymentDeepCopy(deploy)
 	if err != nil {
 		return fmt.Errorf("failed deep copying: %s", err)
 	}

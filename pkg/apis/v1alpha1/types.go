@@ -156,6 +156,7 @@ type ReleaseList struct {
 
 // User identifies an user on the platform
 type User struct {
+	Username     string   `json:"username"`
 	Email        string   `json:"email"`
 	Customer     string   `json:"customer"`
 	Organization string   `json:"org"`
