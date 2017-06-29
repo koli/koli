@@ -70,8 +70,8 @@ func (d *Deployment) GitSource() string {
 func (d *Deployment) GitCompare() string {
 	return d.GetAnnotation(platform.AnnotationGitCompare).String()
 }
-func (d *Deployment) GitHubUser() string {
-	return d.GetAnnotation(platform.AnnotationGitHubUser).String()
+func (d *Deployment) GitHubUser() *MapValue {
+	return d.GetAnnotation(platform.AnnotationGitHubUser)
 }
 func (d *Deployment) GitHubWebHookSecret() string {
 	return d.GetAnnotation(platform.AnnotationGitHubSecretHook).String()

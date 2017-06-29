@@ -33,7 +33,8 @@ type NamespaceMeta struct {
 func (n NamespaceMeta) Namespace() string           { return n.namespace }
 func (n NamespaceMeta) Customer() string            { return n.customer }
 func (n NamespaceMeta) Organization() string        { return n.organization }
-func (n NamespaceMeta) Valid() bool                 { return n.valid }
+func (n NamespaceMeta) Valid() bool                 { return n.valid } // DEPRECATED in flavor of IsValid
+func (n NamespaceMeta) IsValid() bool               { return n.valid }
 func (n NamespaceMeta) KubernetesNamespace() string { return n.kubernetesNamespace }
 
 // MapValue represents the value from a map[string]string

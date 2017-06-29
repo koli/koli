@@ -27,12 +27,24 @@ LDFLAGS := "-s -w \
 GOOS ?= linux
 GOARCH ?= amd64
 
+build-git: clean
+	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/gitserver cmd/gitserver/gitserver.go
+	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/gitreceive cmd/gitreceive/gitreceive.go
+	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/gitapi cmd/gitapi/gitapi.go
+
+build-git-server: clean
+	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/gitserver cmd/gitserver/gitserver.go
+
+build-git-receive: clean
+	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/gitreceive cmd/gitreceive/gitreceive.go
+
+build-git-api: clean
+	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/gitapi cmd/gitapi/gitapi.go
+
 build-controller: clean
-	mkdir -p ${BINARY_DEST_DIR}
 	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/koli-controller cmd/controller/controller-manager.go
 
 build-mutator: clean
-	mkdir -p ${BINARY_DEST_DIR}
 	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/k8smutator cmd/mutator/main.go
 	
 build:
@@ -54,6 +66,7 @@ docker-build-controller:
 
 clean:
 	rm -f ${BINARY_DEST_DIR}/*
+	mkdir -p ${BINARY_DEST_DIR}
 
 test-unit:
 	${GOTEST} ./pkg/...

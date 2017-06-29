@@ -8,6 +8,7 @@ import (
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 )
 
@@ -85,4 +86,19 @@ func NewTprRESTClientOrDie(c *rest.Config) CoreInterface {
 		panic(err)
 	}
 	return cl
+}
+
+func NewKubernetesClient(c *rest.Config) (kubernetes.Interface, error) {
+	var err error
+	if len(c.Host) == 0 {
+		c, err = rest.InClusterConfig()
+		if err != nil {
+			return nil, fmt.Errorf("error creating client configuration: %v", err)
+		}
+	}
+	clientset, err := kubernetes.NewForConfig(c)
+	if err != nil {
+		return nil, err
+	}
+	return clientset, nil
 }

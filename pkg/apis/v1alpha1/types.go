@@ -1,6 +1,8 @@
 package v1alpha1
 
 import (
+	jwt "gopkg.in/dgrijalva/jwt-go.v2"
+
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/pkg/api"
@@ -162,6 +164,7 @@ type User struct {
 	Organization string   `json:"org"`
 	Sub          string   `json:"sub"`
 	Groups       []string `json:"groups"`
+	jwt.StandardClaims
 }
 
 // Domain are a way for users to "claim" a domain and be able to create

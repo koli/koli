@@ -63,9 +63,6 @@ func startControllers(stop <-chan struct{}) error {
 	if err != nil {
 		return err
 	}
-	// if os.Getenv("SUPER_USER_TOKEN") == "" {
-	// 	return fmt.Errorf("SUPER_USER_TOKEN env not defined")
-	// }
 	client, err := kubernetes.NewForConfig(kcfg)
 	if err != nil {
 		return err
