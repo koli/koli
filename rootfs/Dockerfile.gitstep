@@ -1,6 +1,6 @@
 FROM quay.io/koli/base-os
 
-RUN groupadd -r git --gid=2000 && useradd --home /home/git -r -g git --uid=2000 git --disabled-password
+RUN groupadd -r git --gid=2000 && useradd --home /home/git -r -g git --uid=2000 git
 
 USER git
 WORKDIR /home/git

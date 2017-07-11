@@ -32,6 +32,9 @@ build-git: clean
 	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/gitreceive cmd/gitreceive/gitreceive.go
 	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/gitapi cmd/gitapi/gitapi.go
 
+compress:
+	upx -9 ${BINARY_DEST_DIR}/*
+
 build-git-server: clean
 	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/gitserver cmd/gitserver/gitserver.go
 
@@ -54,6 +57,10 @@ build:
 
 docker-build:
 	docker build --rm -t ${IMAGE} rootfs
+	docker tag ${IMAGE} ${MUTABLE_IMAGE}
+
+docker-build-gitstep:
+	docker build -f rootfs/Dockerfile.gitstep --rm -t ${IMAGE} rootfs
 	docker tag ${IMAGE} ${MUTABLE_IMAGE}
 
 docker-build-mutator:
