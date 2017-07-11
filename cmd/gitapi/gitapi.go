@@ -85,7 +85,7 @@ func main() {
 	webhook.HandleFunc("/hooks", gitHandler.Webhooks).Methods("GET", "POST")
 
 	webhook.PathPrefix("/").Handler(negroni.New(
-		negroni.HandlerFunc(gitHandler.Authorize),
+		negroni.HandlerFunc(gitHandler.Authenticate),
 		negroni.Wrap(r),
 	))
 	log.Fatal(http.ListenAndServe(":8001", webhook))

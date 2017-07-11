@@ -68,7 +68,7 @@ func TestDeploymentDraftMapValues(t *testing.T) {
 	if d.GitRepository() != expNotes[platform.AnnotationGitRepository] {
 		t.Errorf("GOT: %v, EXPECTED: %v", d.GitRepository(), expNotes[platform.AnnotationGitRepository])
 	}
-	if d.GitHubUser() != expNotes[platform.AnnotationGitHubUser] {
+	if d.GitHubUser().String() != expNotes[platform.AnnotationGitHubUser] {
 		t.Errorf("GOT: %v, EXPECTED: %v", d.GitHubUser(), expNotes[platform.AnnotationGitHubUser])
 	}
 	sha, err := d.GitRevision()

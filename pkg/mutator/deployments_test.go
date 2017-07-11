@@ -29,6 +29,7 @@ import (
 	fakerest "k8s.io/client-go/rest/fake"
 	core "k8s.io/client-go/testing"
 	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+	"kolihub.io/koli/pkg/util"
 )
 
 func newDeployment(name, ns string, notes, labels, selector map[string]string, container v1.Container) *v1beta1.Deployment {
@@ -100,14 +101,30 @@ func doRequest(method, url string, obj interface{}) ([]byte, *http.Response, err
 	}
 	return respBody, resp, nil
 }
-
 func TestDeploymentOnCreate(t *testing.T) {
 	var (
+		deployName                 = "foo-app"
 		planName                   = "foo-plan"
 		storagePlan                = "foo-plan-5g"
 		requestStorage             = resource.MustParse("5Gi")
 		computeResources           = newComputeResources()
 		expectedTemplateObjectMeta = metav1.ObjectMeta{Labels: map[string]string{"app": "foo"}}
+		expectedVolumes            = []v1.Volume{
+			{
+				Name: fmt.Sprintf("d-%s", deployName),
+				VolumeSource: v1.VolumeSource{
+					PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+						ClaimName: fmt.Sprintf("d-%s", deployName),
+						ReadOnly:  false, // Disk based services will always be RW
+					},
+				},
+			},
+		}
+		expectedSecContext = &v1.PodSecurityContext{
+			RunAsUser:    func() *int64 { i := int64(2000); return &i }(),
+			RunAsNonRoot: func() *bool { i := bool(false); return &i }(),
+			FSGroup:      func() *int64 { i := int64(2000); return &i }(),
+		}
 	)
 	h := Handler{allowedImages: []string{"busybox"}}
 	// Fake Clients
@@ -162,13 +179,14 @@ func TestDeploymentOnCreate(t *testing.T) {
 
 	// Simulate Requests
 	new := &v1beta1.Deployment{ObjectMeta: metav1.ObjectMeta{
-		Name:   "test",
+		Name:   deployName,
 		Labels: map[string]string{platform.LabelStoragePlan: storagePlan},
 	}}
 	new.Spec.Template.ObjectMeta = expectedTemplateObjectMeta
 	podSpec := &new.Spec.Template.Spec
 	podSpec.Volumes = []v1.Volume{{Name: "avolume"}}
 	podSpec.Containers = []v1.Container{{Name: "test", Image: "busybox"}}
+	podSpec.SecurityContext = &v1.PodSecurityContext{}
 
 	reqBody, err := json.Marshal(new)
 	if err != nil {
@@ -210,8 +228,8 @@ func TestDeploymentOnCreate(t *testing.T) {
 		t.Errorf("GOT: %d, EXPECTED: 1", len(podSpec.Containers))
 	}
 
-	if podSpec.Volumes != nil {
-		t.Errorf("GOT: %#v, EXPECTED: nil", podSpec.Volumes)
+	if !reflect.DeepEqual(podSpec.Volumes, expectedVolumes) {
+		t.Errorf("GOT: %#v, EXPECTED: %#v", podSpec.Volumes, expectedVolumes)
 	}
 
 	if got.Annotations[platform.AnnotationSetupStorage] != "true" {
@@ -220,6 +238,10 @@ func TestDeploymentOnCreate(t *testing.T) {
 
 	if !reflect.DeepEqual(podSpec.Containers[0].Resources, computeResources) {
 		t.Errorf("GOT: %#v, EXPECTED: %#v", podSpec.Containers[0].Resources, computeResources)
+	}
+
+	if !reflect.DeepEqual(podSpec.SecurityContext, expectedSecContext) {
+		t.Errorf("GOT: %#v, EXPECTED: %#v", podSpec.SecurityContext, expectedSecContext)
 	}
 }
 
@@ -489,7 +511,7 @@ func TestDeploymentOnPatchAPIErrors(t *testing.T) {
 					response.StatusCode = 200
 					response.Body = objBody(obj)
 				case "PATCH":
-					obj := StatusNotFound("deployment not found", &v1beta1.Deployment{})
+					obj := util.StatusNotFound("deployment not found", &v1beta1.Deployment{})
 					response.StatusCode = 404
 					response.Body = objBody(obj)
 				default:
@@ -508,7 +530,7 @@ func TestDeploymentOnPatchAPIErrors(t *testing.T) {
 					response.StatusCode = 200
 					response.Body = objBody(obj)
 				case "PATCH":
-					obj := StatusBadRequest("a bad request happened", &v1beta1.Deployment{}, metav1.StatusReasonBadRequest)
+					obj := util.StatusBadRequest("a bad request happened", &v1beta1.Deployment{}, metav1.StatusReasonBadRequest)
 					response.StatusCode = 400
 					response.Body = objBody(obj)
 				default:

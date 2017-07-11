@@ -81,7 +81,7 @@ func TestMapValue(t *testing.T) {
 		{value: "", valueType: false, empty: true},
 	}
 	for _, test := range testCases {
-		m := MapValue{value: test.value}
+		m := MapValue{Val: test.value}
 
 		if m.Exists() && test.empty { // must not exists when value is empty
 			t.Errorf("ISEMPTY: %v, GOT: %v, EXPECTED: false", test.empty, m.Exists())

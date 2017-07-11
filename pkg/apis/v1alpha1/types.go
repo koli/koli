@@ -156,14 +156,28 @@ type ReleaseList struct {
 	Items           []Release `json:"items"`
 }
 
+// TokenType refers to a jwt token claim to specify the type of the token
+// some types have restricted access and scope in the platform
+type TokenType string
+
+const (
+	// AdminTokenType has unsrestricted access to all endpoints
+	AdminTokenType TokenType = "admin"
+	// SystemTokenType allows interaction only between machine with l
+	// imited access scope to endpoints
+	SystemTokenType  TokenType = "system"
+	RegularTokenType TokenType = "regular"
+)
+
 // User identifies an user on the platform
 type User struct {
-	Username     string   `json:"username"`
-	Email        string   `json:"email"`
-	Customer     string   `json:"customer"`
-	Organization string   `json:"org"`
-	Sub          string   `json:"sub"`
-	Groups       []string `json:"groups"`
+	Username     string    `json:"username"`
+	Email        string    `json:"email"`
+	Customer     string    `json:"customer"`
+	Organization string    `json:"org"`
+	Sub          string    `json:"sub"`
+	Groups       []string  `json:"groups"`
+	Type         TokenType `json:"kolihub.io/type"` // Origin refers to the type of the token (system or regular)
 	jwt.StandardClaims
 }
 

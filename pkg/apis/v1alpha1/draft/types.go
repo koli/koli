@@ -10,7 +10,7 @@ type DraftMeta struct {
 	objectMeta *metav1.ObjectMeta
 }
 
-// deployment it's a draft for composing and acessing
+// Deployment it's a draft for composing and acessing
 // platform attributes from a v1beta1.Deployment more easily
 type Deployment struct {
 	DraftMeta

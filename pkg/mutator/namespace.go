@@ -4,16 +4,20 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 
 	"github.com/golang/glog"
 	"github.com/gorilla/mux"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/pkg/api/v1"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+	"kolihub.io/koli/pkg/apis/v1alpha1/draft"
+	"kolihub.io/koli/pkg/util"
 )
 
 const (
@@ -36,7 +40,40 @@ func invalidNamespaceDetails(ns *v1.Namespace) *metav1.Status {
 			Field:   "metadata.name",
 		}},
 	}
-	return StatusUnprocessableEntity(msg, ns, details)
+	return util.StatusUnprocessableEntity(msg, ns, details)
+}
+
+func (h *Handler) NamespaceOnList(w http.ResponseWriter, r *http.Request) {
+	key := fmt.Sprintf("Req-ID=%s, Resource=namespaces", r.Header.Get("X-Request-ID"))
+	glog.V(3).Infof("%s, User-Agent=%s, Method=%s", key, r.Header.Get("User-Agent"), r.Method)
+
+	selector := labels.Set{
+		platform.LabelCustomer:     h.user.Customer,
+		platform.LabelOrganization: h.user.Organization,
+	}
+	nsList, err := h.usrClientset.Core().Namespaces().List(metav1.ListOptions{LabelSelector: selector.String()})
+	switch e := err.(type) {
+	case *apierrors.StatusError:
+		e.ErrStatus.APIVersion = nsList.APIVersion
+		e.ErrStatus.Kind = "Status"
+		glog.Infof("%s - failed listing namespace [%s]", key, e.ErrStatus.Reason)
+		util.WriteResponseError(w, &e.ErrStatus)
+	case nil:
+		data, err := runtime.Encode(scheme.Codecs.LegacyCodec(v1.SchemeGroupVersion), nsList)
+		if err != nil {
+			msg := fmt.Sprintf("failed encoding response [%v]", err)
+			glog.Infof("%s - %s", key, msg)
+			util.WriteResponseError(w, util.StatusInternalError(msg, &v1.Namespace{}))
+			return
+		}
+		glog.Infof("%s - request mutate with success", key)
+		util.WriteResponseCreated(w, data)
+	default:
+		msg := fmt.Sprintf("unknown response from server [%v, %#v]", err, nsList)
+		glog.Warningf("%s - %s", key, msg)
+		util.WriteResponseError(w, util.StatusInternalError(msg, &v1.Namespace{}))
+		return
+	}
 }
 
 // NamespaceOnCreate mutates k8s request on creation
@@ -48,21 +85,21 @@ func (h *Handler) NamespaceOnCreate(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(new); err != nil {
 		msg := fmt.Sprintf("failed decoding request body [%v]", err)
 		glog.Errorf("%s - %s", key, msg)
-		writeResponseError(w, StatusInternalError(msg, &v1.Namespace{}))
+		util.WriteResponseError(w, util.StatusInternalError(msg, &v1.Namespace{}))
 		return
 	}
 	defer r.Body.Close()
 
-	parts := strings.Split(new.Name, "-")
-	if len(parts) != 3 {
+	nsMeta := draft.NewNamespaceMetadata(new.Name)
+	if !nsMeta.IsValid() {
 		glog.V(4).Infof("%s - invalid namespace format", key)
-		writeResponseError(w, invalidNamespaceDetails(new))
+		util.WriteResponseError(w, invalidNamespaceDetails(new))
 		return
 	}
 
-	if h.user.Customer != parts[1] || h.user.Organization != parts[2] {
-		msg := forbiddenAccessMessage(h.user, parts[1], parts[2])
-		writeResponseError(w, StatusUnauthorized(msg, new, metav1.StatusReasonUnauthorized))
+	if h.user.Customer != nsMeta.Customer() || h.user.Organization != nsMeta.Organization() {
+		msg := forbiddenAccessMessage(h.user, nsMeta.Customer(), nsMeta.Organization())
+		util.WriteResponseError(w, util.StatusUnauthorized(msg, new, metav1.StatusReasonUnauthorized))
 		return
 	}
 
@@ -86,7 +123,7 @@ func (h *Handler) NamespaceOnCreate(w http.ResponseWriter, r *http.Request) {
 			e.ErrStatus.APIVersion = new.APIVersion
 			e.ErrStatus.Kind = "Status"
 			glog.Infof("%s:%s - failed creating namespace [%s]", key, new.Name, e.ErrStatus.Reason)
-			writeResponseError(w, &e.ErrStatus)
+			util.WriteResponseError(w, &e.ErrStatus)
 		case nil:
 			resp.Kind = new.Kind
 			resp.APIVersion = new.APIVersion
@@ -94,15 +131,15 @@ func (h *Handler) NamespaceOnCreate(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				msg := fmt.Sprintf("failed encoding response [%v]", err)
 				glog.Infof("%s:%s - %s", key, new.Name, msg)
-				writeResponseError(w, StatusInternalError(msg, new))
+				util.WriteResponseError(w, util.StatusInternalError(msg, new))
 				return
 			}
 			glog.Infof("%s:%s - request mutate with success", key, new.Name)
-			writeResponseCreated(w, data)
+			util.WriteResponseCreated(w, data)
 		default:
 			msg := fmt.Sprintf("unknown response from server [%v, %#v]", err, resp)
 			glog.Warningf("%s:%s - %s", key, new.Name, msg)
-			writeResponseError(w, StatusInternalError(msg, new))
+			util.WriteResponseError(w, util.StatusInternalError(msg, new))
 			return
 		}
 	}
@@ -119,14 +156,14 @@ func (h *Handler) NamespaceOnMod(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(new); err != nil {
 			msg := fmt.Sprintf("failed decoding request body [%v]", err)
 			glog.Errorf("%s - %s", key, msg)
-			writeResponseError(w, StatusInternalError(msg, &v1.Namespace{}))
+			util.WriteResponseError(w, util.StatusInternalError(msg, &v1.Namespace{}))
 			return
 		}
 		defer r.Body.Close()
 		old, errStatus := h.getNamespace(params["name"])
 		if errStatus != nil {
 			glog.V(4).Infof("%s - failed retrieving namespace [%s]", key, errStatus.Message)
-			writeResponseError(w, errStatus)
+			util.WriteResponseError(w, errStatus)
 			return
 		}
 
@@ -146,35 +183,35 @@ func (h *Handler) NamespaceOnMod(w http.ResponseWriter, r *http.Request) {
 			e.ErrStatus.APIVersion = resp.APIVersion
 			e.ErrStatus.Kind = "Status"
 			glog.Infof("%s - failed updating namespace [%s]", key, e.ErrStatus.Reason)
-			writeResponseError(w, &e.ErrStatus)
+			util.WriteResponseError(w, &e.ErrStatus)
 		case nil:
 			resp.Kind = new.Kind
 			resp.APIVersion = new.APIVersion
 			data, err := json.Marshal(resp)
 			if err != nil {
 				msg := fmt.Sprintf("failed encoding response [%v]", err)
-				writeResponseError(w, StatusInternalError(msg, resp))
+				util.WriteResponseError(w, util.StatusInternalError(msg, resp))
 				return
 			}
 			glog.Infof("%s - request mutate with success", key)
-			writeResponseSuccess(w, data)
+			util.WriteResponseSuccess(w, data)
 		default:
 			msg := fmt.Sprintf("unknown response from server [%v, %#v]", err, resp)
 			glog.Warningf("%s - %s", key, msg)
-			writeResponseError(w, StatusInternalError(msg, resp))
+			util.WriteResponseError(w, util.StatusInternalError(msg, resp))
 			return
 		}
 	case "PATCH":
 		var new map[string]interface{}
 		if err := json.NewDecoder(r.Body).Decode(&new); err != nil {
 			msg := fmt.Sprintf("failed decoding request body [%v]", err)
-			writeResponseError(w, StatusInternalError(msg, &v1.Namespace{}))
+			util.WriteResponseError(w, util.StatusInternalError(msg, &v1.Namespace{}))
 			return
 		}
 		defer r.Body.Close()
 		old, errStatus := h.getNamespace(params["name"])
 		if errStatus != nil {
-			writeResponseError(w, errStatus)
+			util.WriteResponseError(w, errStatus)
 			return
 		}
 
@@ -223,7 +260,7 @@ func (h *Handler) NamespaceOnMod(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			msg := fmt.Sprintf("failed encoding request body [%v]", err)
 			glog.Infof("%s - %s", key, msg)
-			writeResponseError(w, StatusInternalError(msg, &v1.Namespace{}))
+			util.WriteResponseError(w, util.StatusInternalError(msg, &v1.Namespace{}))
 			return
 		}
 		resp, err := h.usrClientset.Core().Namespaces().Patch(params["name"], types.MergePatchType, reqBody)
@@ -232,26 +269,26 @@ func (h *Handler) NamespaceOnMod(w http.ResponseWriter, r *http.Request) {
 			e.ErrStatus.APIVersion = resp.APIVersion
 			e.ErrStatus.Kind = "Status"
 			glog.Infof("%s - failed updating namespace [%s]", key, e.ErrStatus.Reason)
-			writeResponseError(w, &e.ErrStatus)
+			util.WriteResponseError(w, &e.ErrStatus)
 		case nil:
 			resp.Kind = "Namespace"
 			resp.APIVersion = "v1"
 			data, err := json.Marshal(resp)
 			if err != nil {
 				msg := fmt.Sprintf("failed encoding response [%v]", err)
-				writeResponseError(w, StatusInternalError(msg, resp))
+				util.WriteResponseError(w, util.StatusInternalError(msg, resp))
 				return
 			}
 			glog.Infof("%s - request mutate with success", key)
-			writeResponseSuccess(w, data)
+			util.WriteResponseSuccess(w, data)
 		default:
 			msg := fmt.Sprintf("unknown response from server [%v, %#v]", err, resp)
 			glog.Warningf("%s - %s", key, msg)
-			writeResponseError(w, StatusInternalError(msg, resp))
+			util.WriteResponseError(w, util.StatusInternalError(msg, resp))
 			return
 		}
 	default:
-		writeResponseError(w, StatusMethodNotAllowed("Method Not Allowed.", &v1.Namespace{}))
+		util.WriteResponseError(w, util.StatusMethodNotAllowed("Method Not Allowed.", &v1.Namespace{}))
 	}
 }
 
@@ -261,10 +298,10 @@ func (h *Handler) getNamespace(name string) (*v1.Namespace, *metav1.Status) {
 		switch t := err.(type) {
 		case apierrors.APIStatus:
 			if t.Status().Reason == metav1.StatusReasonNotFound {
-				return nil, StatusNotFound(fmt.Sprintf("namespace \"%s\" not found", name), &v1.Namespace{})
+				return nil, util.StatusNotFound(fmt.Sprintf("namespace \"%s\" not found", name), &v1.Namespace{})
 			}
 		}
-		return nil, StatusInternalError(fmt.Sprintf("unknown error retrieving namespace [%v]", err), &v1.Namespace{})
+		return nil, util.StatusInternalError(fmt.Sprintf("unknown error retrieving namespace [%v]", err), &v1.Namespace{})
 	}
 	return obj, nil
 }

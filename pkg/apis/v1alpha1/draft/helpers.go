@@ -3,6 +3,7 @@ package draft
 import (
 	"regexp"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
 )
 
@@ -24,4 +25,14 @@ func NewDeployment(obj *v1beta1.Deployment) *Deployment {
 	d := &Deployment{Deployment: *obj}
 	d.DraftMeta = DraftMeta{objectMeta: &d.ObjectMeta}
 	return d
+}
+
+func NewNamespaceMetadata(namespace string) *NamespaceMeta {
+	m := &DraftMeta{objectMeta: &metav1.ObjectMeta{Namespace: namespace}}
+	return m.GetNamespaceMetadata()
+}
+
+// NewMapValue creates a new *MapValue
+func NewMapValue(value string) *MapValue {
+	return &MapValue{Val: value}
 }

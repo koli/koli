@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang/glog"
 	"k8s.io/client-go/pkg/api/v1"
+	"kolihub.io/koli/pkg/util"
 )
 
 // Authorize it's a middleware to process jwt token authorizations
@@ -16,13 +17,13 @@ func (h *Handler) Authorize(hd http.Handler) http.Handler {
 		if err != nil {
 			msg := fmt.Sprintf("failed decoding token [%s]", err)
 			glog.Infof(msg)
-			writeResponseError(w, StatusUnauthorized(msg, &v1.Namespace{}, "v1"))
+			util.WriteResponseError(w, util.StatusUnauthorized(msg, &v1.Namespace{}, "v1"))
 			return
 		}
 		if !user.IsValid() {
 			msg := fmt.Sprintf("it's not a valid user, [%s]", rawToken)
 			glog.Infof(msg)
-			writeResponseError(w, StatusUnauthorized(msg, &v1.Namespace{}, "v1"))
+			util.WriteResponseError(w, util.StatusUnauthorized(msg, &v1.Namespace{}, "v1"))
 			return
 		}
 		h.user = user
@@ -31,7 +32,7 @@ func (h *Handler) Authorize(hd http.Handler) http.Handler {
 			// TODO: need to pass a generic object instead of v1.Namespace
 			msg := fmt.Sprintf("failed retrieving user k8s clients [%v]", err)
 			glog.Infof(msg)
-			writeResponseError(w, StatusInternalError(msg, &v1.Namespace{}))
+			util.WriteResponseError(w, util.StatusInternalError(msg, &v1.Namespace{}))
 			return
 		}
 		hd.ServeHTTP(w, r)

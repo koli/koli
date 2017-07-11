@@ -25,7 +25,7 @@ const (
 	repoPrefix    = "repos"
 )
 
-// DecodeUserToken decodes a jwtToken into a UserMeta struct
+// DecodeUserToken decodes a jwtToken (HS256 and RS256) into a *platform.User
 func DecodeUserToken(jwtTokenString, jwtSecret string, rawPubKey []byte) (*platform.User, error) {
 	user := &platform.User{}
 	token, err := jwt.ParseWithClaims(jwtTokenString, user, func(token *jwt.Token) (interface{}, error) {
@@ -162,14 +162,16 @@ func GenerateRandomBytes(n int) (string, error) {
 }
 
 // GenerateNewJwtToken creates a new user token to allow machine-to-machine interaction
-func GenerateNewJwtToken(key, customer, org string) (string, error) {
+func GenerateNewJwtToken(key, customer, org string, tokenType platform.TokenType) (string, error) {
 	token := jwt.New(jwt.SigningMethodHS256)
 	claims := make(jwt.MapClaims)
 	// Set some claims
 	claims["customer"] = customer
 	claims["org"] = org
-	// TODO: hard-coded. Accept the expiration time as parameter
-	claims["exp"] = time.Now().UTC().Add(time.Minute * 20).Unix()
+	claims["kolihub.io/type"] = tokenType
+	// A system token doesn't expire, make sure this token have limited
+	// access to API's
+	// claims["exp"] = time.Now().UTC().Add(time.Minute * 20).Unix()
 	claims["iat"] = time.Now().UTC().Unix()
 	token.Claims = claims
 

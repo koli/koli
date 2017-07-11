@@ -16,10 +16,11 @@ import (
 	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
 	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 	draft "kolihub.io/koli/pkg/apis/v1alpha1/draft"
+	"kolihub.io/koli/pkg/util"
 )
 
 const (
-	buildpacksImage = "quay.io/slugrunner"
+	OSUserID = 2000
 )
 
 var (
@@ -39,7 +40,7 @@ func (h *Handler) DeploymentsOnCreate(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(new); err != nil {
 		msg := fmt.Sprintf("failed decoding request body [%v]", err)
 		glog.V(3).Infof("%s -  %s", key, msg)
-		writeResponseError(w, StatusInternalError(msg, &v1beta1.Deployment{}))
+		util.WriteResponseError(w, util.StatusInternalError(msg, &v1beta1.Deployment{}))
 		return
 	}
 	defer r.Body.Close()
@@ -54,7 +55,7 @@ func (h *Handler) DeploymentsOnCreate(w http.ResponseWriter, r *http.Request) {
 		Into(planList); err != nil {
 		msg := fmt.Sprintf("failed retrieving plan list [%v]", err)
 		glog.V(3).Infof("%s -  %s", key, msg)
-		writeResponseError(w, StatusInternalError(msg, new))
+		util.WriteResponseError(w, util.StatusInternalError(msg, new))
 		return
 	}
 
@@ -64,7 +65,7 @@ func (h *Handler) DeploymentsOnCreate(w http.ResponseWriter, r *http.Request) {
 
 	if errStatus := h.validateContainerImage(new); errStatus != nil {
 		glog.Infof("%s - %s", key, errStatus.Message)
-		writeResponseError(w, errStatus)
+		util.WriteResponseError(w, errStatus)
 		return
 	}
 
@@ -93,7 +94,7 @@ func (h *Handler) DeploymentsOnCreate(w http.ResponseWriter, r *http.Request) {
 			msg = fmt.Sprintf(`plan "%s" not found, neither a default one`, clusterPlanName.String())
 		}
 		glog.V(3).Infof("%s -  %s", key, msg)
-		writeResponseError(w, StatusNotFound(msg, new))
+		util.WriteResponseError(w, util.StatusNotFound(msg, new))
 		return
 	}
 
@@ -109,7 +110,7 @@ func (h *Handler) DeploymentsOnCreate(w http.ResponseWriter, r *http.Request) {
 				Field:   fmt.Sprintf(`metadata.labels[%s]`, platform.LabelStoragePlan),
 			}},
 		}
-		writeResponseError(w, StatusConflict(msg, new, details))
+		util.WriteResponseError(w, util.StatusConflict(msg, new, details))
 		return
 	}
 
@@ -118,12 +119,23 @@ func (h *Handler) DeploymentsOnCreate(w http.ResponseWriter, r *http.Request) {
 		if new.HasMultipleReplicas() {
 			msg := fmt.Sprintf("found a persistent volume, unable to scale")
 			glog.Infof("%s:%s - %s", key, new.Name, msg)
-			writeResponseError(w, StatusInternalError(msg, new))
+			util.WriteResponseError(w, util.StatusInternalError(msg, new))
 			return
 		}
 		// The controller will catch this state and starts
 		// provisioning a storage for this resource
 		new.SetAnnotation(platform.AnnotationSetupStorage, "true")
+		new.Spec.Template.Spec.Volumes = []v1.Volume{
+			{
+				Name: fmt.Sprintf("d-%s", new.Name),
+				VolumeSource: v1.VolumeSource{
+					PersistentVolumeClaim: &v1.PersistentVolumeClaimVolumeSource{
+						ClaimName: fmt.Sprintf("d-%s", new.Name),
+						ReadOnly:  false, // Disk based services will always be RW
+					},
+				},
+			},
+		}
 	}
 
 	// allow .spec.template.spec.containers
@@ -142,11 +154,24 @@ func (h *Handler) DeploymentsOnCreate(w http.ResponseWriter, r *http.Request) {
 
 	// allow .spec.template.metadata
 	podTemplateMeta := new.Spec.Template.ObjectMeta
+	// storage plan provision
+	podSpecVolumes := new.Spec.Template.Spec.Volumes
 
 	// Mutate PodTemplateSpec
 	new.Spec.Template = v1.PodTemplateSpec{}
+
+	new.Spec.Template.Spec.Volumes = podSpecVolumes
 	new.Spec.Template.ObjectMeta = podTemplateMeta
 	new.Spec.Template.Spec.Containers = []v1.Container{defaultsC}
+
+	// Required for mounting volumes with the proper user ID,
+	// all images running in the platform have to run as a specific user
+	runAsUser, fsGroup, runAsNonRoot := int64(OSUserID), int64(OSUserID), bool(false)
+	new.Spec.Template.Spec.SecurityContext = &v1.PodSecurityContext{
+		RunAsUser:    &runAsUser,
+		FSGroup:      &fsGroup,
+		RunAsNonRoot: &runAsNonRoot,
+	}
 	new.SetClusterPlan(plan.Name)
 
 	resp, err := h.usrClientset.Extensions().Deployments(params["namespace"]).Create(new.GetObject())
@@ -155,23 +180,24 @@ func (h *Handler) DeploymentsOnCreate(w http.ResponseWriter, r *http.Request) {
 		e.ErrStatus.APIVersion = new.APIVersion
 		e.ErrStatus.Kind = "Status"
 		glog.Infof("%s:%s - failed creating deployment [%s]", key, new.Name, e.ErrStatus.Reason)
-		writeResponseError(w, &e.ErrStatus)
+		util.WriteResponseError(w, &e.ErrStatus)
 	case nil:
-		resp.Kind = new.Kind
-		resp.APIVersion = new.APIVersion
-		data, err := json.Marshal(resp)
+		// TODO: Kind and Version will be applied encoding the response
+		// resp.Kind = new.Kind
+		// resp.APIVersion = new.APIVersion
+		data, err := runtime.Encode(scheme.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion), resp)
 		if err != nil {
 			msg := fmt.Sprintf("request was mutated but failed encoding response [%v]", err)
 			glog.Infof("%s:%s - %s", key, new.Name, msg)
-			writeResponseError(w, StatusInternalError(msg, new))
+			util.WriteResponseError(w, util.StatusInternalError(msg, new))
 			return
 		}
 		glog.Infof("%s:%s - request mutate with success", key, new.Name)
-		writeResponseCreated(w, data)
+		util.WriteResponseCreated(w, data)
 	default:
 		msg := fmt.Sprintf("unknown response from server [%v, %#v]", err, resp)
 		glog.Warningf("%s:%s - %s", key, new.Name, msg)
-		writeResponseError(w, StatusInternalError(msg, new))
+		util.WriteResponseError(w, util.StatusInternalError(msg, new))
 		return
 	}
 }
@@ -186,21 +212,21 @@ func (h *Handler) DeploymentsOnMod(w http.ResponseWriter, r *http.Request) {
 		old, errStatus := h.getDeployment(params["namespace"], params["deploy"])
 		if errStatus != nil {
 			glog.V(4).Infof("%s - failed retrieving deployment [%s]", key, errStatus.Message)
-			writeResponseError(w, errStatus)
+			util.WriteResponseError(w, errStatus)
 			return
 		}
 		new, err := old.DeepCopy()
 		if err != nil {
 			msg := fmt.Sprintf("failed deep copying obj [%v]", err)
 			glog.V(3).Infof("%s -  %s", key, err)
-			writeResponseError(w, StatusInternalError(msg, &v1beta1.Deployment{}))
+			util.WriteResponseError(w, util.StatusInternalError(msg, &v1beta1.Deployment{}))
 			return
 		}
 
 		if err := json.NewDecoder(r.Body).Decode(&new); err != nil {
 			msg := fmt.Sprintf("failed decoding request body [%v]", err)
 			glog.V(3).Infof("%s -  %s", key, err)
-			writeResponseError(w, StatusInternalError(msg, &v1beta1.Deployment{}))
+			util.WriteResponseError(w, util.StatusInternalError(msg, &v1beta1.Deployment{}))
 			return
 		}
 		defer r.Body.Close()
@@ -209,13 +235,13 @@ func (h *Handler) DeploymentsOnMod(w http.ResponseWriter, r *http.Request) {
 		if len(old.Spec.Template.Spec.Volumes) > 0 && new.HasMultipleReplicas() {
 			msg := fmt.Sprintf("found a persistent volume, unable to scale")
 			glog.Infof("%s:%s - %s", key, new.Name, msg)
-			writeResponseError(w, StatusInternalError(msg, new))
+			util.WriteResponseError(w, util.StatusInternalError(msg, new))
 			return
 		}
 
 		if errStatus := h.validateContainerImage(new); errStatus != nil {
 			glog.Infof("%s - %s", key, errStatus.Message)
-			writeResponseError(w, errStatus)
+			util.WriteResponseError(w, errStatus)
 			return
 		}
 
@@ -238,7 +264,7 @@ func (h *Handler) DeploymentsOnMod(w http.ResponseWriter, r *http.Request) {
 			var errStatus *metav1.Status
 			clusterPlan, errStatus = h.getPlan(clusterPlanName)
 			if errStatus != nil {
-				writeResponseError(w, errStatus)
+				util.WriteResponseError(w, errStatus)
 				return
 			}
 		} else {
@@ -258,7 +284,7 @@ func (h *Handler) DeploymentsOnMod(w http.ResponseWriter, r *http.Request) {
 				_, errStatus := h.getStoragePlan(storagePlan.String())
 				if errStatus != nil {
 					glog.V(4).Infof("%s - failed retrieving storage plan [%s]", key, errStatus.Message)
-					writeResponseError(w, errStatus)
+					util.WriteResponseError(w, errStatus)
 					return
 				}
 				// The plan exists, setup storage for the deployment (will be handled async)
@@ -306,7 +332,7 @@ func (h *Handler) DeploymentsOnMod(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			msg := fmt.Sprintf("failed merging patch data [%v]", err)
 			glog.V(3).Infof("%s -  %s", key, err)
-			writeResponseError(w, StatusInternalError(msg, &v1beta1.Deployment{}))
+			util.WriteResponseError(w, util.StatusInternalError(msg, &v1beta1.Deployment{}))
 			return
 		}
 
@@ -317,27 +343,28 @@ func (h *Handler) DeploymentsOnMod(w http.ResponseWriter, r *http.Request) {
 			e.ErrStatus.APIVersion = resp.APIVersion
 			e.ErrStatus.Kind = "Status"
 			glog.Infof("%s - failed updating namespace [%s]", key, e.ErrStatus.Reason)
-			writeResponseError(w, &e.ErrStatus)
+			util.WriteResponseError(w, &e.ErrStatus)
 		case nil:
-			resp.Kind = "Deployment"
-			resp.APIVersion = v1beta1.SchemeGroupVersion.Version
+			// runtime.Encode will deal with Kind and Version
+			// resp.Kind = "Deployment"
+			// resp.APIVersion = v1beta1.SchemeGroupVersion.Version
 			data, err := runtime.Encode(scheme.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion), resp)
 			if err != nil {
 				msg := fmt.Sprintf("failed encoding response [%v]", err)
-				writeResponseError(w, StatusInternalError(msg, resp))
+				util.WriteResponseError(w, util.StatusInternalError(msg, resp))
 				return
 			}
 			glog.Infof("%s - request mutate with success", key)
-			writeResponseSuccess(w, data)
+			util.WriteResponseSuccess(w, data)
 		default:
 			msg := fmt.Sprintf("unknown response from server [%v, %#v]", err, resp)
 			glog.Warningf("%s - %s", key, msg)
-			writeResponseError(w, StatusInternalError(msg, resp))
+			util.WriteResponseError(w, util.StatusInternalError(msg, resp))
 			return
 		}
 	default:
 		msg := fmt.Sprintf(`Method "%s" not allowed.`, r.Method)
-		writeResponseError(w, StatusMethodNotAllowed(msg, &v1beta1.Deployment{}))
+		util.WriteResponseError(w, util.StatusMethodNotAllowed(msg, &v1beta1.Deployment{}))
 	}
 }
 
@@ -347,10 +374,10 @@ func (h *Handler) getDeployment(namespace, deployName string) (*draft.Deployment
 		switch t := err.(type) {
 		case apierrors.APIStatus:
 			if t.Status().Reason == metav1.StatusReasonNotFound {
-				return nil, StatusNotFound(fmt.Sprintf("deployment \"%s\" not found", deployName), &v1beta1.Deployment{})
+				return nil, util.StatusNotFound(fmt.Sprintf("deployment \"%s\" not found", deployName), &v1beta1.Deployment{})
 			}
 		}
-		return nil, StatusInternalError(fmt.Sprintf("unknown error retrieving deployment [%v]", err), &v1beta1.Deployment{})
+		return nil, util.StatusInternalError(fmt.Sprintf("unknown error retrieving deployment [%v]", err), &v1beta1.Deployment{})
 	}
 	return draft.NewDeployment(obj), nil
 }
@@ -371,7 +398,7 @@ func (h *Handler) getStoragePlan(planName string) (*platform.Plan, *metav1.Statu
 				Field:   fmt.Sprintf(`metadata.labels[%s]`, platform.LabelStoragePlan),
 			}},
 		}
-		return nil, StatusConflict(msg, plan, details)
+		return nil, util.StatusConflict(msg, plan, details)
 	}
 	return plan, nil
 }
@@ -389,10 +416,10 @@ func (h *Handler) getPlan(planName string) (*platform.Plan, *metav1.Status) {
 		switch t := err.(type) {
 		case apierrors.APIStatus:
 			if t.Status().Reason == metav1.StatusReasonNotFound {
-				return nil, StatusNotFound(fmt.Sprintf(`plan "%s" not found`, planName), &platform.Plan{})
+				return nil, util.StatusNotFound(fmt.Sprintf(`plan "%s" not found`, planName), &platform.Plan{})
 			}
 		}
-		return nil, StatusInternalError(fmt.Sprintf("unknown error retrieving plan [%v]", err), &platform.Plan{})
+		return nil, util.StatusInternalError(fmt.Sprintf("unknown error retrieving plan [%v]", err), &platform.Plan{})
 	}
 	return plan, nil
 }
@@ -409,7 +436,7 @@ func (h *Handler) validateContainerImage(obj *draft.Deployment) *metav1.Status {
 		if !hasAllowedImage {
 			msg := fmt.Sprintf(`the image "%s" is not allowed to run in the cluster`,
 				obj.Spec.Template.Spec.Containers[0].Image)
-			return StatusBadRequest(msg, &v1beta1.Deployment{}, metav1.StatusReasonBadRequest)
+			return util.StatusBadRequest(msg, &v1beta1.Deployment{}, metav1.StatusReasonBadRequest)
 		}
 	}
 	return nil

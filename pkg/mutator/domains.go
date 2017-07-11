@@ -10,6 +10,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/gorilla/mux"
 	platform "kolihub.io/koli/pkg/spec"
+	"kolihub.io/koli/pkg/util"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -33,7 +34,7 @@ func (h *Handler) isValidResource(obj *platform.Domain) *metav1.Status {
 				Message: msg,
 			}},
 		}
-		return StatusUnprocessableEntity(msg, obj, details)
+		return util.StatusUnprocessableEntity(msg, obj, details)
 	}
 	return nil
 }
@@ -47,14 +48,14 @@ func (h *Handler) DomainsOnCreate(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewDecoder(r.Body).Decode(new); err != nil {
 		msg := fmt.Sprintf("failed decoding request body [%v]", err)
 		glog.V(3).Infof("%s -  %s", key, msg)
-		writeResponseError(w, StatusInternalError(msg, &platform.Domain{}))
+		util.WriteResponseError(w, util.StatusInternalError(msg, &platform.Domain{}))
 		return
 	}
 	defer r.Body.Close()
 	key = fmt.Sprintf("%s:%s/%s", key, new.Namespace, new.Name)
 	if errStatus := h.isValidResource(new); errStatus != nil {
 		glog.V(3).Infof("%s -  %s", key, errStatus.Message)
-		writeResponseError(w, errStatus)
+		util.WriteResponseError(w, errStatus)
 		return
 	}
 	domList := &platform.DomainList{}
@@ -65,7 +66,7 @@ func (h *Handler) DomainsOnCreate(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		msg := fmt.Sprintf("failed retrieving domain list [%v]", err)
 		glog.V(3).Infof("%s -  %s", key, msg)
-		writeResponseError(w, StatusInternalError(msg, new))
+		util.WriteResponseError(w, util.StatusInternalError(msg, new))
 		return
 	}
 
@@ -74,14 +75,14 @@ func (h *Handler) DomainsOnCreate(w http.ResponseWriter, r *http.Request) {
 			if cur.IsPrimary() && cur.GetPrimaryDomain() == new.GetPrimaryDomain() {
 				msg := fmt.Sprintf("primary domain already exist at namespace/resource [%s/%s]", new.Namespace, new.Name)
 				glog.V(3).Infof("%s -  %s", key, msg)
-				writeResponseError(w, StatusConflict(msg, new, nil))
+				util.WriteResponseError(w, util.StatusConflict(msg, new, nil))
 				return
 			}
 		} else {
 			if !cur.IsPrimary() && cur.GetDomain() == new.GetDomain() {
 				msg := fmt.Sprintf("domain already exist at namespace/resource [%s/%s]", new.Namespace, new.Name)
 				glog.V(3).Infof("%s -  %s", key, msg)
-				writeResponseError(w, StatusConflict(msg, new, nil))
+				util.WriteResponseError(w, util.StatusConflict(msg, new, nil))
 				return
 			}
 		}
@@ -89,7 +90,7 @@ func (h *Handler) DomainsOnCreate(w http.ResponseWriter, r *http.Request) {
 	if len(new.Spec.Parent) > 0 && !new.IsPrimary() {
 		if errStatus := h.validateIfParentIsValid(new); errStatus != nil {
 			glog.V(3).Infof("%s - %v", key, errStatus.Message)
-			writeResponseError(w, errStatus)
+			util.WriteResponseError(w, errStatus)
 			return
 		}
 	}
@@ -106,14 +107,14 @@ func (h *Handler) DomainsOnCreate(w http.ResponseWriter, r *http.Request) {
 		e.ErrStatus.APIVersion = new.APIVersion
 		e.ErrStatus.Kind = "Status"
 		glog.Infof("%s -  failed mutating request [%v]", key, err)
-		writeResponseError(w, &e.ErrStatus)
+		util.WriteResponseError(w, &e.ErrStatus)
 	case nil:
 		glog.Infof("%s -  request mutate with success", key)
-		writeResponseCreated(w, resp)
+		util.WriteResponseCreated(w, resp)
 	default:
 		msg := fmt.Sprintf("unknown response [%v, %s]", err, string(resp))
 		glog.Infof("%s -  %s", key, msg)
-		writeResponseError(w, StatusInternalError(msg, &platform.Domain{}))
+		util.WriteResponseError(w, util.StatusInternalError(msg, &platform.Domain{}))
 	}
 }
 
@@ -127,20 +128,20 @@ func (h *Handler) DomainsOnMod(w http.ResponseWriter, r *http.Request) {
 		new := &platform.Domain{}
 		if err := json.NewDecoder(r.Body).Decode(new); err != nil {
 			msg := fmt.Sprintf("failed decoding request body [%v]", err)
-			writeResponseError(w, StatusInternalError(msg, &platform.Domain{}))
+			util.WriteResponseError(w, util.StatusInternalError(msg, &platform.Domain{}))
 			return
 		}
 		defer r.Body.Close()
 		if errStatus := h.isValidResource(new); errStatus != nil {
 			glog.Infof("%s - %s", key, errStatus.Details.Causes[0].Message)
-			writeResponseError(w, errStatus)
+			util.WriteResponseError(w, errStatus)
 			return
 		}
 
 		old, errStatus := h.getDomainByName(params["namespace"], params["domain"])
 		if errStatus != nil {
 			glog.Infof("%s -  %s", key, errStatus.Message)
-			writeResponseError(w, errStatus)
+			util.WriteResponseError(w, errStatus)
 			return
 		}
 		if old.Spec.PrimaryDomain != new.Spec.PrimaryDomain || old.Spec.Sub != new.Spec.Sub {
@@ -155,20 +156,20 @@ func (h *Handler) DomainsOnMod(w http.ResponseWriter, r *http.Request) {
 					Field:   "spec.primary or spec.sub",
 				}},
 			}
-			writeResponseError(w, StatusUnprocessableEntity(msg, old, details))
+			util.WriteResponseError(w, util.StatusUnprocessableEntity(msg, old, details))
 			return
 		}
 
 		if errStatus := h.validateIfDelegatesHasChanged(old, new.Spec.Delegates); errStatus != nil {
 			glog.Infof("%s -  %s", key, errStatus.Message)
-			writeResponseError(w, errStatus)
+			util.WriteResponseError(w, errStatus)
 			return
 		}
 
 		if len(new.Spec.Parent) > 0 && old.Spec.Parent != new.Spec.Parent && !old.IsPrimary() {
 			if errStatus := h.validateIfParentIsValid(new); errStatus != nil {
 				glog.V(3).Infof("%s - %s", key, errStatus.Message)
-				writeResponseError(w, errStatus)
+				util.WriteResponseError(w, errStatus)
 				return
 			}
 		}
@@ -187,21 +188,21 @@ func (h *Handler) DomainsOnMod(w http.ResponseWriter, r *http.Request) {
 			e.ErrStatus.APIVersion = old.APIVersion
 			e.ErrStatus.Kind = "Status"
 			glog.Infof("%s -  failed mutating request [%v, %s]", key, err, string(resp))
-			writeResponseError(w, &e.ErrStatus)
+			util.WriteResponseError(w, &e.ErrStatus)
 		case nil:
 			glog.Infof("%s -  request mutate with success!", key)
-			writeResponseSuccess(w, resp)
+			util.WriteResponseSuccess(w, resp)
 		default:
 			msg := fmt.Sprintf("unknown response [%v, %s]", err, string(resp))
 			glog.Infof("%s -  %s", key, msg)
-			writeResponseError(w, StatusInternalError(msg, &platform.Domain{}))
+			util.WriteResponseError(w, util.StatusInternalError(msg, &platform.Domain{}))
 		}
 	case "PATCH":
 		var obj map[string]interface{}
 		if err := json.NewDecoder(r.Body).Decode(&obj); err != nil {
 			msg := fmt.Sprintf("failed decoding request body [%v]", err)
 			glog.V(3).Infof("%s -  %s", key, err)
-			writeResponseError(w, StatusInternalError(msg, &platform.Domain{}))
+			util.WriteResponseError(w, util.StatusInternalError(msg, &platform.Domain{}))
 			return
 		}
 		if _, ok := obj["spec"]; ok {
@@ -209,7 +210,7 @@ func (h *Handler) DomainsOnMod(w http.ResponseWriter, r *http.Request) {
 			old, errStatus := h.getDomainByName(params["namespace"], params["domain"])
 			if errStatus != nil {
 				glog.Infof("%s -  %s", key, errStatus.Message)
-				writeResponseError(w, errStatus)
+				util.WriteResponseError(w, errStatus)
 				return
 			}
 			for specKey, val := range objSpec {
@@ -225,7 +226,7 @@ func (h *Handler) DomainsOnMod(w http.ResponseWriter, r *http.Request) {
 						old.Spec.Parent = parent
 						if errStatus := h.validateIfParentIsValid(old); errStatus != nil {
 							glog.Infof("%s -  %s", key, errStatus.Message)
-							writeResponseError(w, errStatus)
+							util.WriteResponseError(w, errStatus)
 							return
 						}
 					}
@@ -246,7 +247,7 @@ func (h *Handler) DomainsOnMod(w http.ResponseWriter, r *http.Request) {
 								Field:   "spec.primary or spec.sub",
 							}},
 						}
-						writeResponseError(w, StatusUnprocessableEntity(msg, &platform.Domain{}, details))
+						util.WriteResponseError(w, util.StatusUnprocessableEntity(msg, &platform.Domain{}, details))
 						return
 					}
 					var delegates []string
@@ -258,7 +259,7 @@ func (h *Handler) DomainsOnMod(w http.ResponseWriter, r *http.Request) {
 					}
 					if errStatus := h.validateIfDelegatesHasChanged(old, delegates); errStatus != nil {
 						glog.Infof("%s -  %s", key, errStatus.Message)
-						writeResponseError(w, errStatus)
+						util.WriteResponseError(w, errStatus)
 						return
 					}
 				default:
@@ -273,7 +274,7 @@ func (h *Handler) DomainsOnMod(w http.ResponseWriter, r *http.Request) {
 							Field:   "spec.primary or spec.sub",
 						}},
 					}
-					writeResponseError(w, StatusUnprocessableEntity(msg, old, details))
+					util.WriteResponseError(w, util.StatusUnprocessableEntity(msg, old, details))
 					return
 				}
 			}
@@ -284,7 +285,7 @@ func (h *Handler) DomainsOnMod(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			msg := fmt.Sprintf("failed encoding request body [%v]", err)
 			glog.V(3).Infof("%s -  %s", key, msg)
-			writeResponseError(w, StatusInternalError(msg, &platform.Domain{}))
+			util.WriteResponseError(w, util.StatusInternalError(msg, &platform.Domain{}))
 			return
 		}
 		resp, err := h.usrTprClient.Patch(types.MergePatchType).
@@ -298,20 +299,20 @@ func (h *Handler) DomainsOnMod(w http.ResponseWriter, r *http.Request) {
 			e.ErrStatus.APIVersion = platform.SchemeGroupVersion.Version
 			e.ErrStatus.Kind = "Status"
 			glog.Infof("%s -  failed mutating request [%v, %s]", key, err, string(resp))
-			writeResponseError(w, &e.ErrStatus)
+			util.WriteResponseError(w, &e.ErrStatus)
 		case nil:
 			glog.Infof("%s -  request mutate with success!", key)
-			writeResponseCreated(w, resp)
+			util.WriteResponseCreated(w, resp)
 		default:
 			msg := fmt.Sprintf("unknown response [%v, %s]", err, string(resp))
 			glog.Infof("%s -  %s", key, msg)
-			writeResponseError(w, StatusInternalError(msg, &platform.Domain{}))
+			util.WriteResponseError(w, util.StatusInternalError(msg, &platform.Domain{}))
 		}
 	case "DELETE":
 		old, errStatus := h.getDomainByName(params["namespace"], params["domain"])
 		if errStatus != nil {
 			glog.Infof("%s -  %s", key, errStatus.Message)
-			writeResponseError(w, errStatus)
+			util.WriteResponseError(w, errStatus)
 			return
 		}
 
@@ -330,14 +331,14 @@ func (h *Handler) DomainsOnMod(w http.ResponseWriter, r *http.Request) {
 				e.ErrStatus.APIVersion = platform.SchemeGroupVersion.Version
 				e.ErrStatus.Kind = "Status"
 				glog.Infof("%s -  failed mutating request [%v, %s]", key, err, string(resp))
-				writeResponseError(w, &e.ErrStatus)
+				util.WriteResponseError(w, &e.ErrStatus)
 			case nil:
 				glog.Infof("%s -  request mutate with success!", key)
-				writeResponseNoContent(w)
+				util.WriteResponseNoContent(w)
 			default:
 				msg := fmt.Sprintf("unknown response [%v, %s]", err, string(resp))
 				glog.Infof("%s -  %s", key, msg)
-				writeResponseError(w, StatusInternalError(msg, &platform.Domain{}))
+				util.WriteResponseError(w, util.StatusInternalError(msg, &platform.Domain{}))
 			}
 			return
 		}
@@ -351,18 +352,18 @@ func (h *Handler) DomainsOnMod(w http.ResponseWriter, r *http.Request) {
 			e.ErrStatus.APIVersion = platform.SchemeGroupVersion.Version
 			e.ErrStatus.Kind = "Status"
 			glog.Infof("%s -  failed mutating request [%v, %s]", key, err, string(resp))
-			writeResponseError(w, &e.ErrStatus)
+			util.WriteResponseError(w, &e.ErrStatus)
 		case nil:
 			glog.Infof("%s -  request mutate with success!", key)
-			writeResponseNoContent(w)
+			util.WriteResponseNoContent(w)
 		default:
 			msg := fmt.Sprintf("unknown response [%v, %s]", err, string(resp))
 			glog.Infof("%s -  %s", key, msg)
-			writeResponseError(w, StatusInternalError(msg, &platform.Domain{}))
+			util.WriteResponseError(w, util.StatusInternalError(msg, &platform.Domain{}))
 		}
 
 	default:
-		writeResponseError(w, StatusMethodNotAllowed("Method Not Allowed.", &platform.Domain{}))
+		util.WriteResponseError(w, util.StatusMethodNotAllowed("Method Not Allowed.", &platform.Domain{}))
 	}
 }
 
@@ -397,7 +398,7 @@ func (h *Handler) validateIfDelegatesHasChanged(old *platform.Domain, newDelegat
 		Do().
 		Into(domList); err != nil {
 		msg := fmt.Sprintf("failed retrieving domain list [%s]", err)
-		return StatusBadRequest(msg, old, metav1.StatusReasonUnknown)
+		return util.StatusBadRequest(msg, old, metav1.StatusReasonUnknown)
 	}
 
 	// search if the deleted namespaces are associated with shared domains in the cluster
@@ -414,7 +415,7 @@ func (h *Handler) validateIfDelegatesHasChanged(old *platform.Domain, newDelegat
 				}
 				msg := fmt.Sprintf("found an associated valid domain claim[%s] at namespace/resource [%s/%s]",
 					cur.GetDomain(), cur.Namespace, cur.Name)
-				return StatusConflict(msg, old, nil)
+				return util.StatusConflict(msg, old, nil)
 			}
 		}
 	}
@@ -431,7 +432,7 @@ func (h *Handler) validateIfParentIsValid(obj *platform.Domain) *metav1.Status {
 		Into(domList)
 	if err != nil {
 		msg := fmt.Sprintf("failed retrieving domain list [%v]", err)
-		return StatusBadRequest(msg, obj, metav1.StatusReasonUnknown)
+		return util.StatusBadRequest(msg, obj, metav1.StatusReasonUnknown)
 	}
 	isAllowed := false
 	for _, d := range domList.Items {
@@ -461,7 +462,7 @@ func (h *Handler) validateIfParentIsValid(obj *platform.Domain) *metav1.Status {
 				Message: msg,
 			}},
 		}
-		return StatusUnprocessableEntity(msg, obj, details)
+		return util.StatusUnprocessableEntity(msg, obj, details)
 	}
 	return nil
 }
@@ -478,10 +479,10 @@ func (h *Handler) getDomainByName(namespace, name string) (*platform.Domain, *me
 		switch t := err.(type) {
 		case apierrors.APIStatus:
 			if t.Status().Reason == metav1.StatusReasonNotFound {
-				return nil, StatusNotFound(fmt.Sprintf("domain \"%s\" not found", name), obj)
+				return nil, util.StatusNotFound(fmt.Sprintf("domain \"%s\" not found", name), obj)
 			}
 		}
-		return nil, StatusInternalError(fmt.Sprintf("unknown error retrieving namespace [%v]", err), obj)
+		return nil, util.StatusInternalError(fmt.Sprintf("unknown error retrieving namespace [%v]", err), obj)
 	}
 	return obj, nil
 }

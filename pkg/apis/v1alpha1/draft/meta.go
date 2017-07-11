@@ -39,16 +39,16 @@ func (n NamespaceMeta) KubernetesNamespace() string { return n.kubernetesNamespa
 
 // MapValue represents the value from a map[string]string
 type MapValue struct {
-	value string
+	Val string
 }
 
 func (m MapValue) AsInt() int {
-	v, _ := strconv.Atoi(m.value)
+	v, _ := strconv.Atoi(m.Val)
 	return v
 }
-func (m MapValue) String() string        { return m.value }
-func (m MapValue) AsBool() bool          { return m.value == "true" }
-func (m MapValue) Exists() bool          { return len(m.value) > 0 }
+func (m MapValue) String() string        { return m.Val }
+func (m MapValue) AsBool() bool          { return m.Val == "true" }
+func (m MapValue) Exists() bool          { return len(m.Val) > 0 }
 func (m MapValue) Get() (string, bool)   { return m.String(), m.Exists() } // DEPRECATED
 func (m MapValue) Value() (string, bool) { return m.String(), m.Exists() }
 
@@ -56,7 +56,7 @@ func (o *DraftMeta) GetKubernetesObjectMeta() *metav1.ObjectMeta { return o.obje
 func (o *DraftMeta) GetLabel(key string) *MapValue {
 	m := &MapValue{}
 	if o.objectMeta.Labels != nil {
-		m.value = o.objectMeta.Labels[key]
+		m.Val = o.objectMeta.Labels[key]
 	}
 	return m
 }
@@ -64,7 +64,7 @@ func (o *DraftMeta) GetLabel(key string) *MapValue {
 func (o *DraftMeta) GetAnnotation(key string) *MapValue {
 	m := &MapValue{}
 	if o.objectMeta.Annotations != nil {
-		m.value = o.objectMeta.Annotations[key]
+		m.Val = o.objectMeta.Annotations[key]
 	}
 	return m
 }

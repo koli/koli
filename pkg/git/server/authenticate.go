@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"net/http"
 
+	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 	gitutil "kolihub.io/koli/pkg/git/util"
 )
 
-// Authorize validates if the provided credentials are valid
-func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
+// Authenticate validates if the provided credentials are valid
+func (h *Handler) Authenticate(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
 	_, jwtTokenString, ok := r.BasicAuth()
 	if !ok {
 		w.Header().Set("WWW-Authenticate", "Basic")
@@ -24,5 +25,11 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request, next http.Ha
 		return
 	}
 	h.user = u
+	// A system token is only allowed to download releases,
+	if u.Type == platform.SystemTokenType {
+		w.WriteHeader(http.StatusForbidden)
+		fmt.Fprintf(w, "Access Denied! Not allowed to access the resource\n")
+		return
+	}
 	next(w, r)
 }

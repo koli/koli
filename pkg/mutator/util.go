@@ -9,8 +9,6 @@ import (
 
 	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 
-	"github.com/golang/glog"
-
 	jwt "github.com/dgrijalva/jwt-go"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -47,7 +45,7 @@ func (c *Config) GetServeAddress() (string, bool) {
 func (c *Config) GetImages() []string {
 	images := []string{}
 	for _, img := range strings.Split(c.AllowedImages, ",") {
-		images = append(images, filepath.Join(c.RegistryImages, strings.Split(img, ":")[0]))
+		images = append(images, filepath.Join(c.RegistryImages, img))
 	}
 	return images
 }
@@ -56,87 +54,6 @@ func forbiddenAccessMessage(u *platform.User, customer, org string) string {
 	msg := fmt.Sprintf("Permission denied. The user belongs to the customer '%s' and organization '%s', ", u.Customer, u.Organization)
 	msg = msg + fmt.Sprintf("but the request was sent to the customer '%s' and organization '%s'. ", customer, org)
 	return msg + fmt.Sprintf("Valid values are '[name]-%s-%s'", u.Customer, u.Organization)
-}
-
-func writeResponseCreated(w http.ResponseWriter, data []byte) {
-	w.Header().Add("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	w.Write(data)
-}
-
-func writeResponseSuccess(w http.ResponseWriter, data []byte) {
-	w.Header().Add("Content-Type", "application/json")
-	w.Write(data)
-}
-
-func writeResponseNoContent(w http.ResponseWriter) {
-	w.WriteHeader(http.StatusNoContent)
-}
-
-func writeResponseError(w http.ResponseWriter, status *metav1.Status) {
-	w.Header().Add("Content-Type", "application/json")
-	w.WriteHeader(int(status.Code))
-	if err := json.NewEncoder(w).Encode(status); err != nil {
-		glog.Infof(`{"message": "error encoding response: %s"}`, err)
-		fmt.Fprintf(w, "error encoding response\n")
-	}
-}
-
-// StatusUnauthorized returns a *metav1.Status with 401 status code
-func StatusUnauthorized(msg string, obj runtime.Object, reason metav1.StatusReason) *metav1.Status {
-	return generateStatus(msg, obj, http.StatusUnauthorized, reason, nil)
-}
-
-// StatusInternalError returns a *metav1.Status with 500 status code
-func StatusInternalError(msg string, obj runtime.Object) *metav1.Status {
-	return generateStatus(msg, obj, http.StatusInternalServerError, metav1.StatusReasonUnknown, nil)
-}
-
-// StatusBadRequest returns a *metav1.Status with 400 status code
-func StatusBadRequest(msg string, obj runtime.Object, reason metav1.StatusReason) *metav1.Status {
-	return generateStatus(msg, obj, http.StatusBadRequest, reason, nil)
-}
-
-// StatusNotFound returns a *metav1.Status with 404 status code
-func StatusNotFound(msg string, obj runtime.Object) *metav1.Status {
-	return generateStatus(msg, obj, http.StatusNotFound, metav1.StatusReasonNotFound, nil)
-}
-
-// StatusConflict returns a *metav1.Status with 409 status code
-func StatusConflict(msg string, obj runtime.Object, details *metav1.StatusDetails) *metav1.Status {
-	return generateStatus(msg, obj, http.StatusConflict, metav1.StatusReasonConflict, details)
-}
-
-// StatusUnprocessableEntity returns a *metav1.Status with 422 status code
-func StatusUnprocessableEntity(msg string, obj runtime.Object, details *metav1.StatusDetails) *metav1.Status {
-	return generateStatus(msg, obj, http.StatusUnprocessableEntity, metav1.StatusReasonInvalid, details)
-}
-
-// StatusMethodNotAllowed returns a *metav1.Status with 405 status code
-func StatusMethodNotAllowed(msg string, obj runtime.Object) *metav1.Status {
-	return generateStatus(msg, obj, http.StatusMethodNotAllowed, metav1.StatusReasonMethodNotAllowed, nil)
-}
-
-// StatusForbidden returns a *metav1.Status with 403 status code
-func StatusForbidden(msg string, obj runtime.Object, reason metav1.StatusReason) *metav1.Status {
-	return generateStatus(msg, obj, http.StatusForbidden, reason, nil)
-}
-
-func generateStatus(msg string, obj runtime.Object, statusCode int32, reason metav1.StatusReason, details *metav1.StatusDetails) *metav1.Status {
-	gvk := obj.GetObjectKind().GroupVersionKind()
-	status := &metav1.Status{
-		Code:    statusCode,
-		Status:  metav1.StatusFailure,
-		Message: msg,
-		Reason:  reason,
-		Details: details,
-	}
-	status.Kind = "Status"
-	status.APIVersion = gvk.Version
-	if status.Details == nil {
-		status.Details = &metav1.StatusDetails{}
-	}
-	return status
 }
 
 // decodeJwtToken decodes a jwt token into an UserMeta struct
@@ -204,6 +121,7 @@ func initializeMetadata(o *metav1.ObjectMeta) {
 	}
 }
 
+// DEPRECATE: Use the packge kolihub.io/koli/pkg/util
 // StrategicMergePatch creates a strategic merge patch and merge with the original object
 // https://github.com/kubernetes/community/blob/master/contributors/devel/strategic-merge-patch.md
 func StrategicMergePatch(codec runtime.Codec, original, new runtime.Object) ([]byte, error) {
@@ -223,6 +141,7 @@ func StrategicMergePatch(codec runtime.Codec, original, new runtime.Object) ([]b
 	// return strategicpatch.StrategicMergePatch(originalObjData, currentPatch, new)
 }
 
+// DEPRECATE: Use the packge kolihub.io/koli/pkg/util
 // DeleteNullKeysFromObjectMeta will remove any key with an empty string in .metadata.labels
 // and .metadata.annotations
 func DeleteNullKeysFromObjectMeta(obj *metav1.ObjectMeta) {

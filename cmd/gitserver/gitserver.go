@@ -65,7 +65,7 @@ func main() {
 	}
 
 	gitHandler := gitserver.NewHandler(&cfg, kubeClient)
-	n := negroni.New(negroni.HandlerFunc(gitHandler.Authorize))
+	n := negroni.New(negroni.HandlerFunc(gitHandler.Authenticate))
 	n.UseHandlerFunc(gitHandler.ServeHTTP)
 	log.Fatal(http.ListenAndServe(":8000", n))
 }

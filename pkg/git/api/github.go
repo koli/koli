@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -17,10 +16,17 @@ import (
 	"golang.org/x/oauth2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/client-go/pkg/api"
+	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
+
+	"kolihub.io/koli/pkg/apis/authentication"
 	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 	"kolihub.io/koli/pkg/apis/v1alpha1/draft"
+	"kolihub.io/koli/pkg/clientset/auth0"
+	auth0clientset "kolihub.io/koli/pkg/clientset/auth0"
 	gitutil "kolihub.io/koli/pkg/git/util"
+	"kolihub.io/koli/pkg/util"
 )
 
 const (
@@ -49,25 +55,19 @@ type auth0Identity struct {
 // GitHubSearchRepos lookup for repositores at GitHub
 func (h *Handler) GitHubSearchRepos(w http.ResponseWriter, r *http.Request) {
 	qs := r.URL.Query()
-	identity, err := h.gitHubAccessToken()
+	gitclient, err := h.gitHubCli(h.GetUserIDSub())
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "failed getting admin token: %s\n", err)
+		githubClientError(w, err)
 		return
 	}
-
-	// TODO: blocking request, we should set a timeout for failing fast!
-	ctx := context.Background()
-	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: identity.AccessToken})
-	githubcli := github.NewClient(oauth2.NewClient(ctx, ts))
 	page, perPage := parsePages(r.URL.Query())
 	gitOptions := &github.SearchOptions{
 		ListOptions: github.ListOptions{PerPage: perPage, Page: page},
 	}
-	repos, resp, err := githubcli.Search.Repositories(ctx, qs.Get("q"), gitOptions)
+	repos, resp, err := gitclient.Search.Repositories(context.Background(), qs.Get("q"), gitOptions)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "failed searching repos: %s\n", err)
+		msg := fmt.Sprintf("failed searching repos, %v", err)
+		util.WriteResponseError(w, util.StatusBadRequest(msg, nil, metav1.StatusReasonUnknown))
 		return
 	}
 	if resp.NextPage != 0 {
@@ -82,17 +82,11 @@ func (h *Handler) GitHubSearchRepos(w http.ResponseWriter, r *http.Request) {
 // GitHubListOrgRepos list repositories from organizations
 func (h *Handler) GitHubListOrgRepos(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
-	identity, err := h.gitHubAccessToken()
+	githubcli, err := h.gitHubCli(h.GetUserIDSub())
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "failed getting admin token: %s\n", err)
+		githubClientError(w, err)
 		return
 	}
-
-	// TODO: blocking request, we should set a timeout for failing fast!
-	ctx := context.Background()
-	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: identity.AccessToken})
-	githubcli := github.NewClient(oauth2.NewClient(ctx, ts))
 	qs := r.URL.Query()
 
 	page, perPage := parsePages(qs)
@@ -101,10 +95,10 @@ func (h *Handler) GitHubListOrgRepos(w http.ResponseWriter, r *http.Request) {
 		Type:        qs.Get("type"),
 	}
 
-	repos, resp, err := githubcli.Repositories.ListByOrg(ctx, params["org"], gitOptions)
+	repos, resp, err := githubcli.Repositories.ListByOrg(context.Background(), params["org"], gitOptions)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "failed listing organization repos: %s\n", err)
+		msg := fmt.Sprintf("failed listing organization repos, %v", err)
+		util.WriteResponseError(w, util.StatusBadRequest(msg, nil, metav1.StatusReasonUnknown))
 		return
 	}
 	if resp.NextPage != 0 {
@@ -118,28 +112,23 @@ func (h *Handler) GitHubListOrgRepos(w http.ResponseWriter, r *http.Request) {
 
 // GitHubListUserRepos list repositories from users
 func (h *Handler) GitHubListUserRepos(w http.ResponseWriter, r *http.Request) {
-	identity, err := h.gitHubAccessToken()
+	githubcli, err := h.gitHubCli(h.GetUserIDSub())
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "failed getting admin token: %s\n", err)
+		githubClientError(w, err)
 		return
 	}
-	// TODO: blocking request, we should set a timeout for failing fast!
-	ctx := context.Background()
-	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: identity.AccessToken})
-	githubcli := github.NewClient(oauth2.NewClient(ctx, ts))
-	qs := r.URL.Query()
 
+	qs := r.URL.Query()
 	page, perPage := parsePages(qs)
 	gitOptions := &github.RepositoryListOptions{
 		ListOptions: github.ListOptions{PerPage: perPage, Page: page},
 		Type:        qs.Get("type"),
 	}
 
-	repos, resp, err := githubcli.Repositories.List(ctx, "", gitOptions)
+	repos, resp, err := githubcli.Repositories.List(context.Background(), "", gitOptions)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "failed listing user repos: %s\n", err)
+		msg := fmt.Sprintf("failed listing user repos, %v", err)
+		util.WriteResponseError(w, util.StatusBadRequest(msg, nil, metav1.StatusReasonUnknown))
 		return
 	}
 	if resp.NextPage != 0 {
@@ -154,24 +143,19 @@ func (h *Handler) GitHubListUserRepos(w http.ResponseWriter, r *http.Request) {
 // GitHubListBranches list branches from a repository
 func (h *Handler) GitHubListBranches(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
-	identity, err := h.gitHubAccessToken()
+	githubcli, err := h.gitHubCli(h.GetUserIDSub())
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "failed getting admin token: %s\n", err)
+		githubClientError(w, err)
 		return
 	}
-	// TODO: blocking request, we should set a timeout for failing fast!
-	ctx := context.Background()
-	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: identity.AccessToken})
-	githubcli := github.NewClient(oauth2.NewClient(ctx, ts))
 	qs := r.URL.Query()
 
 	page, perPage := parsePages(qs)
 	gitOptions := &github.ListOptions{PerPage: perPage, Page: page}
-	branches, resp, err := githubcli.Repositories.ListBranches(ctx, params["owner"], params["repo"], gitOptions)
+	branches, resp, err := githubcli.Repositories.ListBranches(context.Background(), params["owner"], params["repo"], gitOptions)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "failed listing branches: %s\n", err)
+		msg := fmt.Sprintf("failed listing branches, %v", err)
+		util.WriteResponseError(w, util.StatusBadRequest(msg, nil, metav1.StatusReasonUnknown))
 		return
 	}
 	if resp.NextPage != 0 {
@@ -183,54 +167,42 @@ func (h *Handler) GitHubListBranches(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(branches)
 }
 
-func (h *Handler) gitHubAccessToken() (*auth0Identity, error) {
-	t := &auth0Token{
-		ClientID:     h.cnf.AdminClientID,
-		ClientSecret: h.cnf.AdminClientSecret,
-		Audience:     h.cnf.AdminAudienceURL,
-		GrantType:    "client_credentials",
+func (h *Handler) gitHubAccessToken(userIDSub string) (*authentication.Identity, error) {
+	t := &authentication.Token{
+		"client_id":     h.cnf.AdminClientID,
+		"client_secret": h.cnf.AdminClientSecret,
+		"audience":      h.cnf.AdminAudienceURL,
+		"grant_type":    "client_credentials",
 	}
-	data, err := json.Marshal(t)
+	auth0client, err := h.auth0Client()
 	if err != nil {
-		return nil, fmt.Errorf("failed encoding request: %s", err)
+		return nil, fmt.Errorf("failed retrieving auth0 client: %v", err)
 	}
 
-	resp, err := http.DefaultClient.Post(auth0AuthURL, "application/json", bytes.NewBuffer(data))
+	responseToken, err := auth0client.Authentication().ClientCredentials(t)
 	if err != nil {
 		return nil, fmt.Errorf("failed retrieving admin token: %s", err)
 	}
-	defer resp.Body.Close()
-	var d map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&d)
-	adminToken, ok := d["access_token"]
-	if !ok {
-		return nil, fmt.Errorf("failed retrieving 'access_token' from response: %v", d)
-	}
+	accessToken := responseToken.AccessToken()
 
-	usersURL := h.cnf.AdminAudienceURL + "users/" + url.QueryEscape(h.user.Sub)
-	// TODO: verify if adminToken is nil
-	req, _ := http.NewRequest("GET", usersURL, nil)
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", adminToken.(string)))
-	resp, err = http.DefaultClient.Do(req)
+	if len(accessToken) == 0 {
+		return nil, fmt.Errorf("failed retrieving 'access_token' from response: %#v", responseToken)
+	}
+	auth0User, err := auth0client.Management(accessToken).Users().Get(url.QueryEscape(userIDSub))
 	if err != nil {
-		return nil, fmt.Errorf("failed retrieving github token: %s", err)
+		return nil, fmt.Errorf("failed retrieving auth0 user info: %v", err)
 	}
-	defer resp.Body.Close()
-	var u githubUser
-	// var id []auth0Identity
-
-	json.NewDecoder(resp.Body).Decode(&u)
-	githubIdentity := &auth0Identity{}
-	for _, i := range u.Identities {
-		if i.Provider != "github" {
+	var identity *authentication.Identity
+	for _, obj := range auth0User.Identities {
+		if obj.Provider != "github" {
 			continue
 		}
-		githubIdentity = &i
+		identity = &obj
 	}
-	if githubIdentity == nil {
+	if identity == nil {
 		return nil, fmt.Errorf("failed finding the 'github' identity")
 	}
-	return githubIdentity, nil
+	return identity, nil
 }
 
 // GitHubAddHooks create new webhooks into github
@@ -240,27 +212,23 @@ func (h *Handler) GitHubAddHooks(w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 	var payload map[string]string
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "failed decoding body from request: %s", err)
+		msg := fmt.Sprintf("failed decoding body from request, %v", err)
+		util.WriteResponseError(w, util.StatusBadRequest(msg, nil, metav1.StatusReasonBadRequest))
 		return
 	}
 
 	namespace := payload["namespace"]
 	deploy := payload["deploy"]
 
-	identity, err := h.gitHubAccessToken()
+	gcli, err := h.gitHubCli(h.GetUserIDSub())
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "failed retrieving github access token: %s\n", err)
+		githubClientError(w, err)
 		return
 	}
-	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: identity.AccessToken})
-	gcli := github.NewClient(oauth2.NewClient(oauth2.NoContext, ts))
 
 	hooks, err := h.listRepoHooks(gcli, p["owner"], p["repo"])
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "%s\n", err)
+		util.WriteResponseError(w, util.StatusBadRequest(err.Error(), nil, metav1.StatusReasonBadRequest))
 		return
 	}
 	var hook *github.Hook
@@ -274,12 +242,12 @@ func (h *Handler) GitHubAddHooks(w http.ResponseWriter, r *http.Request) {
 		break
 	}
 
-	// any hook configured at github
+	// there isn't a hook configured at github. Create a new one!
 	if hook == nil {
 		hookName := "web"
+		// https://developer.github.com/v3/repos/hooks/#create-a-hook
 		hookRequest := &github.Hook{
 			Name: &hookName,
-			// Active: &activate,
 			Config: map[string]interface{}{
 				"insecure_ssl":   0,
 				"content_type":   "json",
@@ -293,32 +261,31 @@ func (h *Handler) GitHubAddHooks(w http.ResponseWriter, r *http.Request) {
 		var err error
 		hook, resp, err = gcli.Repositories.CreateHook(oauth2.NoContext, p["owner"], p["repo"], hookRequest)
 		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprintf(w, "failed creating hook: %s\n", err)
+			msg := fmt.Sprintf("failed creating hook, %v", err)
+			util.WriteResponseError(w, util.StatusBadRequest(msg, nil, metav1.StatusReasonBadRequest))
 			return
 		}
+		glog.V(4).Infof("%s/%s - hook created with success for %s/%s", namespace, deploy, p["owner"], p["repo"])
 		resp.Body.Close()
 	}
 
-	obj, err := h.clientset.Extensions().Deployments(namespace).Get(deploy, metav1.GetOptions{})
+	dp := draft.NewDeployment(&v1beta1.Deployment{})
+	dp.SetAnnotation(platform.AnnotationGitHubUser, h.GetUserIDSub())
+	dp.SetAnnotation("kolihub.io/hookid", strconv.Itoa(hook.GetID()))
+	dp.SetLabel("kolihub.io/gitowner", p["owner"])
+	dp.SetLabel("kolihub.io/gitrepo", p["repo"])
+
+	patchData, err := util.StrategicMergePatch(scheme.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion), &v1beta1.Deployment{}, dp.GetObject())
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "failed retrieving deployment: %s\n", err)
+		msg := fmt.Sprintf("failed generating deployment patch diff, %v", err)
+		util.WriteResponseError(w, util.StatusInternalError(msg, nil))
 		return
 	}
-	dp := draft.NewDeployment(obj)
-	dp.SetAnnotation(platform.AnnotationGitHubUser, h.user.Sub)
-	dp.SetAnnotation("kolihub.io/hookid", strconv.Itoa(hook.GetID()))
-	dp.SetAnnotation("kolihub.io/gitowner", p["owner"])
-	dp.SetAnnotation("kolihub.io/gitrepo", p["repo"])
-	// dp.Annotations[constants.GitHubUserConnection] = h.user.Sub
-	// dp.Annotations["kolihub.io/hookid"] = strconv.Itoa(hook.GetID())
-	// dp.Labels["kolihub.io/gitowner"] = p["owner"]
-	// dp.Labels["kolihub.io/gitrepo"] = p["repo"]
 
-	if _, err := h.clientset.Extensions().Deployments(namespace).Update(dp.GetObject()); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		fmt.Fprintf(w, "failed updating deployment (%v)\n", err)
+	_, err = h.clientset.Extensions().Deployments(namespace).Patch(deploy, types.StrategicMergePatchType, patchData)
+	if err != nil {
+		msg := fmt.Sprintf("failed updating deployment, %v", err)
+		util.WriteResponseError(w, util.StatusBadRequest(msg, nil, metav1.StatusReasonUnknown))
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -327,7 +294,7 @@ func (h *Handler) GitHubAddHooks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) listRepoHooks(client *github.Client, owner, repo string) ([]*github.Hook, error) {
-	hooks, resp, err := client.Repositories.ListHooks(oauth2.NoContext, owner, repo, nil)
+	hooks, resp, err := client.Repositories.ListHooks(context.Background(), owner, repo, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -341,36 +308,21 @@ func (h *Handler) listRepoHooks(client *github.Client, owner, repo string) ([]*g
 	return hooks, nil
 }
 
-func (h *Handler) getGitHubCli() (*github.Client, error) {
-	identity, err := h.gitHubAccessToken()
-	if err != nil {
-		return nil, fmt.Errorf("failed retrieving github access token: %s\n", err)
-	}
-	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: identity.AccessToken})
-	return github.NewClient(oauth2.NewClient(oauth2.NoContext, ts)), nil
-}
-
 // GitHubHooks allows read and delete github webhooks
 // https://developer.github.com/v3/repos/hooks/#webhooks
 func (h *Handler) GitHubHooks(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "POST" || r.Method == "PUT" {
-		w.WriteHeader(http.StatusMethodNotAllowed)
-		return
-	}
 	p := mux.Vars(r)
-
 	switch r.Method {
 	case "GET":
 		hookID, err := strconv.Atoi(p["id"])
 		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprintf(w, "id in wrong format: %s\n", err)
+			msg := fmt.Sprintf("id in wrong format, %v", err)
+			util.WriteResponseError(w, util.StatusBadRequest(msg, nil, metav1.StatusReasonBadRequest))
 			return
 		}
-		gcli, err := h.getGitHubCli()
+		gcli, err := h.gitHubCli(h.GetUserIDSub())
 		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprintf(w, "failed getting github client: %s\n", err)
+			githubClientError(w, err)
 			return
 		}
 		hook, resp, err := gcli.Repositories.GetHook(oauth2.NoContext, p["owner"], p["repo"], hookID)
@@ -379,23 +331,26 @@ func (h *Handler) GitHubHooks(w http.ResponseWriter, r *http.Request) {
 			if resp != nil {
 				statusCode = resp.StatusCode
 			}
-			w.WriteHeader(statusCode)
-			fmt.Fprintf(w, "failed getting hook: %s\n", err)
+			util.WriteResponseError(w, &metav1.Status{
+				Code:    int32(statusCode),
+				Status:  metav1.StatusFailure,
+				Message: fmt.Sprintf("failed retrieving hook, %v", err),
+				Reason:  metav1.StatusReasonUnknown,
+			})
 			return
 		}
 		json.NewEncoder(w).Encode(hook)
 	case "DELETE": // Removes deployment associations and hooks when possible
 		var data map[string]string
 		if err := json.NewDecoder(r.Body).Decode(&data); err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprintf(w, "failed decoding body: %s\n", err)
+			msg := fmt.Sprintf("failed decoding body from request, %v", err)
+			util.WriteResponseError(w, util.StatusInternalError(msg, nil))
 			return
 		}
 		defer r.Body.Close()
 		namespace, deploy := data["namespace"], data["deploy"]
 		if len(namespace) == 0 || len(deploy) == 0 {
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprintf(w, "missing 'namespace' or 'deploy' data\n")
+			util.WriteResponseError(w, util.StatusBadRequest("missing 'namespace' or 'deploy' data", nil, metav1.StatusReasonBadRequest))
 			return
 		}
 
@@ -404,90 +359,123 @@ func (h *Handler) GitHubHooks(w http.ResponseWriter, r *http.Request) {
 			"kolihub.io/gitrepo":  p["repo"],
 		}
 		opts := metav1.ListOptions{LabelSelector: l.AsSelector().String()}
-		dpList, err := h.clientset.Extensions().Deployments(api.NamespaceAll).List(opts)
+		// Search for all deployment references to the github hook.
+		// It's important to list all namespaces, to known when to delete the hook
+		// in github, otherwise it will not be possible
+		dpList, err := h.clientset.Extensions().Deployments(metav1.NamespaceAll).List(opts)
 		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprintf(w, "%s/%s - failed listing deploys\n", namespace, deploy)
+			msg := fmt.Sprintf("%s/%s - failed listing deploys, %v", namespace, deploy, err)
+			util.WriteResponseError(w, util.StatusBadRequest(msg, nil, metav1.StatusReasonBadRequest))
 			return
 		}
 
-		gcli, err := h.getGitHubCli()
+		gcli, err := h.gitHubCli(h.GetUserIDSub())
 		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			fmt.Fprintf(w, "failed getting github client: %s\n", err)
+			githubClientError(w, err)
 			return
 		}
 
 		// TODO: prevent crossing customer/org boundries,
 		// an user could delete his own resources only!
 		for _, dp := range dpList.Items {
-			if dp.Name == deploy && dp.Namespace == namespace {
-				// have only one deployment, remove the hook from github first.
-				if len(dpList.Items) == 1 {
-					hookID, _ := strconv.Atoi(dp.Annotations["kolihub.io/hookid"])
-					// hook not found on annotations, proceed instead of return an error
-					if hookID != 0 {
-						resp, err := gcli.Repositories.DeleteHook(
-							oauth2.NoContext,
-							p["owner"],
-							p["repo"],
-							hookID,
-						)
-						if err != nil {
-							statusCode := http.StatusBadRequest
-							if resp != nil {
-								statusCode = resp.StatusCode
-							}
-							w.WriteHeader(statusCode)
-							fmt.Fprintf(w, "failed removing hook: %s\n", err)
-							return
+			if dp.Name != deploy && dp.Namespace != namespace {
+				continue
+			}
+			d := draft.NewDeployment(&dp)
+			// if only one deployment is found, means the github hook could be deleted
+			// because there is only one reference to it.
+			if len(dpList.Items) == 1 {
+				hookID, _ := strconv.Atoi(d.Annotations["kolihub.io/hookid"])
+				// the hook ID exists, delete by ID
+				if hookID != 0 {
+					resp, err := gcli.Repositories.DeleteHook(
+						oauth2.NoContext,
+						p["owner"],
+						p["repo"],
+						hookID,
+					)
+					if err != nil {
+						statusCode := http.StatusBadRequest
+						if resp != nil {
+							statusCode = resp.StatusCode
 						}
-					} else {
-						hooks, err := h.listRepoHooks(gcli, p["owner"], p["repo"])
-						if err != nil {
-							w.WriteHeader(http.StatusBadRequest)
-							fmt.Fprintf(w, "failed listing hooks: %s\n", err)
-							return
-						}
-						// wipe all platform hooks from github
-						for _, hook := range hooks {
-							_, exists := hook.Config["kolihub.io/ref"]
-							if exists {
-								resp, err := gcli.Repositories.DeleteHook(
-									oauth2.NoContext,
-									p["owner"],
-									p["repo"],
-									hook.GetID(),
-								)
-								if err != nil {
-									statusCode := http.StatusBadRequest
-									if resp != nil {
-										statusCode = resp.StatusCode
-									}
-									w.WriteHeader(statusCode)
-									fmt.Fprintf(w, "failed removing hook: %s\n", err)
-									return
+						util.WriteResponseError(w, &metav1.Status{
+							Code:    int32(statusCode),
+							Status:  metav1.StatusFailure,
+							Message: fmt.Sprintf("failed removing hook, %v", err),
+							Reason:  metav1.StatusReasonBadRequest,
+						})
+						return
+					}
+					// The hook ID doesn't exist, try to search all hooks
+					// by its owner/repo
+				} else {
+					hooks, err := h.listRepoHooks(gcli, p["owner"], p["repo"])
+					if err != nil {
+						msg := fmt.Sprintf("failed listing hooks, %v", err)
+						util.WriteResponseError(w, util.StatusBadRequest(msg, nil, metav1.StatusReasonBadRequest))
+						return
+					}
+					// wipe all platform hooks from github
+					for _, hook := range hooks {
+						// only remove platform hooks created by the key
+						// 'kolihub.io/ref'
+						_, exists := hook.Config["kolihub.io/ref"]
+						if exists {
+							resp, err := gcli.Repositories.DeleteHook(
+								oauth2.NoContext,
+								p["owner"],
+								p["repo"],
+								hook.GetID(),
+							)
+							if err != nil {
+								statusCode := http.StatusBadRequest
+								if resp != nil {
+									statusCode = resp.StatusCode
 								}
+								util.WriteResponseError(w, &metav1.Status{
+									Code:    int32(statusCode),
+									Status:  metav1.StatusFailure,
+									Message: fmt.Sprintf("failed removing hook, %v", err),
+									Reason:  metav1.StatusReasonBadRequest,
+								})
+								return
 							}
 						}
 					}
 				}
-				// remove the association with the hook
-				delete(dp.Labels, "kolihub.io/gitowner")
-				delete(dp.Labels, "kolihub.io/gitrepo")
+			}
+			original, err := d.DeepCopy() // performs a copy of the object to create the patch diff
+			if err != nil {
+				msg := fmt.Sprintf("failed performing deep copy, %v", err)
+				util.WriteResponseError(w, util.StatusInternalError(msg, nil))
+				return
+			}
+			// Remove the association with the hook removing labels and annotations
+			delete(d.Labels, "kolihub.io/gitowner")
+			delete(d.Labels, "kolihub.io/gitrepo")
 
-				delete(dp.Annotations, platform.AnnotationGitHubUser)
-				delete(dp.Annotations, "kolihub.io/hookid")
-				delete(dp.Annotations, platform.AnnotationAuthToken)
-				_, err := h.clientset.Extensions().Deployments(namespace).Update(&dp)
-				if err != nil {
-					w.WriteHeader(http.StatusBadRequest)
-					fmt.Fprintf(w, "%s/%s - failed updating deploy: %s\n", dp.Namespace, dp.Name, err)
-					return
-				}
+			delete(d.Annotations, platform.AnnotationGitHubUser)
+			delete(d.Annotations, "kolihub.io/hookid")
+			delete(d.Annotations, platform.AnnotationAuthToken)
+			codec := scheme.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion)
+			patchData, err := util.StrategicMergePatch(codec, original.GetObject(), d.GetObject())
+			if err != nil {
+				msg := fmt.Sprintf("failed generating deployment patch diff, %v", err)
+				util.WriteResponseError(w, util.StatusInternalError(msg, nil))
+				return
+			}
+			_, err = h.clientset.Extensions().Deployments(namespace).Patch(d.Name, types.StrategicMergePatchType, patchData)
+			if err != nil {
+				msg := fmt.Sprintf("%s/%s - failed updating deploy, %v", d.Namespace, d.Name, err)
+				util.WriteResponseError(w, util.StatusBadRequest(msg, nil, metav1.StatusReasonBadRequest))
+				return
 			}
 		}
 		w.WriteHeader(http.StatusNoContent)
+	default:
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
 	}
 }
 
@@ -525,7 +513,7 @@ func (h *Handler) Webhooks(w http.ResponseWriter, r *http.Request) {
 
 			nsMeta := dp.GetNamespaceMetadata()
 			if !nsMeta.IsValid() {
-				glog.Infof("%s - namespace in wrong format", target)
+				glog.Warningf("%s - namespace in wrong format", target)
 				continue
 			}
 
@@ -534,21 +522,33 @@ func (h *Handler) Webhooks(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 
-			gitUser := dp.GitHubUser()
-			if !gitUser.Exists() {
-				glog.Infof("%s - missing git user connection", target)
-				continue
+			// Fetch the identity only if the repository is private
+			var identity *authentication.Identity
+			if event.Repo.GetPrivate() {
+				gitUser := dp.GitHubUser()
+				if !gitUser.Exists() {
+					glog.Warningf("%s - missing git user connection", target)
+					continue
+				}
+				var err error
+				identity, err = h.gitHubAccessToken(gitUser.String())
+				if err != nil {
+					glog.Warningf("%s - failed retrieving github access token (%s): %s", target, err)
+					continue
+				}
 			}
-			h.user = &platform.User{Sub: gitUser.String()}
-			identity, err := h.gitHubAccessToken()
-			if err != nil {
-				glog.Infof("%s - failed retrieving github access token (%s): %s", target, err)
-				continue
-			}
-			jwtUserToken, err := gitutil.GenerateNewJwtToken(h.cnf.PlatformClientSecret, nsMeta.Customer(), nsMeta.Organization())
+
+			jwtSystemToken, err := gitutil.GenerateNewJwtToken(h.cnf.PlatformClientSecret, nsMeta.Customer(), nsMeta.Organization(), platform.SystemTokenType)
 			if err != nil {
 				glog.Infof("%s - failed generating user token: %s", target, err)
 				continue
+			}
+
+			original, err := dp.DeepCopy()
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				fmt.Fprintf(w, "failed performing deep copy: %v", err)
+				return
 			}
 
 			// Always remove at this stage, if the repository is public
@@ -558,7 +558,6 @@ func (h *Handler) Webhooks(w http.ResponseWriter, r *http.Request) {
 
 			// TODO: check if kolihub.io/build == true, means that a build was already started
 			// TODO: try to recover the revision number from the releases resources
-
 			dp.SetAnnotation(platform.AnnotationBuildRevision, strconv.Itoa(dp.BuildRevision()+1))
 
 			pushID := r.Header.Get("X-GitHub-Delivery")
@@ -566,8 +565,8 @@ func (h *Handler) Webhooks(w http.ResponseWriter, r *http.Request) {
 			dp.Annotations[platform.AnnotationGitRemote] = event.Repo.GetCloneURL()
 			dp.Annotations[platform.AnnotationGitRepository] = event.Repo.GetFullName()
 			dp.Annotations[platform.AnnotationGitRevision] = event.HeadCommit.GetID()
-			dp.Annotations[platform.AnnotationAuthToken] = jwtUserToken
-			if event.Repo.GetPrivate() {
+			dp.Annotations[platform.AnnotationAuthToken] = jwtSystemToken
+			if identity != nil {
 				cloneURL, err := getCloneURL(event.Repo.GetCloneURL(), identity.AccessToken, event.Repo.GetFullName())
 				if err != nil {
 					glog.Infof("%s - failed getting clone url: %s", target, err)
@@ -577,7 +576,16 @@ func (h *Handler) Webhooks(w http.ResponseWriter, r *http.Request) {
 			}
 			dp.Annotations[platform.AnnotationGitCompare] = event.GetCompare()
 			dp.Annotations[platform.AnnotationBuildSource] = githubBuildSourceName
-			if _, err = h.clientset.Extensions().Deployments(dp.Namespace).Update(dp.GetObject()); err != nil {
+
+			codec := scheme.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion)
+			patchData, err := util.StrategicMergePatch(codec, original.GetObject(), dp.GetObject())
+			if err != nil {
+				w.WriteHeader(http.StatusInternalServerError)
+				fmt.Fprintf(w, "failed generating deployment patch diff: %v", err)
+				return
+			}
+			_, err = h.clientset.Extensions().Deployments(dp.Namespace).Patch(dp.Name, types.StrategicMergePatchType, patchData)
+			if err != nil {
 				glog.Infof("%s - failed triggering release: %s", target, err)
 				continue
 			}
@@ -599,6 +607,37 @@ func (h *Handler) Webhooks(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
 		fmt.Fprintf(w, "unknown type: %#v\n", event)
 	}
+}
+
+func githubClientError(w http.ResponseWriter, err error) {
+	msg := fmt.Sprintf("failed getting github client, %v", err)
+	util.WriteResponseError(w, util.StatusBadRequest(msg, nil, metav1.StatusReasonUnknown))
+}
+
+func (h *Handler) gitHubCli(userIDSub string) (*github.Client, error) {
+	if h.gitClient != nil {
+		return h.gitClient, nil
+	}
+
+	id, err := h.gitHubAccessToken(userIDSub)
+	if err != nil {
+		return nil, fmt.Errorf("failed retrieving github access token: %v", err)
+	}
+	glog.V(4).Infof("GOT a token, connection %#v, IsSocial %v, Provider %#v UserID %#v ", id.Connection, id.IsSocial, id.Provider, id.UserID)
+	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: id.AccessToken})
+	return github.NewClient(oauth2.NewClient(oauth2.NoContext, ts)), nil
+}
+
+func (h *Handler) auth0Client() (auth0.CoreInterface, error) {
+	restConfig := &auth0clientset.Config{Host: auth0AuthURL, Client: &http.Client{Transport: http.DefaultTransport}}
+	if h.auth0RestConfig != nil {
+		restConfig = h.auth0RestConfig
+	}
+	auth0client, err := auth0clientset.NewForConfig(restConfig)
+	if err != nil {
+		return nil, fmt.Errorf("failed retrieving auth0 client: %v", err)
+	}
+	return auth0client, nil
 }
 
 func getCloneURL(host, oauthToken, repository string) (string, error) {

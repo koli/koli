@@ -10,11 +10,11 @@ import (
 )
 
 func (d *Deployment) GetClusterPlan() *MapValue {
-	return &MapValue{value: d.GetLabel(platform.LabelClusterPlan).String()}
+	return &MapValue{Val: d.GetLabel(platform.LabelClusterPlan).String()}
 }
 
 func (d *Deployment) GetStoragePlan() *MapValue {
-	return &MapValue{value: d.GetLabel(platform.LabelStoragePlan).String()}
+	return &MapValue{Val: d.GetLabel(platform.LabelStoragePlan).String()}
 }
 
 func (d *Deployment) SetStoragePlan(planName string) {

@@ -100,6 +100,8 @@ func main() {
 	// Namespaces mutators
 	r.HandleFunc("/api/v1/namespaces", handler.NamespaceOnCreate).
 		Methods("POST")
+	r.HandleFunc("/api/v1/namespaces", handler.NamespaceOnList).
+		Methods("GET")
 	r.HandleFunc("/api/v1/namespaces/{name}", handler.NamespaceOnMod).
 		Methods("PUT", "PATCH")
 
