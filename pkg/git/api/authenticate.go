@@ -6,7 +6,7 @@ import (
 	"regexp"
 
 	platform "kolihub.io/koli/pkg/apis/v1alpha1"
-	gitutil "kolihub.io/koli/pkg/git/util"	
+	gitutil "kolihub.io/koli/pkg/git/util"
 )
 
 var (
@@ -15,7 +15,6 @@ var (
 
 // Authenticate validates if the provided credentials are valid
 func (h *Handler) Authenticate(w http.ResponseWriter, r *http.Request, next http.HandlerFunc) {
-	fmt.Printf("URL: %#v", r.URL)
 	_, jwtTokenString, ok := r.BasicAuth()
 	if !ok {
 		w.Header().Set("WWW-Authenticate", "Basic")

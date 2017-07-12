@@ -7,7 +7,7 @@ type Token map[string]interface{}
 
 type Identity struct {
 	Connection  string `json:"connection,omitempty"`
-	UserID      string `json:"user_id,omitempty"`
+	UserID      int    `json:"user_id,omitempty"`
 	Provider    string `json:"provider,omitempty"`
 	IsSocial    bool   `json:"isSocial,omitempty"`
 	AccessToken string `json:"access_token"`

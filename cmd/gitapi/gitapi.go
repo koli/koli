@@ -9,6 +9,7 @@ import (
 	"runtime"
 
 	"github.com/codegangsta/negroni"
+	"github.com/golang/glog"
 	"github.com/gorilla/mux"
 	"github.com/spf13/pflag"
 	gitapi "kolihub.io/koli/pkg/git/api"
@@ -52,15 +53,16 @@ func init() {
 }
 
 func main() {
+	v := version.Get()
 	if showVersion {
-		version := version.Get()
-		b, err := json.Marshal(&version)
+		b, err := json.Marshal(&v)
 		if err != nil {
 			log.Fatalf("failed decoding version [%v]", err)
 		}
 		fmt.Println(string(b))
 		return
 	}
+	glog.Infof("Version: %s, GitCommit: %s, GoVersion: %s, BuildDate: %s", v.GitVersion, v.GitCommit, v.GoVersion, v.BuildDate)
 	if err := cfg.ReadPubKey(); err != nil {
 		log.Fatalf("failed reading public key [%v]", err)
 	}

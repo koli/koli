@@ -30,7 +30,7 @@ import (
 )
 
 const (
-	auth0AuthURL          = "https://koli.auth0.com/oauth/token"
+	auth0URL              = "https://koli.auth0.com"
 	githubBuildSourceName = "github"
 )
 
@@ -174,7 +174,7 @@ func (h *Handler) gitHubAccessToken(userIDSub string) (*authentication.Identity,
 		"audience":      h.cnf.AdminAudienceURL,
 		"grant_type":    "client_credentials",
 	}
-	auth0client, err := h.auth0Client()
+	auth0client, err := h.auth0Client(auth0URL)
 	if err != nil {
 		return nil, fmt.Errorf("failed retrieving auth0 client: %v", err)
 	}
@@ -188,7 +188,7 @@ func (h *Handler) gitHubAccessToken(userIDSub string) (*authentication.Identity,
 	if len(accessToken) == 0 {
 		return nil, fmt.Errorf("failed retrieving 'access_token' from response: %#v", responseToken)
 	}
-	auth0User, err := auth0client.Management(accessToken).Users().Get(url.QueryEscape(userIDSub))
+	auth0User, err := auth0client.Management(accessToken).Users().Get(userIDSub)
 	if err != nil {
 		return nil, fmt.Errorf("failed retrieving auth0 user info: %v", err)
 	}
@@ -623,13 +623,13 @@ func (h *Handler) gitHubCli(userIDSub string) (*github.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed retrieving github access token: %v", err)
 	}
-	glog.V(4).Infof("GOT a token, connection %#v, IsSocial %v, Provider %#v UserID %#v ", id.Connection, id.IsSocial, id.Provider, id.UserID)
+	glog.V(4).Infof("GOT a token, connection %#v, IsSocial %v, Provider %#v UserID %d ", id.Connection, id.IsSocial, id.Provider, id.UserID)
 	ts := oauth2.StaticTokenSource(&oauth2.Token{AccessToken: id.AccessToken})
 	return github.NewClient(oauth2.NewClient(oauth2.NoContext, ts)), nil
 }
 
-func (h *Handler) auth0Client() (auth0.CoreInterface, error) {
-	restConfig := &auth0clientset.Config{Host: auth0AuthURL, Client: &http.Client{Transport: http.DefaultTransport}}
+func (h *Handler) auth0Client(url string) (auth0.CoreInterface, error) {
+	restConfig := &auth0clientset.Config{Host: url, Client: &http.Client{Transport: http.DefaultTransport}}
 	if h.auth0RestConfig != nil {
 		restConfig = h.auth0RestConfig
 	}

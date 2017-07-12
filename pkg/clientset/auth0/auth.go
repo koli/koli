@@ -6,6 +6,7 @@ import (
 )
 
 type auth struct {
+	apiPath  string
 	client   request.Interface
 	resource string
 }

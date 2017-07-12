@@ -11,6 +11,8 @@ import (
 	"net/url"
 	"path"
 	"time"
+
+	"github.com/golang/glog"
 )
 
 const (
@@ -213,6 +215,9 @@ func (r *Request) Reset() *Request {
 
 func (r *Request) Body(bodyData interface{}) *Request {
 	reqBody, err := json.Marshal(bodyData)
+	if glog.V(6) {
+		glog.Infof("Resquest Body: %s", string(reqBody))
+	}
 	if err != nil {
 		r.err = fmt.Errorf("failed encoding body [%v]", err)
 	}
@@ -234,6 +239,9 @@ func (r *Request) Do() *Result {
 	if r.Client == nil {
 		client = http.DefaultClient
 	}
+	if glog.V(4) {
+		glog.Infof("Verb %#v, URL: %#v, URLPath %#v", r.verb, r.URL().String(), r.URL().Path)
+	}
 
 	request, err := http.NewRequest(r.verb, r.URL().String(), r.body)
 	if err != nil {
@@ -248,6 +256,9 @@ func (r *Request) Do() *Result {
 	}
 	defer resp.Body.Close()
 	data, err := ioutil.ReadAll(resp.Body)
+	if glog.V(8) {
+		glog.Infof("Response Body[%d]: %s", resp.StatusCode, string(data))
+	}
 	if err != nil {
 		result.err = fmt.Errorf("failed reading response [%v]", err)
 		result.statusCode = resp.StatusCode
