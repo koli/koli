@@ -296,8 +296,14 @@ func (h *Handler) GitHubAddHooks(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) listRepoHooks(client *github.Client, owner, repo string) ([]*github.Hook, error) {
 	hooks, resp, err := client.Repositories.ListHooks(context.Background(), owner, repo, nil)
 	if err != nil {
+		// It will return 404 when there's any hook configured, return an empty
+		// list of hooks instead
+		if resp != nil && resp.StatusCode == 404 {
+			return []*github.Hook{&github.Hook{}}, nil
+		}
 		return nil, err
 	}
+
 	if resp.StatusCode != 200 {
 		data, err := ioutil.ReadAll(resp.Body)
 		if err != nil {

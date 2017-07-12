@@ -65,11 +65,12 @@ func TestAuth0GetClientCredentials(t *testing.T) {
 
 func TestAuth0GetUserById(t *testing.T) {
 	var (
-		accessToken  = "myaccessktoken"
-		userID       = "github|4312"
-		expectedUser = &authentication.User{UserID: userID, Identities: []authentication.Identity{
-			{Connection: "Initial-Connection", UserID: "5457edea1b8f22891a000004", Provider: "auth0", IsSocial: false},
-			{Connection: "A-Connection", UserID: userID, Provider: "github", IsSocial: true},
+		accessToken    = "myaccessktoken"
+		userID         = "github|4312"
+		identityUserId = 4312
+		expectedUser   = &authentication.User{UserID: userID, Identities: []authentication.Identity{
+			{Connection: "Initial-Connection", UserID: 129082182091, Provider: "auth0", IsSocial: false},
+			{Connection: "A-Connection", UserID: identityUserId, Provider: "github", IsSocial: true},
 		}}
 	)
 	fakeServer := makeTestServer(t, expectedUser, "/api/v2/users/"+userID, http.StatusOK, true)

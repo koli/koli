@@ -180,6 +180,8 @@ func TestGitHubListBranches(t *testing.T) {
 	}
 }
 
+// TODO: test add hook when a hook doesn't exist for a repo
+
 func TestGitHubAddHooks(t *testing.T) {
 	var (
 		userID, hookID    = "github|2391", 3
