@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"path"
 	sysruntime "runtime"
 
@@ -20,6 +21,7 @@ import (
 
 	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 	"kolihub.io/koli/pkg/mutator"
+	"kolihub.io/koli/pkg/request"
 	"kolihub.io/koli/pkg/version"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -45,6 +47,8 @@ func init() {
 	pflag.StringVar(&cfg.TLSClientConfig.KeyFile, "client-key", "", "path to private TLS client certificate file")
 	pflag.StringVar(&cfg.TLSClientConfig.CertFile, "client-cert", "", "path to public TLS client certificate file")
 
+	flag.StringVar(&cfg.KongAPIHost, "kong-api-host", "http://kong-admin:8000", "the address of Kong admin api")
+
 	pflag.BoolVar(&showVersion, "version", false, "print version information and quit")
 	pflag.BoolVar(&cfg.TLSInsecure, "tls-insecure", false, "don't verify API server's CA certificate")
 	pflag.Parse()
@@ -67,7 +71,7 @@ func main() {
 	if len(cfg.Host) == 0 {
 		config, err = rest.InClusterConfig()
 		if err != nil {
-			glog.Fatalf("error creating client configuration: %v", err)
+			glog.Fatalf("error creating client configuration [%v]", err)
 		}
 	} else {
 		config = &rest.Config{Host: cfg.Host}
@@ -77,7 +81,7 @@ func main() {
 
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		glog.Fatalf("failed retrieving k8s client: %v", err)
+		glog.Fatalf("failed retrieving k8s client [%v]", err)
 	}
 
 	var tprConfig *rest.Config
@@ -91,11 +95,16 @@ func main() {
 
 	tprClient, err := rest.RESTClientFor(tprConfig)
 	if err != nil {
-		glog.Fatalf("failed retrieving tprclient from config: %v", err)
+		glog.Fatalf("failed retrieving tprclient from config [%v]", err)
+	}
+
+	kongAdminURL, err := url.Parse(cfg.KongAPIHost)
+	if err != nil {
+		glog.Fatalf("failed parsing kong admin api address [%v]", err)
 	}
 
 	r := mux.NewRouter()
-	handler := mutator.NewHandler(kubeClient, tprClient, &cfg)
+	handler := mutator.NewHandler(kubeClient, tprClient, request.NewRequest(nil, kongAdminURL), &cfg)
 
 	// Namespaces mutators
 	r.HandleFunc("/api/v1/namespaces", handler.NamespaceOnCreate).
@@ -119,6 +128,14 @@ func main() {
 		Methods("POST")
 	r.HandleFunc("/apis/extensions/v1beta1/namespaces/{namespace}/deployments/{deploy}", handler.DeploymentsOnMod).
 		Methods("PUT", "PATCH")
+
+	// Ingress resources
+	r.HandleFunc("/apis/extensions/v1beta1/namespaces/{namespace}/ingresses", handler.IngressOnCreate).
+		Methods("POST")
+	r.HandleFunc("/apis/extensions/v1beta1/namespaces/{namespace}/ingresses/{name}", handler.IngressOnPatch).
+		Methods("PUT", "PATCH")
+	r.HandleFunc("/apis/extensions/v1beta1/namespaces/{namespace}/ingresses/{name}", handler.IngressOnDelete).
+		Methods("DELETE")
 
 	listenAddr, isSecure := cfg.GetServeAddress()
 	if isSecure {

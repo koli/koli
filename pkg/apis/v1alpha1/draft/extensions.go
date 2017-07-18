@@ -3,6 +3,8 @@ package draft
 import (
 	"fmt"
 
+	"regexp"
+
 	"k8s.io/client-go/pkg/api"
 	"k8s.io/client-go/pkg/api/v1"
 	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
@@ -88,3 +90,35 @@ func (d *Deployment) GetContainers() []v1.Container { return d.Spec.Template.Spe
 // IsMarkedForDeletion verifies if the metadata.deletionTimestamp is set, meaning the resource
 // is marked to be excluded
 func (d *Deployment) IsMarkedForDeletion() bool { return d.DeletionTimestamp != nil }
+
+// DeepCopy performs a deep copy of the resource
+func (d *Ingress) DeepCopy() (*Ingress, error) {
+	objCopy, err := api.Scheme.DeepCopy(d.GetObject())
+	if err != nil {
+		return nil, err
+	}
+	copied, ok := objCopy.(*v1beta1.Ingress)
+	if !ok {
+		return nil, fmt.Errorf("expected Ingress, got %#v", objCopy)
+	}
+	return NewIngress(copied), nil
+}
+
+// GetObject returns the original resource
+func (i *Ingress) GetObject() *v1beta1.Ingress {
+	return &i.Ingress
+}
+
+// DomainPrimaryKeys returns annotations matching domains, e.g.: 'kolihub.io/domain.tld'
+func (i *Ingress) DomainPrimaryKeys() (m map[string]string) {
+	domReg := regexp.MustCompile(`kolihub.io/.+\.+`)
+	for key, value := range i.Annotations {
+		if domReg.MatchString(key) {
+			if m == nil {
+				m = map[string]string{}
+			}
+			m[key] = value
+		}
+	}
+	return
+}

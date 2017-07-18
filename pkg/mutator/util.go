@@ -4,19 +4,25 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strings"
 
 	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+	"kolihub.io/koli/pkg/request"
 
 	jwt "github.com/dgrijalva/jwt-go"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"k8s.io/apimachinery/pkg/util/strategicpatch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/pkg/api"
+	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
 	"k8s.io/client-go/rest"
+)
+
+var (
+	extensionsCodec = api.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion)
 )
 
 // Config is the daemon base configuration
@@ -28,6 +34,7 @@ type Config struct {
 	Serve           string
 	AllowedImages   string
 	RegistryImages  string
+	KongAPIHost     string
 }
 
 // GetServeAddress return the address to bind the server
@@ -121,38 +128,10 @@ func initializeMetadata(o *metav1.ObjectMeta) {
 	}
 }
 
-// DEPRECATE: Use the packge kolihub.io/koli/pkg/util
-// StrategicMergePatch creates a strategic merge patch and merge with the original object
-// https://github.com/kubernetes/community/blob/master/contributors/devel/strategic-merge-patch.md
-func StrategicMergePatch(codec runtime.Codec, original, new runtime.Object) ([]byte, error) {
-	originalObjData, err := runtime.Encode(codec, original)
+func NewKongClient(client request.HTTPClient, apiURL string) (request.Interface, error) {
+	u, err := url.Parse(apiURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed encoding original object: %v", err)
+		return nil, err
 	}
-	newObjData, err := runtime.Encode(codec, new)
-	if err != nil {
-		return nil, fmt.Errorf("failed encoding new object: %v", err)
-	}
-	currentPatch, err := strategicpatch.CreateTwoWayMergePatch(originalObjData, newObjData, new)
-	if err != nil {
-		return nil, fmt.Errorf("failed creating two way merge patch: %v", err)
-	}
-	return currentPatch, nil
-	// return strategicpatch.StrategicMergePatch(originalObjData, currentPatch, new)
-}
-
-// DEPRECATE: Use the packge kolihub.io/koli/pkg/util
-// DeleteNullKeysFromObjectMeta will remove any key with an empty string in .metadata.labels
-// and .metadata.annotations
-func DeleteNullKeysFromObjectMeta(obj *metav1.ObjectMeta) {
-	for key, value := range obj.Labels {
-		if len(value) == 0 {
-			delete(obj.Labels, key)
-		}
-	}
-	for key, value := range obj.Annotations {
-		if len(value) == 0 {
-			delete(obj.Annotations, key)
-		}
-	}
+	return request.NewRequest(client, u), nil
 }

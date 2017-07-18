@@ -25,8 +25,8 @@ const (
 
 var (
 	immutableAnnotations = []string{
-		platform.AnnotationAuthToken, platform.AnnotationBuildRevision, platform.AnnotationBuildSource,
-		platform.AnnotationGitCompare, platform.AnnotationGitHubSecretHook, platform.AnnotationGitHubUser,
+		platform.AnnotationBuildSource, platform.AnnotationGitCompare,
+		platform.AnnotationGitHubSecretHook, platform.AnnotationGitHubUser,
 		platform.AnnotationSetupStorage,
 	}
 )
@@ -325,10 +325,10 @@ func (h *Handler) DeploymentsOnMod(w http.ResponseWriter, r *http.Request) {
 		// A directive for removing a key from a map[string]string is converted to
 		// []byte(`{"metadata": {"labels": "key": ""}}`) and these are not removed
 		// when reapplying a merge patch.
-		DeleteNullKeysFromObjectMeta(&new.ObjectMeta)
-		DeleteNullKeysFromObjectMeta(&new.Spec.Template.ObjectMeta)
+		util.DeleteNullKeysFromObjectMeta(&new.ObjectMeta)
+		util.DeleteNullKeysFromObjectMeta(&new.Spec.Template.ObjectMeta)
 
-		patch, err := StrategicMergePatch(scheme.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion), old.GetObject(), new.GetObject())
+		patch, err := util.StrategicMergePatch(scheme.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion), old.GetObject(), new.GetObject())
 		if err != nil {
 			msg := fmt.Sprintf("failed merging patch data [%v]", err)
 			glog.V(3).Infof("%s -  %s", key, err)

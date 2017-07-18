@@ -254,18 +254,22 @@ func (r *Request) Do() *Result {
 		result.err = fmt.Errorf("failed processing the request [%v]", err)
 		return result
 	}
-	defer resp.Body.Close()
-	data, err := ioutil.ReadAll(resp.Body)
-	if glog.V(8) {
-		glog.Infof("Response Body[%d]: %s", resp.StatusCode, string(data))
-	}
-	if err != nil {
-		result.err = fmt.Errorf("failed reading response [%v]", err)
-		result.statusCode = resp.StatusCode
-		return result
-	}
-	result.contentType = resp.Header.Get("Content-Type")
-	result.body = data
+
 	result.statusCode = resp.StatusCode
+	result.contentType = resp.Header.Get("Content-Type")
+	if resp.Body != nil {
+		defer resp.Body.Close()
+		data, err := ioutil.ReadAll(resp.Body)
+		if glog.V(8) {
+			glog.Infof("Response Body[%d]: %s", resp.StatusCode, string(data))
+		}
+		if err != nil {
+			result.err = fmt.Errorf("failed reading response [%v]", err)
+
+			return result
+		}
+		result.body = data
+	}
+
 	return result
 }

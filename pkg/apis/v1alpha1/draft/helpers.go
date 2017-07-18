@@ -36,3 +36,10 @@ func NewNamespaceMetadata(namespace string) *NamespaceMeta {
 func NewMapValue(value string) *MapValue {
 	return &MapValue{Val: value}
 }
+
+// NewDeployment generates a new draft.Deployment
+func NewIngress(obj *v1beta1.Ingress) *Ingress {
+	i := &Ingress{Ingress: *obj}
+	i.DraftMeta = DraftMeta{objectMeta: &i.ObjectMeta}
+	return i
+}

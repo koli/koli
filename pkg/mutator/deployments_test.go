@@ -77,14 +77,39 @@ func newComputeResources() v1.ResourceRequirements {
 			v1.ResourceMemory: resource.MustParse("1Gi"),
 		},
 	}
-
 }
 
 func doRequest(method, url string, obj interface{}) ([]byte, *http.Response, error) {
-	reqBody, err := json.Marshal(obj)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed encoding object: %v", err)
+	var reqBody []byte
+	var err error
+	if method == "PATCH" {
+		var err error
+		var ori runtime.Object
+		var new runtime.Object
+		switch t := obj.(type) {
+		case *v1beta1.Deployment:
+			ori = &v1beta1.Deployment{}
+			new = obj.(*v1beta1.Deployment)
+			reqBody, err = util.StrategicMergePatch(extensionsCodec, ori, new)
+		case *v1beta1.Ingress:
+			ori = &v1beta1.Ingress{}
+			new = obj.(*v1beta1.Ingress)
+			reqBody, err = util.StrategicMergePatch(extensionsCodec, ori, new)
+		case []byte:
+			reqBody = t
+		default:
+			return nil, nil, fmt.Errorf("found an unknown type: %T, %#v", obj, obj)
+		}
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed generating patch diff: %v", err)
+		}
+	} else {
+		reqBody, err = json.Marshal(obj)
+		if err != nil {
+			return nil, nil, fmt.Errorf("failed encoding object: %v", err)
+		}
 	}
+
 	httpReq, err := http.NewRequest(method, url, bytes.NewBuffer(reqBody))
 	if err != nil {
 		return nil, nil, fmt.Errorf("unexpected error: %#v", err)
@@ -331,7 +356,7 @@ func TestDeploymentOnPatch(t *testing.T) {
 	// the original annotations only have immutable keys, it must be cleared otherwise
 	// the merge patch will contain the immutable keys
 	original.Annotations = make(map[string]string)
-	expectedPatch, err := StrategicMergePatch(api.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion), original, new)
+	expectedPatch, err := util.StrategicMergePatch(api.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion), original, new)
 	if err != nil {
 		t.Fatalf("unexpected error merging patch: %v", err)
 	}
