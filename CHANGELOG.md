@@ -1,3 +1,32 @@
+# v0.6.0-alpha
+
+## Features
+
+- API for mutating kubernetes resources requests for specific endpoints
+  - Namespaces
+  - Deployments
+  - Ingresses (POST, PATCH)
+  - Domain (platform)
+- Automatic provisoning of Persistent Volumes based on service plans
+- Storage Service Plan
+- Event notification on error [#48](https://github.com/kolihub/koli/issues/48)
+
+## Improvements
+
+- Merge mutator and gitstep codebases [#109](https://github.com/kolihub/koli/issues/109)
+- Prevent listing all namespaces from cluster [#105](https://github.com/kolihub/koli/issues/105)
+- Decode RS256 token in GIT Server [#104](https://github.com/kolihub/koli/issues/104)
+- Update k8s library to v1.6.0 [#92](https://github.com/kolihub/koli/issues/92)
+- Improve queue system [#62](https://github.com/kolihub/koli/issues/62)
+- Koli-system namespace must access all services from the cluster [#95](https://github.com/kolihub/koli/issues/95)
+- Remove slugbuilds when a deploy is removed [#108](https://github.com/kolihub/koli/issues/108)
+
+## Bugs
+
+- Error when creating/updating hook on gitstep [#93](https://github.com/kolihub/koli/issues/93)
+- Dirty slugbuild pods trigger new deploy updates [#96](https://github.com/kolihub/koli/issues/96)
+- Orphan 3PR hangs the execution of the controller [#65](https://github.com/kolihub/koli/issues/65)
+
 # v0.5.0-alpha
 
 ## Features
