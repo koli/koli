@@ -227,6 +227,11 @@ func podResource(rel *platform.Release, gitSha *koliutil.SHA, env map[string]int
 			},
 		},
 	}
+	if rel.Labels != nil {
+		if appName, ok := rel.Labels["kolihub.io/deploy"]; ok {
+			pod.Labels[platform.AnnotationApp] = appName
+		}
+	}
 
 	if len(pod.Spec.Containers) > 0 {
 		for k, v := range env {

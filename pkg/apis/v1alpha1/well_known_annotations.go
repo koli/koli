@@ -35,4 +35,6 @@ const (
 	// AnnotationSetupStorage it's a boolean indicating to setup the storage onto resources (deploy, statefulset),
 	// after the setup finished the value must be turned to "false"
 	AnnotationSetupStorage = "kolihub.io/setup-storage"
+	// AnnotationApp is used to identify the deployment from a parent resource
+	AnnotationApp = "kolihub.io/app"
 )

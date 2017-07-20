@@ -2,6 +2,7 @@ package controller
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/golang/glog"
@@ -121,6 +122,16 @@ func (c *AppManagerController) syncHandler(key string) error {
 	}
 	if !exists {
 		glog.V(3).Infof("%s - the deployment doesn't exists", key)
+		// This is a workaround to clean up slugbuild pods
+		// TODO: use ownerReferences instead of doing this manually
+		// https://kubernetes.io/docs/concepts/workloads/controllers/garbage-collection/#owners-and-dependents
+		parts := strings.Split(key, "/")
+		if len(parts) == 2 {
+			glog.Infof("%s - removing orphan slugbuilds", key)
+			if err := c.cleanBuilds(parts[0], parts[1]); err != nil {
+				glog.Warningf("%s - failed removing orphan slugbuilds", key)
+			}
+		}
 		return nil
 	}
 
@@ -188,4 +199,15 @@ func newPVC(d *draft.Deployment, plan *platform.Plan) *v1.PersistentVolumeClaim 
 			},
 		},
 	}
+}
+
+func (c *AppManagerController) cleanBuilds(ns, appName string) error {
+	// skip non-platform resources
+	if !draft.NewNamespaceMetadata(ns).IsValid() {
+		return nil
+	}
+	return c.kclient.Core().Pods(ns).DeleteCollection(
+		&metav1.DeleteOptions{},
+		metav1.ListOptions{LabelSelector: fmt.Sprintf("%s=%s", platform.AnnotationApp, appName)},
+	)
 }
