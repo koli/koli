@@ -14,7 +14,7 @@ BINARY_DEST_DIR := rootfs/usr/bin
 SHELL := /bin/bash
 
 # Common flags passed into Go's linker.
-GOTEST := go test --race -v
+GOTEST := go test --race 
 KUBECLIVERSION ?= unknown # glide.yaml
 GITCOMMIT ?= $(shell git rev-parse HEAD)
 DATE ?= $(shell date -u "+%Y-%m-%dT%H:%M:%SZ")

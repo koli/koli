@@ -367,6 +367,45 @@ func (h *Handler) DomainsOnMod(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// DomainsOnHead performs a check and verify if a primary domain is already claimed in the cluster
+func (h *Handler) DomainsOnHead(w http.ResponseWriter, r *http.Request) {
+	params := mux.Vars(r)
+	key := fmt.Sprintf("Req-ID=%s, Resource=domains,fqdn=%s", r.Header.Get("X-Request-ID"), params["fqdn"])
+	glog.V(3).Infof("%s, User-Agent=%s, Method=%s", key, r.Header.Get("User-Agent"), r.Method)
+
+	domList := &platform.DomainList{}
+	err := h.tprClient.Get().
+		Resource("domains").
+		Namespace(metav1.NamespaceAll).
+		Do().
+		Into(domList)
+	if err != nil {
+		msg := fmt.Sprintf("failed retrieving domain list [%v]", err)
+		util.WriteResponseError(w, util.StatusBadRequest(msg, nil, metav1.StatusReasonUnknown))
+		return
+	}
+	var obj *platform.Domain
+	for _, d := range domList.Items {
+		if !d.IsPrimary() {
+			continue
+		}
+		if d.Spec.PrimaryDomain == params["fqdn"] {
+			obj = &d
+			break
+		}
+	}
+	if obj != nil {
+		w.Header().Add("X-Domain-Name", obj.Name)
+		w.Header().Add("X-Domain-Namespace", obj.Namespace)
+		w.Header().Add("X-Domain-Status-Lastupdated", obj.Status.LastUpdateTime.UTC().Format(time.RFC3339))
+		w.Header().Add("X-Domain-Status-Phase", string(obj.Status.Phase))
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	w.Header().Add("X-Domain-Http-Status", "404")
+	w.WriteHeader(http.StatusNotFound)
+}
+
 // validateIfDelegatesHasChanged verifies if the 'delegates' attribute from an old resource
 // contains all the namespaces in the new one. If a namespace is missing, verify if
 // there's an associated parent.

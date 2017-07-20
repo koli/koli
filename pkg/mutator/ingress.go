@@ -88,7 +88,7 @@ func (h *Handler) IngressOnCreate(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) IngressOnPatch(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "PUT" {
+	if r.Method != "PATCH" {
 		msg := fmt.Sprintf(`Method "%s" not allowed.`, r.Method)
 		util.WriteResponseError(w, util.StatusMethodNotAllowed(msg, nil))
 		return

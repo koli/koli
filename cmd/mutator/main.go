@@ -123,6 +123,10 @@ func main() {
 	r.HandleFunc(fmt.Sprintf("/apis/%s/namespaces/{namespace}/domains/{domain}", groupVersion), handler.DomainsOnMod).
 		Methods("PUT", "PATCH", "DELETE")
 
+	// Custom resource
+	r.HandleFunc(fmt.Sprintf("/apis/%s/domains/{fqdn}", groupVersion), handler.DomainsOnHead).
+		Methods("HEAD")
+
 	// Deployment resources
 	r.HandleFunc("/apis/extensions/v1beta1/namespaces/{namespace}/deployments", handler.DeploymentsOnCreate).
 		Methods("POST")
