@@ -173,3 +173,67 @@ func (r *Release) GitReleaseURL(host string) string {
 	urlPath := filepath.Join("releases", repository, r.Spec.GitRevision)
 	return fmt.Sprintf("%s/%s", host, urlPath)
 }
+
+func (d *Domain) HasFinalizer(finalizer string) bool {
+	for _, f := range d.GetFinalizers() {
+		if f == finalizer {
+			return true
+		}
+	}
+	return false
+}
+
+// IsPrimary validates if it's a primary domain
+func (d *Domain) IsPrimary() bool {
+	return len(d.Spec.Sub) == 0
+}
+
+// IsValidSharedDomain verifies if the shared domain it's a subdomain from the primary
+func (d *Domain) IsValidSharedDomain() bool {
+	return !d.IsPrimary() && d.IsValidDomain()
+}
+
+func (d *Domain) IsValidDomain() bool {
+	if len(strings.Split(d.Spec.Sub, ".")) > 1 || len(strings.Split(d.Spec.PrimaryDomain, ".")) < 2 {
+		return false
+	}
+	return true
+}
+
+func (d *Domain) GetDomain() string {
+	if d.IsPrimary() {
+		return d.GetPrimaryDomain()
+	}
+	return d.Spec.Sub + "." + d.Spec.PrimaryDomain
+}
+
+// GetDomainType returns the type of the resource: 'primary' or 'shared'
+func (d *Domain) GetDomainType() string {
+	if d.IsPrimary() {
+		return "primary"
+	}
+	return "shared"
+}
+
+// GetPrimaryDomain returns the primary domain of the resource
+func (d *Domain) GetPrimaryDomain() string {
+	return d.Spec.PrimaryDomain
+}
+
+// HasDelegate verifies if the the resource has the target namespace in the delegates attribute
+func (d *Domain) HasDelegate(namespace string) bool {
+	for _, delegateNS := range d.Spec.Delegates {
+		if delegateNS == namespace || delegateNS == "*" {
+			return true
+		}
+	}
+	return false
+}
+
+// IsOK verifies if the resource is in the OK state
+func (d *Domain) IsOK() bool {
+	if d.Status.Phase == DomainStatusOK {
+		return true
+	}
+	return false
+}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -14,12 +15,11 @@ import (
 	"kolihub.io/koli/pkg/controller/informers"
 	_ "kolihub.io/koli/pkg/controller/install"
 	_ "kolihub.io/koli/pkg/spec/install"
-	"kolihub.io/koli/pkg/version"
-
-	"encoding/json"
+	koliversion "kolihub.io/koli/pkg/version"
 
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"k8s.io/apimachinery/pkg/version"
 	"k8s.io/client-go/kubernetes"
 )
 
@@ -50,23 +50,29 @@ func init() {
 	pflag.Parse()
 }
 
+func printSystemVersion(kubeVersion *version.Info) {
+	glog.Infof("Kubernetes -> Version: %s, GitCommit: %s, GoVersion: %s, BuildDate: %s",
+		kubeVersion.GitVersion, kubeVersion.GitCommit, kubeVersion.GoVersion, kubeVersion.BuildDate)
+	v := koliversion.Get()
+	glog.Infof("Koli -> Version: %s, GitCommit: %s, GoVersion: %s, BuildDate: %s",
+		v.GitVersion, v.GitCommit, v.GoVersion, v.BuildDate)
+}
+
 func startControllers(stop <-chan struct{}) error {
 	kcfg, err := clientset.NewClusterConfig(cfg.Host, cfg.TLSInsecure, &cfg.TLSConfig)
 	if err != nil {
 		return err
 	}
-	// if os.Getenv("SUPER_USER_TOKEN") == "" {
-	// 	return fmt.Errorf("SUPER_USER_TOKEN env not defined")
-	// }
 	client, err := kubernetes.NewForConfig(kcfg)
 	if err != nil {
 		return err
 	}
 
-	_, err = client.Discovery().ServerVersion()
+	kubeServerVersion, err := client.Discovery().ServerVersion()
 	if err != nil {
 		return fmt.Errorf("communicating with server failed: %s", err)
 	}
+	printSystemVersion(kubeServerVersion)
 
 	controller.CreatePlatformRoles(client)
 	// Create required third party resources
@@ -82,13 +88,6 @@ func startControllers(stop <-chan struct{}) error {
 	sharedInformers := informers.NewSharedInformerFactory(client, 30*time.Second)
 
 	// TODO: should we use the same client instance??
-	// go controller.NewAddonController(
-	// 	sharedInformers.Addons().Informer(sysClient),
-	// 	sharedInformers.PetSets().Informer(),
-	// 	sharedInformers.ServicePlans().Informer(sysClient),
-	// 	client,
-	// ).Run(1, wait.NeverStop)
-
 	go controller.NewNamespaceController(
 		sharedInformers.Namespaces().Informer(),
 		sharedInformers.ServicePlans().Informer(sysClient),
@@ -96,11 +95,10 @@ func startControllers(stop <-chan struct{}) error {
 		sysClient,
 	).Run(1, wait.NeverStop)
 
-	go controller.NewResourceAllocatorCtrl(
+	go controller.NewAppManagerController(
 		sharedInformers.Deployments().Informer(),
 		sharedInformers.ServicePlans().Informer(sysClient),
 		client,
-		sysClient,
 	).Run(1, wait.NeverStop)
 
 	go controller.NewReleaseController(
@@ -135,7 +133,7 @@ func startControllers(stop <-chan struct{}) error {
 
 func main() {
 	if showVersion {
-		version := version.Get()
+		version := koliversion.Get()
 		b, err := json.Marshal(&version)
 		if err != nil {
 			fmt.Printf("failed decoding version: %s\n", err)

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"kolihub.io/koli/pkg/spec"
+	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -21,11 +21,11 @@ type AddonGetter interface {
 
 // AddonInterface has methods to work with Addon resources.
 type AddonInterface interface {
-	List(opts *metav1.ListOptions) (*spec.AddonList, error)
-	Get(name string) (*spec.Addon, error)
+	List(opts *metav1.ListOptions) (*platform.AddonList, error)
+	Get(name string) (*platform.Addon, error)
 	Delete(name string, options *metav1.DeleteOptions) error
-	Create(data *spec.Addon) (*spec.Addon, error)
-	Update(data *spec.Addon) (*spec.Addon, error)
+	Create(data *platform.Addon) (*platform.Addon, error)
+	Update(data *platform.Addon) (*platform.Addon, error)
 	Watch(opts *metav1.ListOptions) (watch.Interface, error)
 }
 
@@ -37,8 +37,8 @@ type addon struct {
 }
 
 // Get gets the resource with the specified name.
-func (a *addon) Get(name string) (*spec.Addon, error) {
-	addon := &spec.Addon{}
+func (a *addon) Get(name string) (*platform.Addon, error) {
+	addon := &platform.Addon{}
 	err := a.client.Get().
 		NamespaceIfScoped(a.namespace, a.resource.Namespaced).
 		Resource(a.resource.Name).
@@ -49,8 +49,8 @@ func (a *addon) Get(name string) (*spec.Addon, error) {
 }
 
 // List returns a list of objects for this resource.
-func (a *addon) List(opts *metav1.ListOptions) (*spec.AddonList, error) {
-	addonList := &spec.AddonList{}
+func (a *addon) List(opts *metav1.ListOptions) (*platform.AddonList, error) {
+	addonList := &platform.AddonList{}
 	err := a.client.Get().
 		NamespaceIfScoped(a.namespace, a.resource.Namespaced).
 		Resource(a.resource.Name).
@@ -75,8 +75,8 @@ func (a *addon) Delete(name string, opts *metav1.DeleteOptions) error {
 }
 
 // Create creates the provided resource.
-func (a *addon) Create(data *spec.Addon) (*spec.Addon, error) {
-	addon := &spec.Addon{}
+func (a *addon) Create(data *platform.Addon) (*platform.Addon, error) {
+	addon := &platform.Addon{}
 	err := a.client.Post().
 		NamespaceIfScoped(a.namespace, a.resource.Namespaced).
 		Resource(a.resource.Name).
@@ -87,8 +87,8 @@ func (a *addon) Create(data *spec.Addon) (*spec.Addon, error) {
 }
 
 // Update updates the provided resource.
-func (a *addon) Update(data *spec.Addon) (*spec.Addon, error) {
-	addon := &spec.Addon{}
+func (a *addon) Update(data *platform.Addon) (*platform.Addon, error) {
+	addon := &platform.Addon{}
 	if len(data.GetName()) == 0 {
 		return data, errors.New("object missing name")
 	}
@@ -123,8 +123,8 @@ func (a *addon) Watch(opts *metav1.ListOptions) (watch.Interface, error) {
 }
 
 // Patch updates the provided resource
-func (a *addon) Patch(name string, pt types.PatchType, data []byte) (*spec.Addon, error) {
-	addon := &spec.Addon{}
+func (a *addon) Patch(name string, pt types.PatchType, data []byte) (*platform.Addon, error) {
+	addon := &platform.Addon{}
 	err := a.client.Patch(pt).
 		NamespaceIfScoped(a.namespace, a.resource.Namespaced).
 		Resource(a.resource.Name).
@@ -150,7 +150,7 @@ func (d *addonDecoder) Close() {
 func (d *addonDecoder) Decode() (watch.EventType, runtime.Object, error) {
 	var e struct {
 		Type   watch.EventType
-		Object spec.Addon
+		Object platform.Addon
 	}
 	if err := d.dec.Decode(&e); err != nil {
 		return watch.Error, nil, err

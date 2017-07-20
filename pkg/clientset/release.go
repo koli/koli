@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	"kolihub.io/koli/pkg/spec"
+	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -21,13 +21,13 @@ type ReleaseGetter interface {
 
 // ReleaseInterface has methods to work with Release resources.
 type ReleaseInterface interface {
-	List(opts *metav1.ListOptions) (*spec.ReleaseList, error)
-	Get(name string) (*spec.Release, error)
+	List(opts *metav1.ListOptions) (*platform.ReleaseList, error)
+	Get(name string) (*platform.Release, error)
 	Delete(name string, options *metav1.DeleteOptions) error
-	Create(data *spec.Release) (*spec.Release, error)
-	Update(data *spec.Release) (*spec.Release, error)
+	Create(data *platform.Release) (*platform.Release, error)
+	Update(data *platform.Release) (*platform.Release, error)
 	Watch(opts *metav1.ListOptions) (watch.Interface, error)
-	Patch(name string, pt types.PatchType, data []byte, subresources ...string) (*spec.Release, error)
+	Patch(name string, pt types.PatchType, data []byte, subresources ...string) (*platform.Release, error)
 }
 
 // release implements ReleaseInterface
@@ -38,8 +38,8 @@ type release struct {
 }
 
 // Get gets the resource with the specified name.
-func (r *release) Get(name string) (*spec.Release, error) {
-	release := &spec.Release{}
+func (r *release) Get(name string) (*platform.Release, error) {
+	release := &platform.Release{}
 	err := r.client.Get().
 		NamespaceIfScoped(r.namespace, r.resource.Namespaced).
 		Resource(r.resource.Name).
@@ -50,8 +50,8 @@ func (r *release) Get(name string) (*spec.Release, error) {
 }
 
 // List returns a list of objects for this resource.
-func (r *release) List(opts *metav1.ListOptions) (*spec.ReleaseList, error) {
-	releaseList := &spec.ReleaseList{}
+func (r *release) List(opts *metav1.ListOptions) (*platform.ReleaseList, error) {
+	releaseList := &platform.ReleaseList{}
 	err := r.client.Get().
 		NamespaceIfScoped(r.namespace, r.resource.Namespaced).
 		Resource(r.resource.Name).
@@ -74,8 +74,8 @@ func (r *release) Delete(name string, opts *metav1.DeleteOptions) error {
 }
 
 // Create creates the provided resource.
-func (r *release) Create(data *spec.Release) (*spec.Release, error) {
-	release := &spec.Release{}
+func (r *release) Create(data *platform.Release) (*platform.Release, error) {
+	release := &platform.Release{}
 	err := r.client.Post().
 		NamespaceIfScoped(r.namespace, r.resource.Namespaced).
 		Resource(r.resource.Name).
@@ -86,8 +86,8 @@ func (r *release) Create(data *spec.Release) (*spec.Release, error) {
 }
 
 // Update updates the provided resource.
-func (r *release) Update(data *spec.Release) (*spec.Release, error) {
-	release := &spec.Release{}
+func (r *release) Update(data *platform.Release) (*platform.Release, error) {
+	release := &platform.Release{}
 	if len(data.GetName()) == 0 {
 		return data, errors.New("object missing name")
 	}
@@ -109,7 +109,7 @@ func (r *release) Watch(opts *metav1.ListOptions) (watch.Interface, error) {
 		Prefix("watch").
 		NamespaceIfScoped(r.namespace, r.resource.Namespaced).
 		Resource(r.resource.Name).
-		// VersionedParams(opts, spec.DefaultParameterEncoder).
+		// VersionedParams(opts, platform.DefaultParameterEncoder).
 		VersionedParams(opts, metav1.ParameterCodec).
 		Stream()
 	if err != nil {
@@ -123,8 +123,8 @@ func (r *release) Watch(opts *metav1.ListOptions) (watch.Interface, error) {
 }
 
 // Patch applies the patch and returns the patched release.
-func (r *release) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (*spec.Release, error) {
-	release := &spec.Release{}
+func (r *release) Patch(name string, pt types.PatchType, data []byte, subresources ...string) (*platform.Release, error) {
+	release := &platform.Release{}
 	err := r.client.Patch(pt).
 		Namespace(r.namespace).
 		Resource(r.resource.Name).
@@ -151,7 +151,7 @@ func (d *releaseDecoder) Close() {
 func (d *releaseDecoder) Decode() (watch.EventType, runtime.Object, error) {
 	var e struct {
 		Type   watch.EventType
-		Object spec.Release
+		Object platform.Release
 	}
 	if err := d.dec.Decode(&e); err != nil {
 		return watch.Error, nil, err

@@ -5,10 +5,9 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 	"kolihub.io/koli/pkg/clientset"
-	"kolihub.io/koli/pkg/platform"
 	"kolihub.io/koli/pkg/spec"
-	"kolihub.io/koli/pkg/spec/util"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/pkg/api/v1"
@@ -83,8 +82,8 @@ func (c *NamespaceController) updateNamespace(o, n interface{}) {
 // }
 
 func (c *NamespaceController) updateServicePlan(o, n interface{}) {
-	old := o.(*spec.Plan)
-	new := n.(*spec.Plan)
+	old := o.(*platform.Plan)
+	new := n.(*platform.Plan)
 
 	if old.ResourceVersion == new.ResourceVersion {
 		return
@@ -159,7 +158,7 @@ func (c *NamespaceController) syncHandler(key string) error {
 		glog.V(2).Infof("%s - the namespace is being deleted", key)
 		return nil
 	}
-	user := &spec.User{
+	user := &platform.User{
 		Customer:     ns.Labels["kolihub.io/customer"],
 		Organization: ns.Labels["kolihub.io/org"],
 		Username:     ns.Annotations["kolihub.io/owner"],
@@ -183,7 +182,7 @@ func (c *NamespaceController) syncHandler(key string) error {
 
 	// TODO: updating a serviceplan must enqueue all namespaces (label match)
 	// TODO: add a label in the namespace indicating the service plan
-	var sp *spec.Plan
+	var sp *platform.Plan
 	options := spec.NewLabel().Add(make(map[string]string))
 	planName := ns.Annotations[spec.KoliPrefix("brokerplan")]
 	if planName == "" {
@@ -191,14 +190,14 @@ func (c *NamespaceController) syncHandler(key string) error {
 		cache.ListAll(c.spInf.GetStore(), options.AsSelector(), func(obj interface{}) {
 			// it will not handle multiple results
 			if obj != nil {
-				splan := obj.(*spec.Plan)
+				splan := obj.(*platform.Plan)
 				if splan.Namespace == pns.GetSystemNamespace() {
 					sp = splan
 				}
 			}
 		})
 	} else {
-		spQ := &spec.Plan{}
+		spQ := &platform.Plan{}
 		spQ.Name = planName
 		spQ.Namespace = pns.GetSystemNamespace()
 		obj, exists, err := c.spInf.GetStore().Get(spQ)
@@ -206,19 +205,19 @@ func (c *NamespaceController) syncHandler(key string) error {
 			glog.Infof("failed retrieving service plan from the store [%s]", err)
 		} else {
 			if obj != nil {
-				sp = obj.(*spec.Plan)
+				sp = obj.(*platform.Plan)
 			}
 		}
 	}
 	if sp == nil {
-		sp = &spec.Plan{
+		sp = &platform.Plan{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: "",
 			},
 		}
 	}
 	// Deep-Copy, otherwise we're mutating our cache
-	spCopy, err := util.ServicePlanDeepCopy(sp)
+	spCopy, err := platform.ServicePlanDeepCopy(sp)
 	if err != nil {
 		c.recorder.Event(ns, v1.EventTypeWarning, "SetupPlanError", err.Error())
 		return fmt.Errorf("%s - failed deep copying service plan '%s' [%s]", key, sp.Name, err)
@@ -252,7 +251,7 @@ func (c *NamespaceController) syncHandler(key string) error {
 
 // create the permissions (role/role binding) needed for the user
 // to access the resources of the namespace.
-func (c *NamespaceController) createDefaultPermissions(ns string, usr *spec.User) error {
+func (c *NamespaceController) createDefaultPermissions(ns string, usr *platform.User) error {
 	role := &rbac.Role{
 		ObjectMeta: metav1.ObjectMeta{Name: "default"},
 		Rules: []rbac.PolicyRule{
@@ -343,7 +342,7 @@ func (c *NamespaceController) createNetworkPolicy(ns string) error {
 	return nil
 }
 
-func (c *NamespaceController) enforceQuota(ns string, sp *spec.Plan) error {
+func (c *NamespaceController) enforceQuota(ns string, sp *platform.Plan) error {
 	rq := &v1.ResourceQuota{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "default",
@@ -364,18 +363,18 @@ func (c *NamespaceController) enforceQuota(ns string, sp *spec.Plan) error {
 	return nil
 }
 
-func (c *NamespaceController) enforceRoleBindings(logHeader string, ns *v1.Namespace, user *spec.User, sp *spec.Plan) {
+func (c *NamespaceController) enforceRoleBindings(logHeader string, ns *v1.Namespace, user *platform.User, sp *platform.Plan) {
 	// Platform Roles
-	userRoles := spec.NewPlatformRoles(ns.Annotations[spec.KoliPrefix("roles")])
+	userRoles := platform.NewPlatformRoles(ns.Annotations[spec.KoliPrefix("roles")])
 	hasUserRoles := false
 	if len(userRoles) > 0 {
 		hasUserRoles = true
 	}
 
-	if len(spec.PlatformRegisteredRoles) == 0 {
+	if len(platform.PlatformRegisteredRoles) == 0 {
 		glog.Warningf("%s - platform roles not found", logHeader)
 	}
-	for _, role := range spec.PlatformRegisteredRoles {
+	for _, role := range platform.PlatformRegisteredRoles {
 		// Manual Operation - it has an annotation
 		if hasUserRoles {
 			if role.Exists(userRoles) {

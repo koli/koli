@@ -5,10 +5,9 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 	clientset "kolihub.io/koli/pkg/clientset"
-	"kolihub.io/koli/pkg/platform"
 	"kolihub.io/koli/pkg/spec"
-	specutil "kolihub.io/koli/pkg/spec/util"
 	koliutil "kolihub.io/koli/pkg/util"
 
 	"k8s.io/client-go/kubernetes"
@@ -56,7 +55,7 @@ func NewBuildController(
 }
 
 func (b *BuildController) addRelease(obj interface{}) {
-	release := obj.(*spec.Release)
+	release := obj.(*platform.Release)
 	glog.Infof("add-release - %s/%s", release.Namespace, release.Name)
 
 	b.queue.Add(release)
@@ -64,8 +63,8 @@ func (b *BuildController) addRelease(obj interface{}) {
 }
 
 func (b *BuildController) updateRelease(o, n interface{}) {
-	old := o.(*spec.Release)
-	new := n.(*spec.Release)
+	old := o.(*platform.Release)
+	new := n.(*platform.Release)
 	if old.ResourceVersion == new.ResourceVersion {
 		return
 	}
@@ -76,7 +75,7 @@ func (b *BuildController) updateRelease(o, n interface{}) {
 }
 
 func (b *BuildController) deleteRelease(obj interface{}) {
-	release := obj.(*spec.Release)
+	release := obj.(*platform.Release)
 	glog.Infof("delete-release - %s/%s", release.Namespace, release.Name)
 	b.queue.Add(release)
 	// b.queue.add(release)
@@ -112,7 +111,7 @@ func (b *BuildController) syncHandler(key string) error {
 	if err != nil {
 		return err
 	}
-	release := obj.(*spec.Release)
+	release := obj.(*platform.Release)
 	logHeader := fmt.Sprintf("%s/%s", release.Namespace, release.Name)
 
 	if release.DeletionTimestamp != nil {
@@ -155,7 +154,7 @@ func (b *BuildController) syncHandler(key string) error {
 	}
 
 	glog.Infof("%s - build started for '%s'", logHeader, sbPodName)
-	releaseCopy, err := specutil.ReleaseDeepCopy(release)
+	releaseCopy, err := platform.ReleaseDeepCopy(release)
 	if err != nil {
 		return fmt.Errorf("%s - failed deep copying release: %s", logHeader, err)
 	}
@@ -173,7 +172,7 @@ func (b *BuildController) syncHandler(key string) error {
 	return nil
 }
 
-func slugbuilderPod(cfg *Config, rel *spec.Release, gitSha *koliutil.SHA, info *koliutil.SlugBuilderInfo) (*v1.Pod, error) {
+func slugbuilderPod(cfg *Config, rel *platform.Release, gitSha *koliutil.SHA, info *koliutil.SlugBuilderInfo) (*v1.Pod, error) {
 	gitCloneURL := rel.Spec.GitRemote
 	if !rel.IsGitHubSource() {
 		var err error
@@ -201,7 +200,7 @@ func slugbuilderPod(cfg *Config, rel *spec.Release, gitSha *koliutil.SHA, info *
 	return &pod, nil
 }
 
-func podResource(rel *spec.Release, gitSha *koliutil.SHA, env map[string]interface{}) v1.Pod {
+func podResource(rel *platform.Release, gitSha *koliutil.SHA, env map[string]interface{}) v1.Pod {
 	sbPodName := fmt.Sprintf("sb-%s", rel.Name)
 	pod := v1.Pod{
 		Spec: v1.PodSpec{
@@ -227,6 +226,11 @@ func podResource(rel *spec.Release, gitSha *koliutil.SHA, env map[string]interfa
 				spec.KoliPrefix("buildrevision"): rel.Spec.BuildRevision,
 			},
 		},
+	}
+	if rel.Labels != nil {
+		if appName, ok := rel.Labels["kolihub.io/deploy"]; ok {
+			pod.Labels[platform.AnnotationApp] = appName
+		}
 	}
 
 	if len(pod.Spec.Containers) > 0 {

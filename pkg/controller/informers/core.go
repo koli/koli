@@ -3,8 +3,8 @@ package informers
 import (
 	"reflect"
 
+	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 	"kolihub.io/koli/pkg/clientset"
-	"kolihub.io/koli/pkg/spec"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -31,7 +31,7 @@ func (f *addonInformer) Informer(sysClient *clientset.CoreClient) cache.SharedIn
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	informerType := reflect.TypeOf(&spec.Addon{})
+	informerType := reflect.TypeOf(&platform.Addon{})
 	informer, exists := f.informers[informerType]
 	if exists {
 		return informer
@@ -46,7 +46,7 @@ func (f *addonInformer) Informer(sysClient *clientset.CoreClient) cache.SharedIn
 				return sysClient.Addon(metav1.NamespaceAll).Watch(&options)
 			},
 		},
-		&spec.Addon{},
+		&platform.Addon{},
 		f.defaultResync,
 		cache.Indexers{},
 	)
@@ -54,20 +54,20 @@ func (f *addonInformer) Informer(sysClient *clientset.CoreClient) cache.SharedIn
 	return informer
 }
 
-// ServicePlanInformer is a type of SharedIndexInformer which watches and lists all service plans.
+// ServicePlanInformer is a type of SharedIndexInformer which watches and lists all service plans
 type ServicePlanInformer interface {
-	Informer(sysClient *clientset.CoreClient) cache.SharedIndexInformer
+	Informer(tprClient clientset.CoreInterface) cache.SharedIndexInformer
 }
 
 type servicePlanInformer struct {
 	*sharedInformerFactory
 }
 
-func (f *servicePlanInformer) Informer(sysClient *clientset.CoreClient) cache.SharedIndexInformer {
+func (f *servicePlanInformer) Informer(tprClient clientset.CoreInterface) cache.SharedIndexInformer {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	informerType := reflect.TypeOf(&spec.Plan{})
+	informerType := reflect.TypeOf(&platform.Plan{})
 	informer, exists := f.informers[informerType]
 	if exists {
 		return informer
@@ -76,13 +76,13 @@ func (f *servicePlanInformer) Informer(sysClient *clientset.CoreClient) cache.Sh
 	informer = cache.NewSharedIndexInformer(
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-				return sysClient.ServicePlan(metav1.NamespaceAll).List(&options)
+				return tprClient.ServicePlan(metav1.NamespaceAll).List(&options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				return sysClient.ServicePlan(metav1.NamespaceAll).Watch(&options)
+				return tprClient.ServicePlan(metav1.NamespaceAll).Watch(&options)
 			},
 		},
-		&spec.Plan{},
+		&platform.Plan{},
 		f.defaultResync,
 		cache.Indexers{},
 	)
@@ -104,7 +104,7 @@ func (f *releaseInformer) Informer(sysClient *clientset.CoreClient) cache.Shared
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	informerType := reflect.TypeOf(&spec.Release{})
+	informerType := reflect.TypeOf(&platform.Release{})
 	informer, exists := f.informers[informerType]
 	if exists {
 		return informer
@@ -119,7 +119,7 @@ func (f *releaseInformer) Informer(sysClient *clientset.CoreClient) cache.Shared
 				return sysClient.Release(metav1.NamespaceAll).Watch(&options)
 			},
 		},
-		&spec.Release{},
+		&platform.Release{},
 		f.defaultResync,
 		cache.Indexers{},
 	)

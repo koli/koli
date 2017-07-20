@@ -7,10 +7,9 @@ import (
 
 	"github.com/golang/glog"
 
+	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 	clientset "kolihub.io/koli/pkg/clientset"
-	"kolihub.io/koli/pkg/platform"
 	"kolihub.io/koli/pkg/spec"
-	specutil "kolihub.io/koli/pkg/spec/util"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
@@ -139,7 +138,7 @@ func (d *DeployerController) syncHandler(key string) error {
 		return nil
 	}
 
-	releaseQ := &spec.Release{}
+	releaseQ := &platform.Release{}
 	releaseQ.SetName(releaseName)
 	releaseQ.SetNamespace(pod.Namespace)
 	releaseO, exists, err := d.relInf.GetStore().Get(releaseQ)
@@ -156,7 +155,7 @@ func (d *DeployerController) syncHandler(key string) error {
 		glog.Warningf("%s - release '%s' doesn't exist anymore", key, releaseName)
 		return nil
 	}
-	release := releaseO.(*spec.Release)
+	release := releaseO.(*platform.Release)
 	if pod.Status.Phase == v1.PodSucceeded && release.Spec.AutoDeploy {
 		deploymentQ := &extensions.Deployment{}
 		deploymentQ.SetName(release.Spec.DeployName)
@@ -198,7 +197,7 @@ func (d *DeployerController) syncHandler(key string) error {
 			"Deployed", "Deploy '%s' updated with the new revision [%s]", release.Spec.DeployName, release.Spec.GitRevision[:7])
 	}
 
-	releaseCopy, err := specutil.ReleaseDeepCopy(release)
+	releaseCopy, err := platform.ReleaseDeepCopy(release)
 	if err != nil {
 		return fmt.Errorf("failed deep copying [%s]", err)
 	}
@@ -211,8 +210,8 @@ func (d *DeployerController) syncHandler(key string) error {
 	return nil
 }
 
-func (d *DeployerController) deploySlug(release *spec.Release, deploy *extensions.Deployment) error {
-	dpCopy, err := specutil.DeploymentDeepCopy(deploy)
+func (d *DeployerController) deploySlug(release *platform.Release, deploy *extensions.Deployment) error {
+	dpCopy, err := platform.DeploymentDeepCopy(deploy)
 	if err != nil {
 		return fmt.Errorf("failed deep copying: %s", err)
 	}

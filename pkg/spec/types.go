@@ -149,3 +149,76 @@ type User struct {
 	// http://kubernetes.io/docs/admin/authentication/
 	Groups []string `json:"groups"`
 }
+
+// Domain are a way for users to "claim" a domain and be able to create
+// ingresses
+type Domain struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec   DomainSpec   `json:"spec,omitempty"`
+	Status DomainStatus `json:"status,omitempty"`
+}
+
+// DomainList is a List of Domain
+type DomainList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata,omitempty"`
+
+	Items []Domain `json:"items"`
+}
+
+// DomainStatus represents information about the status of a domain.
+type DomainStatus struct {
+	// The state of the domain, an empty state means it's a new resource
+	// +optional
+	Phase DomainPhase `json:"phase,omitempty"`
+	// A human readable message indicating details about why the domain claim is in this state.
+	// +optional
+	Message string `json:"message,omitempty"`
+	// A brief CamelCase message indicating details about why the domain claim is in this state. e.g. 'AlreadyClaimed'
+	// +optional
+	Reason string `json:"reason,omitempty"`
+	// The last time the resource was updated
+	LastUpdateTime *metav1.Time `json:"lastUpdateTime,omitempty"`
+	// DeletionTimestamp it's a temporary field to work around the issue:
+	// https://github.com/kubernetes/kubernetes/issues/40715, once it's solved,
+	// remove this field and use the DeletionTimestamp from metav1.ObjectMeta
+	DeletionTimestamp *metav1.Time `json:"deletionTimestamp,omitempty"`
+}
+
+// DomainSpec represents information about a domain claim
+type DomainSpec struct {
+	// PrimaryDomain is the name of the primary domain, to set the resource as primary,
+	// 'name' and 'primary' must have the same value.
+	// +required
+	PrimaryDomain string `json:"primary,omitempty"`
+	// Sub is the label of the Primary Domain to form a subdomain
+	// +optional
+	Sub string `json:"sub,omitempty"`
+	// Delegates contains a list of namespaces that are allowed to use this domain.
+	// New domain resources could be referenced to primary ones using the 'parent' key.
+	// A wildcard ("*") allows delegate access to all namespaces in the cluster.
+	// +optional
+	Delegates []string `json:"delegates,omitempty"`
+	// Parent refers to the namespace where the primary domain is in.
+	// It only makes sense when the type of the domain is set to 'shared',
+	// +optional
+	Parent string `json:"parent,omitempty"`
+}
+
+// DomainPhase is a label for the condition of a domain at the current time.
+type DomainPhase string
+
+const (
+	// DomainStatusNew means it's a new resource and the phase it's not set
+	DomainStatusNew DomainPhase = ""
+	// DomainStatusOK means the domain doesn't have no pending operations or prohibitions,
+	// and new ingresses could be created using the target domain.
+	DomainStatusOK DomainPhase = "OK"
+	// DomainStatusPending indicates that a request to create a new domain
+	// has been received and is being processed.
+	DomainStatusPending DomainPhase = "Pending"
+	// DomainStatusFailed means the resource has failed on claiming the domain
+	DomainStatusFailed DomainPhase = "Failed"
+)

@@ -3,18 +3,18 @@ package install
 import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/client-go/pkg/api/v1"
-	"kolihub.io/koli/pkg/spec"
+	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 )
 
 func init() {
-	spec.PlatformRegisteredRoles = []spec.PlatformRole{
-		spec.RoleAttachAllow,
-		spec.RoleAutoScaleAllow,
-		spec.RoleExecAllow,
-		spec.RolePortForwardAllow,
-		spec.RoleAddonManagement,
+	platform.PlatformRegisteredRoles = []platform.PlatformRole{
+		platform.RoleAttachAllow,
+		platform.RoleAutoScaleAllow,
+		platform.RoleExecAllow,
+		platform.RolePortForwardAllow,
+		platform.RoleAddonManagement,
 	}
-	spec.PlatformRegisteredResources = &spec.ResourceList{
+	platform.PlatformRegisteredResources = &platform.ResourceList{
 		v1.ResourcePods:       resource.Quantity{},
 		v1.ResourceConfigMaps: resource.Quantity{},
 		v1.ResourceSecrets:    resource.Quantity{},
