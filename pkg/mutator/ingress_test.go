@@ -11,12 +11,15 @@ import (
 	"github.com/gorilla/mux"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/pkg/api"
 	"k8s.io/client-go/pkg/api/v1"
 	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
+	fakerest "k8s.io/client-go/rest/fake"
 	core "k8s.io/client-go/testing"
+	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 	"kolihub.io/koli/pkg/util"
 )
 
@@ -47,6 +50,10 @@ func runIngressEndpointFakeServer(h *Handler, path string, method string) *httpt
 		router.HandleFunc(path, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			h.IngressOnPatch(w, r)
 		})).Methods("PATCH")
+	case "DELETE":
+		router.HandleFunc(path, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			h.IngressOnDelete(w, r)
+		})).Methods("DELETE")
 	default:
 		panic(fmt.Sprintf("method %s not implemented", method))
 	}
@@ -398,7 +405,6 @@ func TestIngressOnPatchChangeHostError(t *testing.T) {
 		t.Errorf("GOT: %#v, EXPECTED: %#v", got.Message, expMsg)
 	}
 }
-
 func TestIngressOnPatchNewPathWithWrongService(t *testing.T) {
 	var (
 		ingName, ns, svcName, svcPort = "foo.tld", "foo-ns", "foo-svc", intstr.FromInt(8000)
@@ -423,5 +429,66 @@ func TestIngressOnPatchNewPathWithWrongService(t *testing.T) {
 	runtime.DecodeInto(api.Codecs.UniversalDecoder(), respBody, got)
 	if match, _ := regexp.MatchString(expMsgRgxp, got.Message); !match {
 		t.Errorf("GOT: %#v, EXPECTED REGEXP: %#v", got.Message, expMsgRgxp)
+	}
+}
+
+func TestIngressOnDelete(t *testing.T) {
+	var (
+		ingName, ns = "foo.tld", "foo-ns"
+		existentIng = newIngressWithRules(ingName, ns, []v1beta1.IngressRule{
+			{Host: ingName, IngressRuleValue: v1beta1.IngressRuleValue{}},
+		})
+		existentDom = newDomain("foo-tld", ns, ingName)
+		h           = &Handler{clientset: fake.NewSimpleClientset(existentIng), usrClientset: fake.NewSimpleClientset()}
+	)
+	ts := runIngressEndpointFakeServer(h, "/apis/extensions/v1beta1/namespaces/{namespace}/ingresses/{name}", "DELETE")
+	defer ts.Close()
+	h.usrTprClient = &fakerest.RESTClient{
+		APIRegistry:          api.Registry,
+		NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: api.Codecs},
+		Client: fakerest.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
+			var obj runtime.Object
+			switch req.Method {
+			case "GET":
+				obj = &platform.DomainList{
+					Items: []platform.Domain{*existentDom},
+				}
+			case "DELETE": // noop
+			default:
+				t.Fatalf("unexpected method: %v", req.Method)
+			}
+
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       objBody(obj),
+			}, nil
+		}),
+	}
+	req, err := http.NewRequest("DELETE", fmt.Sprintf("%s/apis/extensions/v1beta1/namespaces/%s/ingresses/%s", ts.URL, ns, ingName), nil)
+	if err != nil {
+		t.Fatalf("unexpected error creating request: %v", err)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	t.Logf("STATUS CODE RESPONSE: %d", resp.StatusCode)
+
+	fakeUsrClientset := h.usrClientset.(*fake.Clientset)
+	if len(fakeUsrClientset.Actions()) != 1 {
+		t.Errorf("GOT %d action(s), EXPECTED 1 action", len(fakeUsrClientset.Actions()))
+	}
+	for _, action := range fakeUsrClientset.Actions() {
+		switch tp := action.(type) {
+		case core.DeleteActionImpl:
+			if tp.Namespace != ns || tp.Name != ingName {
+				t.Errorf("GOT RESOURCE: %s/%s, EXPECTED: %s/%s", tp.Namespace, tp.Name, ns, ingName)
+			}
+		default:
+			t.Fatalf("unexpected action %#v", tp)
+
+		}
 	}
 }

@@ -248,32 +248,41 @@ func (h *Handler) IngressOnDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	domainName := ""
-	if len(ing.Spec.Rules) != 1 {
-		domainName = ing.Spec.Rules[0].Host
+	// It's insecure delete domains crossing namespaces, delete
+	// resources in the same namespace only
+	if len(ing.Spec.Rules) >= 1 {
+		dom, errStatus := h.searchPrimaryDomainByNamespace(ing.Spec.Rules[0].Host, namespace)
+		if errStatus != nil {
+			glog.Infof("%s - %s", key, errStatus.Message)
+			util.WriteResponseError(w, errStatus)
+			return
+		}
+		glog.V(3).Infof("%s - found domain resource %s for %s", key, dom.Name, ing.Spec.Rules[0].Host)
+		_, err := h.usrTprClient.Delete().
+			Resource("domains").
+			Namespace(namespace).
+			Name(dom.Name).
+			DoRaw()
+		if err != nil {
+			msg := fmt.Sprintf("failed removing domain %s [%v]", dom.Name, err)
+			util.WriteResponseError(w, util.StatusBadRequest(msg, nil, metav1.StatusReasonBadRequest))
+			return
+		}
+		glog.V(4).Infof("%s - domain [%s] deleted successfully", key, dom.Name)
 	}
 
-	if len(domainName) == 0 {
-		glog.Infof("%s - empty domain found, noop", key)
-		util.WriteResponseNoContent(w)
-	}
-
-	resp, err := h.usrTprClient.Delete().
-		Resource("domains").
-		Namespace(namespace).
-		Name(domainName).
-		DoRaw()
+	err := h.usrClientset.Extensions().Ingresses(namespace).Delete(ing.Name, &metav1.DeleteOptions{})
 	switch e := err.(type) {
 	case *apierrors.StatusError:
-		glog.Infof("%s -  failed mutating request [%v, %s]", key, err, string(resp))
+		glog.Infof("%s -  failed mutating request [%v]", key, err)
 		util.WriteResponseError(w, &e.ErrStatus)
 	case nil:
 		glog.Infof("%s -  request mutate with success!", key)
 		util.WriteResponseNoContent(w)
 	default:
-		msg := fmt.Sprintf("unknown response [%v, %s]", err, string(resp))
+		msg := fmt.Sprintf("unknown response [%v]", err)
 		glog.Infof("%s -  %s", key, msg)
-		util.WriteResponseError(w, util.StatusInternalError(msg, &platform.Domain{}))
+		util.WriteResponseError(w, util.StatusInternalError(msg, nil))
 	}
 }
 
@@ -327,6 +336,29 @@ func (h *Handler) getIngress(namespace, ingName string) (*draft.Ingress, *metav1
 	return draft.NewIngress(ing), nil
 }
 
+func (h *Handler) searchPrimaryDomainByNamespace(domainName, namespace string) (obj *platform.Domain, status *metav1.Status) {
+	domList := &platform.DomainList{}
+	err := h.usrTprClient.Get().
+		Resource("domains").
+		Namespace(namespace).
+		Do().
+		Into(domList)
+	if err != nil {
+		msg := fmt.Sprintf("failed retrieving domain list [%v]", err)
+		return obj, util.StatusBadRequest(msg, nil, metav1.StatusReasonUnknown)
+	}
+	for _, d := range domList.Items {
+		if !d.IsPrimary() {
+			continue
+		}
+		if d.Spec.PrimaryDomain == domainName {
+			obj = &d
+			break
+		}
+	}
+	return
+}
+
 func ruleConstraintError(ing *v1beta1.Ingress, msg string) *metav1.Status {
 	field := fmt.Sprintf("spec.rules[%d].host", len(ing.Spec.Rules))
 	return ingressContraintError(ing, msg, field, metav1.CauseTypeFieldValueInvalid)
@@ -348,57 +380,3 @@ func ingressContraintError(ing *v1beta1.Ingress, msg, field string, cause metav1
 	}
 	return util.StatusUnprocessableEntity(msg, ing, details)
 }
-
-// func (h *Handler) isDomainClaimed(ing *v1beta1.Ingress) (bool, error) {
-// 	if len(ing.Spec.Rules) != 1 {
-// 		return false, fmt.Errorf("ingress must contain only one host, found %d", len(ing.Spec.Rules))
-// 	}
-// 	ingRule := ing.Spec.Rules[0]
-// 	if ing.Annotations[fmt.Sprintf("kolihub.io/%s", ingRule.Host)] == "primary" {
-// 		domList, err := h.fetchDomainList()
-// 		if err != nil {
-// 			return false, fmt.Errorf("failed fetching domain list, %v", err)
-// 		}
-// 		for _, d := range domList.Items {
-// 			if !d.IsPrimary() || !d.IsOK() {
-// 				continue
-// 			}
-// 			if d.Name == ingRule.Host && d.Namespace != ing.Namespace {
-// 				return true, fmt.Errorf(`domain "%s" is claimed at "%s"`, d.Name, d.Namespace)
-// 			}
-// 		}
-// 		return false, nil
-// 	}
-
-// 	domList, err := h.fetchDomainList()
-// 	if err != nil {
-// 		return false, fmt.Errorf("failed fetching domain list, %v", err)
-// 	}
-// 	for _, d := range domList.Items {
-// 		if d.IsPrimary() || !d.IsOK() {
-// 			continue
-// 		}
-// 		if d.Name == ingRule.Host {
-// 			return true,
-// 		}
-// 	}
-// }
-
-// func (h *Handler) fetchDomainList() (*platform.DomainList, error) {
-// 	var domList *platform.DomainList
-// 	err := h.tprClient.Get().
-// 		Namespace(metav1.NamespaceAll).
-// 		Resource("domains").
-// 		Do().
-// 		Into(domList)
-// 	if err != nil {
-// 		return nil, err
-// 	}
-// 	return domList, nil
-// }
-
-// // isPrimaryDomainClaimed verifies if a platform.Domain is claimed in the system namespace
-// // or in the current namespace of the ingress resource
-// func (h *Handler) isPrimaryDomainClaimed() (bool, error) {
-// 	return false, nil
-// }
