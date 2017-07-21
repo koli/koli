@@ -251,24 +251,29 @@ func (h *Handler) IngressOnDelete(w http.ResponseWriter, r *http.Request) {
 	// It's insecure delete domains crossing namespaces, delete
 	// resources in the same namespace only
 	if len(ing.Spec.Rules) >= 1 {
-		dom, errStatus := h.searchPrimaryDomainByNamespace(ing.Spec.Rules[0].Host, namespace)
+		domainName := ing.Spec.Rules[0].Host
+		dom, errStatus := h.searchPrimaryDomainByNamespace(domainName, namespace)
 		if errStatus != nil {
 			glog.Infof("%s - %s", key, errStatus.Message)
 			util.WriteResponseError(w, errStatus)
 			return
 		}
-		glog.V(3).Infof("%s - found domain resource %s for %s", key, dom.Name, ing.Spec.Rules[0].Host)
-		_, err := h.usrTprClient.Delete().
-			Resource("domains").
-			Namespace(namespace).
-			Name(dom.Name).
-			DoRaw()
-		if err != nil {
-			msg := fmt.Sprintf("failed removing domain %s [%v]", dom.Name, err)
-			util.WriteResponseError(w, util.StatusBadRequest(msg, nil, metav1.StatusReasonBadRequest))
-			return
+		if dom != nil {
+			glog.V(3).Infof("%s - found domain resource %#v for %s", key, dom.Name, domainName)
+			_, err := h.usrTprClient.Delete().
+				Resource("domains").
+				Namespace(namespace).
+				Name(dom.Name).
+				DoRaw()
+			if err != nil {
+				msg := fmt.Sprintf("failed removing domain %#v [%v]", dom.Name, err)
+				util.WriteResponseError(w, util.StatusBadRequest(msg, nil, metav1.StatusReasonBadRequest))
+				return
+			}
+			glog.V(4).Infof("%s - domain %#v deleted successfully", key, dom.Name)
+		} else {
+			glog.V(3).Infof("%s - domain %#v not found", key, domainName)
 		}
-		glog.V(4).Infof("%s - domain [%s] deleted successfully", key, dom.Name)
 	}
 
 	err := h.usrClientset.Extensions().Ingresses(namespace).Delete(ing.Name, &metav1.DeleteOptions{})
