@@ -142,7 +142,7 @@ func (c *SecretController) syncHandler(key string) error {
 
 	// Patching an object primarily is less expensive because the most part of
 	// secret resources will be synced in each resync
-	s, err := c.kclient.Core().Secrets(ns.Name).Patch(
+	_, err = c.kclient.Core().Secrets(ns.Name).Patch(
 		platform.SystemSecretName,
 		types.StrategicMergePatchType,
 		genSystemTokenPatchData(tokenString),
@@ -150,8 +150,8 @@ func (c *SecretController) syncHandler(key string) error {
 	if err != nil && !apierrors.IsNotFound(err) {
 		return fmt.Errorf("failed updating secret [%v]", err)
 	}
-	if s != nil {
-		glog.V(3).Infof(`%s/%s secret updated with success, `, key, s.Name)
+	if err == nil {
+		glog.V(3).Infof(`%s/%s secret updated with success`, key, platform.SystemSecretName)
 		return nil
 	}
 
