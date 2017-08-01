@@ -37,4 +37,7 @@ const (
 	AnnotationSetupStorage = "kolihub.io/setup-storage"
 	// AnnotationApp is used to identify the deployment from a parent resource
 	AnnotationApp = "kolihub.io/app"
+
+	// AnnotationSecretLastUpdated informs when a system token was last updated at
+	AnnotationSecretLastUpdated = "secret.kolihub.io/updated-at"
 )
