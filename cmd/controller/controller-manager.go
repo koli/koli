@@ -41,6 +41,7 @@ func init() {
 	pflag.StringVar(&cfg.TLSConfig.CAFile, "ca-file", "", "path to TLS CA file.")
 	pflag.StringVar(&cfg.GitReleaseHost, "git-release-host", "http://git-release-server.koli-system", "the address where releases are stored")
 	pflag.StringVar(&cfg.ClusterName, "cluster-name", "gaia", "the name of the cluster")
+	pflag.StringVar(&cfg.PlatformJWTSecret, "platform-secret", "", "the jwt secret for creating dynamic system tokens")
 	pflag.StringVar(&cfg.SlugBuildImage, "slugbuilder-image", "quay.io/koli/slugbuilder", "the name of the builder image")
 	pflag.StringVar(&cfg.SlugRunnerImage, "slugrunner-image", "quay.io/koli/slugrunner", "the name of the runner image")
 	pflag.BoolVar(&cfg.DebugBuild, "debug-build", false, "debug the build container")
@@ -58,7 +59,10 @@ func printSystemVersion(kubeVersion *version.Info) {
 		v.GitVersion, v.GitCommit, v.GoVersion, v.BuildDate)
 }
 
-func startControllers(stop <-chan struct{}) error {
+func startControllers() error {
+	if len(cfg.PlatformJWTSecret) == 0 {
+		return fmt.Errorf("platform secret is empty")
+	}
 	kcfg, err := clientset.NewClusterConfig(cfg.Host, cfg.TLSInsecure, &cfg.TLSConfig)
 	if err != nil {
 		return err
@@ -87,33 +91,34 @@ func startControllers(stop <-chan struct{}) error {
 
 	sharedInformers := informers.NewSharedInformerFactory(client, 30*time.Second)
 
+	stopC := wait.NeverStop
 	// TODO: should we use the same client instance??
 	go controller.NewNamespaceController(
 		sharedInformers.Namespaces().Informer(),
 		sharedInformers.ServicePlans().Informer(sysClient),
 		client,
 		sysClient,
-	).Run(1, wait.NeverStop)
+	).Run(1, stopC)
 
 	go controller.NewAppManagerController(
 		sharedInformers.Deployments().Informer(),
 		sharedInformers.ServicePlans().Informer(sysClient),
 		client,
-	).Run(1, wait.NeverStop)
+	).Run(1, stopC)
 
 	go controller.NewReleaseController(
 		sharedInformers.Releases().Informer(sysClient),
 		sharedInformers.Deployments().Informer(),
 		sysClient,
 		client,
-	).Run(1, wait.NeverStop)
+	).Run(1, stopC)
 
 	go controller.NewBuildController(
 		&cfg,
 		sharedInformers.Releases().Informer(sysClient),
 		sysClient,
 		client,
-	).Run(1, wait.NeverStop)
+	).Run(1, stopC)
 
 	// TODO: hard-coded
 	selector := labels.Set{"kolihub.io/type": "slugbuild"}
@@ -124,10 +129,16 @@ func startControllers(stop <-chan struct{}) error {
 		sharedInformers.Releases().Informer(sysClient),
 		sysClient,
 		client,
-	).Run(1, wait.NeverStop)
+	).Run(1, stopC)
 
-	sharedInformers.Start(stop)
+	go controller.NewSecretController(
+		sharedInformers.Namespaces().Informer(),
+		sharedInformers.Secrets().Informer(),
+		client,
+		cfg.PlatformJWTSecret,
+	).Run(1, stopC)
 
+	sharedInformers.Start(stopC)
 	select {} // block forever
 }
 
