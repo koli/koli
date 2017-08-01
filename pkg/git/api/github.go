@@ -25,7 +25,6 @@ import (
 	"kolihub.io/koli/pkg/apis/v1alpha1/draft"
 	"kolihub.io/koli/pkg/clientset/auth0"
 	auth0clientset "kolihub.io/koli/pkg/clientset/auth0"
-	gitutil "kolihub.io/koli/pkg/git/util"
 	"kolihub.io/koli/pkg/util"
 )
 
@@ -501,6 +500,7 @@ func (h *Handler) Webhooks(w http.ResponseWriter, r *http.Request) {
 
 	switch event := event.(type) {
 	case *github.PushEvent:
+		glog.Infof("got a push event[%d], pusher[%#s], repository[%#v]", event.GetPushID(), event.Pusher.GetEmail(), event.Repo.GetFullName())
 		l := labels.Set{
 			"kolihub.io/gitowner": event.Repo.Owner.GetName(),
 			"kolihub.io/gitrepo":  event.Repo.GetName(),
@@ -512,7 +512,7 @@ func (h *Handler) Webhooks(w http.ResponseWriter, r *http.Request) {
 			fmt.Fprintf(w, "failed retrieving deploys: %s\n", err)
 			return
 		}
-
+		glog.Infof("got %d candidate(s) for build", len(dList.Items))
 		for _, obj := range dList.Items {
 			dp := draft.NewDeployment(&obj)
 			target := filepath.Join(dp.Namespace, dp.Name)
@@ -527,6 +527,7 @@ func (h *Handler) Webhooks(w http.ResponseWriter, r *http.Request) {
 				glog.Infof("%s - branch is not related: %s\n", target, dp.GitBranch())
 				continue
 			}
+			glog.Infof("%s - processing webhook", target)
 
 			// Fetch the identity only if the repository is private
 			var identity *authentication.Identity
@@ -544,11 +545,11 @@ func (h *Handler) Webhooks(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			jwtSystemToken, err := gitutil.GenerateNewJwtToken(h.cnf.PlatformClientSecret, nsMeta.Customer(), nsMeta.Organization(), platform.SystemTokenType)
-			if err != nil {
-				glog.Infof("%s - failed generating user token: %s", target, err)
-				continue
-			}
+			// jwtSystemToken, err := gitutil.GenerateNewJwtToken(h.cnf.PlatformClientSecret, nsMeta.Customer(), nsMeta.Organization(), platform.SystemTokenType)
+			// if err != nil {
+			// 	glog.Infof("%s - failed generating user token: %s", target, err)
+			// 	continue
+			// }
 
 			original, err := dp.DeepCopy()
 			if err != nil {
@@ -559,8 +560,8 @@ func (h *Handler) Webhooks(w http.ResponseWriter, r *http.Request) {
 
 			// Always remove at this stage, if the repository is public
 			// the token is not required for cloning.
-			delete(dp.Annotations, platform.AnnotationAuthToken)
-			delete(dp.Annotations, "kolihub.io/authtokentype")
+			// delete(dp.Annotations, platform.AnnotationAuthToken)
+			// delete(dp.Annotations, "kolihub.io/authtokentype")
 
 			// TODO: check if kolihub.io/build == true, means that a build was already started
 			// TODO: try to recover the revision number from the releases resources
@@ -571,7 +572,7 @@ func (h *Handler) Webhooks(w http.ResponseWriter, r *http.Request) {
 			dp.Annotations[platform.AnnotationGitRemote] = event.Repo.GetCloneURL()
 			dp.Annotations[platform.AnnotationGitRepository] = event.Repo.GetFullName()
 			dp.Annotations[platform.AnnotationGitRevision] = event.HeadCommit.GetID()
-			dp.Annotations[platform.AnnotationAuthToken] = jwtSystemToken
+			// dp.Annotations[platform.AnnotationAuthToken] = jwtSystemToken
 			if identity != nil {
 				cloneURL, err := getCloneURL(event.Repo.GetCloneURL(), identity.AccessToken, event.Repo.GetFullName())
 				if err != nil {

@@ -1,19 +1,23 @@
 package util
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"hash/adler32"
 	"io"
 	"net/http"
 	"strconv"
+	"time"
 
 	"io/ioutil"
 
+	jwt "github.com/dgrijalva/jwt-go"
 	"github.com/golang/glog"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/strategicpatch"
+	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 )
 
 // Decoder known how to decode a io.Reader into a Kubernetes resource
@@ -36,6 +40,24 @@ func (d *Decoder) Decode(v runtime.Object) error {
 	}
 	// runtime
 	return runtime.DecodeInto(d.dec, data, v)
+}
+
+// GenerateNewJwtToken creates a new user token to allow machine-to-machine interaction
+func GenerateNewJwtToken(key, customer, org string, tokenType platform.TokenType, exp time.Time) (string, error) {
+	token := jwt.New(jwt.SigningMethodHS256)
+	claims := make(jwt.MapClaims)
+	// Set some claims
+	claims["customer"] = customer
+	claims["org"] = org
+	claims["kolihub.io/type"] = tokenType
+
+	// always convert to UTC time
+	claims["exp"] = exp.UTC().Unix() // claims["exp"] = time.Now().UTC().Add(time.Minute * 20).Unix()
+	claims["iat"] = time.Now().UTC().Unix()
+	token.Claims = claims
+
+	// Sign and get the complete encoded token as a string
+	return token.SignedString(bytes.NewBufferString(key).Bytes())
 }
 
 // StrategicMergePatch creates a strategic merge patch and merge with the original object

@@ -14,4 +14,7 @@ const (
 	LabelStoragePlan = "kolihub.io/storage-plan"
 	// LabelDefault indicates a resource as default (boolean)
 	LabelDefault = "kolihub.io/default"
+
+	// LabelSecretController identifies resources created by the secret controller
+	LabelSecretController = "secret.kolihub.io"
 )

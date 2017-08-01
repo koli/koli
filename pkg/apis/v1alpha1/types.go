@@ -137,16 +137,18 @@ const (
 // ReleaseSpec holds specification parameters of a release
 type ReleaseSpec struct {
 	// The URL of the git remote server to download the git revision tarball
-	GitRemote     string     `json:"gitRemote"`
-	GitRevision   string     `json:"gitRevision"`
-	GitRepository string     `json:"gitRepository"`
-	BuildRevision string     `json:"buildRevision"`
-	AutoDeploy    bool       `json:"autoDeploy"`
-	ExpireAfter   int32      `json:"expireAfter"`
-	DeployName    string     `json:"deployName"`
-	Build         bool       `json:"build"`
-	AuthToken     string     `json:"authToken"` // expirable token
-	Source        SourceType `json:"sourceType"`
+	GitRemote     string `json:"gitRemote"`
+	GitRevision   string `json:"gitRevision"`
+	GitRepository string `json:"gitRepository"`
+	BuildRevision string `json:"buildRevision"`
+	AutoDeploy    bool   `json:"autoDeploy"`
+	ExpireAfter   int32  `json:"expireAfter"`
+	DeployName    string `json:"deployName"`
+	Build         bool   `json:"build"`
+	// DEPRECATED, the authToken for each release is populated by a secret
+	// the lifecycle of the token is managed by a controller
+	AuthToken string     `json:"authToken"` // expirable token
+	Source    SourceType `json:"sourceType"`
 }
 
 // ReleaseList is a list of Release

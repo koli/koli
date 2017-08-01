@@ -1,6 +1,7 @@
 package informers
 
 import (
+	"fmt"
 	"reflect"
 
 	platform "kolihub.io/koli/pkg/apis/v1alpha1"
@@ -245,6 +246,44 @@ func (f *podInformer) Informer(selector labels.Selector) cache.SharedIndexInform
 		&v1.Pod{},
 		f.defaultResync,
 		cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc},
+	)
+	f.informers[informerType] = informer
+	return informer
+}
+
+// SecretInformer is a type of SharedIndexInformer which watches and lists all its resources
+type SecretInformer interface {
+	Informer() cache.SharedIndexInformer
+}
+
+type secretInformer struct {
+	*sharedInformerFactory
+}
+
+func (f *secretInformer) Informer() cache.SharedIndexInformer {
+	f.lock.Lock()
+	defer f.lock.Unlock()
+
+	informerType := reflect.TypeOf(&v1.Secret{})
+	informer, exists := f.informers[informerType]
+	if exists {
+		return informer
+	}
+
+	informer = cache.NewSharedIndexInformer(
+		&cache.ListWatch{
+			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+				options.LabelSelector = fmt.Sprintf("%s=true", platform.LabelSecretController)
+				return f.client.Core().Secrets(metav1.NamespaceAll).List(options)
+			},
+			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+				options.LabelSelector = fmt.Sprintf("%s=true", platform.LabelSecretController)
+				return f.client.Core().Secrets(metav1.NamespaceAll).Watch(options)
+			},
+		},
+		&v1.Secret{},
+		f.defaultResync,
+		cache.Indexers{},
 	)
 	f.informers[informerType] = informer
 	return informer

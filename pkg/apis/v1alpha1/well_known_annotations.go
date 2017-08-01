@@ -19,6 +19,8 @@ const (
 	AnnotationGitRevision = "kolihub.io/gitrevision"
 	// AnnotationGitBranch is the name of the branch to accept webhook requests
 	AnnotationGitBranch = "kolihub.io/gitbranch"
+	// DEPRECATED, the authToken for each release is populated by a secret
+	// the lifecycle of the token is managed by a controller
 	// AnnotationAuthToken it's a string credential to communication with the release server
 	AnnotationAuthToken = "kolihub.io/authtoken"
 	// AnnotationBuildSource it's the source of the request which triggered the build: github (webhook), local, gitstep, etc
@@ -37,4 +39,7 @@ const (
 	AnnotationSetupStorage = "kolihub.io/setup-storage"
 	// AnnotationApp is used to identify the deployment from a parent resource
 	AnnotationApp = "kolihub.io/app"
+
+	// AnnotationSecretLastUpdated informs when a system token was last updated at
+	AnnotationSecretLastUpdated = "secret.kolihub.io/updated-at"
 )

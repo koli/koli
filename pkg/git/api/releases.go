@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strconv"
 
+	"github.com/golang/glog"
 	"github.com/gorilla/mux"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"kolihub.io/koli/pkg/apis/v1alpha1/draft"
@@ -21,8 +22,14 @@ import (
 func (h *Handler) Releases(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	namespace, deployName, gitRev := params["namespace"], params["deployName"], params["gitSha"]
+	key := fmt.Sprintf("%s/%s", namespace, deployName)
 	if _, err := draft.NewSha(gitRev); err != nil {
 		util.WriteResponseError(w, util.StatusBadRequest("invalid git SHA format", nil, metav1.StatusReasonBadRequest))
+		return
+	}
+	nsMeta := draft.NewNamespaceMetadata(namespace)
+	if nsMeta.Customer() != h.user.Customer || nsMeta.Organization() != h.user.Organization {
+		util.WriteResponseError(w, util.StatusForbidden("the user is not the owner of the namespace", nil, metav1.StatusReasonForbidden))
 		return
 	}
 	// path := filepath.Join(h.cnf.GitHome, constants.GitReleasePath, namespace, deployName)
@@ -55,12 +62,8 @@ func (h *Handler) Releases(w http.ResponseWriter, r *http.Request) {
 
 		filePath := filepath.Join(gitTask.FullReleasePath(), gitRev, header.Filename)
 		if _, err := os.Stat(filePath); !os.IsNotExist(err) {
-			util.WriteResponseError(w, &metav1.Status{
-				Code:    http.StatusConflict,
-				Status:  metav1.StatusFailure,
-				Message: fmt.Sprintf("the file %s already exists for this revision", header.Filename),
-				Reason:  metav1.StatusReasonConflict,
-			})
+			glog.Infof(`%s - the file "%s" already exists for this revision, noop`, key, header.Filename)
+			util.WriteResponseNoContent(w)
 			return
 		}
 		io.Copy(&data, file)

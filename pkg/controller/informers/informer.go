@@ -23,6 +23,7 @@ type SharedInformerFactory interface {
 	Namespaces() NamespaceInformer
 	Deployments() DeploymentInformer
 	Pods() PodInformer
+	Secrets() SecretInformer
 }
 
 type sharedInformerFactory struct {
@@ -119,4 +120,9 @@ func (f *sharedInformerFactory) Namespaces() NamespaceInformer {
 // Pods returns a SharedIndexInformer that lists and watchs all pods
 func (f *sharedInformerFactory) Pods() PodInformer {
 	return &podInformer{sharedInformerFactory: f}
+}
+
+// Secrets returns a SharedIndexInformer that lists and watchs all secrets
+func (f *sharedInformerFactory) Secrets() SecretInformer {
+	return &secretInformer{sharedInformerFactory: f}
 }

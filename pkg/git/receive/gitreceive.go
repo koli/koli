@@ -56,12 +56,11 @@ func Run(conf *Config, oldRev, newRev, refName string) error {
 	// }
 	gitTask := gitutil.NewServerTask(conf.GitHome, gitutil.NewObjectMeta(dp.Name, dp.Namespace))
 
-	// TODO: use a system token instead of the user
 	dp.Annotations[platform.AnnotationBuild] = "true"
 	dp.Annotations[platform.AnnotationGitRepository] = gitTask.GetRepository()
 	dp.Annotations[platform.AnnotationGitRemote] = conf.GitAPIHostname
 	dp.Annotations[platform.AnnotationGitRevision] = gitSha.Full()
-	dp.Annotations[platform.AnnotationAuthToken] = conf.UserJwtToken
+	// dp.Annotations[platform.AnnotationAuthToken] = conf.UserJwtToken
 	dp.Annotations[platform.AnnotationBuildSource] = "local"
 
 	if _, err := client.Extensions().Deployments(dp.Namespace).Update(dp.GetObject()); err != nil {

@@ -30,18 +30,21 @@ type fixture struct {
 	// Objects to put in the store.
 
 	objects []runtime.Object
+	secrets []runtime.Object
 	plans   []runtime.Object
 }
 
-func newFixture(t *testing.T, objects, plans []runtime.Object) *fixture {
+func newFixture(t *testing.T, objects, plans, secrets []runtime.Object) *fixture {
 	f := &fixture{}
 	f.t = t
 	f.objects = objects
 	f.plans = plans
+	f.secrets = secrets
+
 	return f
 }
 
-func (f *fixture) newController() (*AppManagerController, informers.SharedInformerFactory) {
+func (f *fixture) newAppController() (*AppManagerController, informers.SharedInformerFactory) {
 	f.client = fake.NewSimpleClientset(f.objects...)
 	informers := informers.NewSharedInformerFactory(f.client, 0)
 	ctrl := NewAppManagerController(
@@ -59,6 +62,24 @@ func (f *fixture) newController() (*AppManagerController, informers.SharedInform
 	return ctrl, informers
 }
 
+func (f *fixture) newSecretController(jwtToken string) (*SecretController, informers.SharedInformerFactory) {
+	f.client = fake.NewSimpleClientset(f.objects...)
+	infs := informers.NewSharedInformerFactory(f.client, 0)
+	ctrl := NewSecretController(
+		infs.Namespaces().Informer(),
+		infs.Secrets().Informer(),
+		f.client,
+		jwtToken,
+	)
+	for _, o := range f.objects {
+		ctrl.nsInf.GetStore().Add(o)
+	}
+	for _, o := range f.secrets {
+		ctrl.skInf.GetStore().Add(o)
+	}
+	return ctrl, infs
+}
+
 func TestSyncPersistentVolume(t *testing.T) {
 	var (
 		expectedName   = "foo"
@@ -68,8 +89,8 @@ func TestSyncPersistentVolume(t *testing.T) {
 		d              = newDeployment(expectedName, "dev-coyote-acme", notes, labels, nil, v1.Container{})
 		plan           = newStoragePlan("foo-plan-5g", "dev-coyote-acme", resource.MustParse("5Gi"))
 	)
-	f := newFixture(t, []runtime.Object{d}, []runtime.Object{plan})
-	c, _ := f.newController()
+	f := newFixture(t, []runtime.Object{d}, []runtime.Object{plan}, nil)
+	c, _ := f.newAppController()
 
 	if err := c.syncHandler(getKey(d, t)); err != nil {
 		t.Fatalf("unexpected error syncing: %v", err)
@@ -104,8 +125,8 @@ func TestSyncPersistentVolume(t *testing.T) {
 
 func TestSyncWithInvalidNamespace(t *testing.T) {
 	d := newDeployment("foo", "invalid-namespace", nil, nil, nil, v1.Container{})
-	f := newFixture(t, []runtime.Object{d}, nil)
-	c, _ := f.newController()
+	f := newFixture(t, []runtime.Object{d}, nil, nil)
+	c, _ := f.newAppController()
 
 	if err := c.syncHandler(getKey(d, t)); err != nil {
 		t.Fatalf("unexpected error syncing: %v", err)
@@ -121,8 +142,8 @@ func TestSyncWithNonExistentPlan(t *testing.T) {
 		d            = newDeployment("foo", "dev-coyote-acme", notes, labels, nil, v1.Container{})
 		plan         = newStoragePlan("wrong-storage-plan", "dev-coyote-acme", resource.MustParse("5Gi"))
 	)
-	f := newFixture(t, []runtime.Object{d}, []runtime.Object{plan})
-	c, _ := f.newController()
+	f := newFixture(t, []runtime.Object{d}, []runtime.Object{plan}, nil)
+	c, _ := f.newAppController()
 
 	if err := c.syncHandler(getKey(d, t)); err != nil && err.Error() != expectedMsg {
 		t.Errorf("GOT: %v, EXPECTED: %v", err, expectedMsg)

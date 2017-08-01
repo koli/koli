@@ -15,6 +15,7 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 
+	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/pkg/api/v1"
 	extensions "k8s.io/client-go/pkg/apis/extensions/v1beta1"
@@ -197,15 +198,11 @@ func (d *DeployerController) syncHandler(key string) error {
 			"Deployed", "Deploy '%s' updated with the new revision [%s]", release.Spec.DeployName, release.Spec.GitRevision[:7])
 	}
 
-	releaseCopy, err := platform.ReleaseDeepCopy(release)
-	if err != nil {
-		return fmt.Errorf("failed deep copying [%s]", err)
-	}
 	// turn-off build, otherwise it will trigger unwanted builds
-	releaseCopy.Spec.Build = false
-	releaseCopy.Labels[spec.KoliPrefix("buildstatus")] = string(pod.Status.Phase)
-	if _, err := d.clientset.Release(pod.Namespace).Update(releaseCopy); err != nil {
-		return fmt.Errorf("failed updating pod status [%s]", err)
+	patchData := []byte(fmt.Sprintf(`{"metadata": {"labels": {"kolihub.io/buildstatus": "%v"}}, "spec": {"build": false}}`, pod.Status.Phase))
+	_, err = d.clientset.Release(pod.Namespace).Patch(release.Name, types.MergePatchType, patchData)
+	if err != nil {
+		return fmt.Errorf("failed patching pod status[%s] in release [%s]", pod.Status.Phase, err)
 	}
 	return nil
 }
@@ -238,9 +235,17 @@ func (d *DeployerController) deploySlug(release *platform.Release, deploy *exten
 			Name:  "SLUG_URL",
 			Value: slugURL,
 		},
+		// A dynamic JWT Token secret provisioned by a controller
 		{
-			Name:  "AUTH_TOKEN",
-			Value: release.Spec.AuthToken, // TODO: this token mustn't be expirable!
+			Name: "AUTH_TOKEN",
+			ValueFrom: &v1.EnvVarSource{
+				SecretKeyRef: &v1.SecretKeySelector{
+					LocalObjectReference: v1.LocalObjectReference{
+						Name: platform.SystemSecretName,
+					},
+					Key: "token.jwt", // TODO: hard-coded
+				},
+			},
 		},
 		{
 			Name:  "DEBUG",
