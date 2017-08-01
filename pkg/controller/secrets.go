@@ -74,7 +74,7 @@ func (c *SecretController) Run(workers int, stopc <-chan struct{}) {
 
 	glog.Info("Starting Secret controller...")
 
-	if !cache.WaitForCacheSync(stopc, c.nsInf.HasSynced) {
+	if !cache.WaitForCacheSync(stopc, c.nsInf.HasSynced, c.skInf.HasSynced) {
 		return
 	}
 
