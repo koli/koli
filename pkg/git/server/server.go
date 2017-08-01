@@ -109,11 +109,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// The authentication was already validated, should not return error
-	_, jwtTokenString, _ := r.BasicAuth()
+	// _, jwtTokenString, _ := r.BasicAuth()
 	env := gitEnv{
-		Namespace:      namespace,
-		DeployName:     dp.Name,
-		UserJwtToken:   jwtTokenString,
+		Namespace:  namespace,
+		DeployName: dp.Name,
+		// UserJwtToken:   jwtTokenString,
 		GitHome:        h.cnf.GitHome,
 		KubeSvcHost:    h.cnf.Host,
 		GitAPIHostname: h.cnf.GitAPIHostname,
@@ -242,7 +242,7 @@ func gitCommand(env gitEnv, name string, args ...string) (*exec.Cmd, io.Reader) 
 	cmd.Env = append(os.Environ(),
 		fmt.Sprintf("NAMESPACE=%s", env.Namespace),
 		fmt.Sprintf("DEPLOY_NAME=%s", env.DeployName),
-		fmt.Sprintf("USER_JWT_TOKEN=%s", env.UserJwtToken),
+		// fmt.Sprintf("USER_JWT_TOKEN=%s", env.UserJwtToken),
 		fmt.Sprintf("KUBERNETES_SERVICE_HOST=%s", env.KubeSvcHost),
 		fmt.Sprintf("GIT_HOME=%s", env.GitHome),
 		fmt.Sprintf("GIT_API_HOSTNAME=%s", env.GitAPIHostname),

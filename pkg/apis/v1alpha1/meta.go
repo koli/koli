@@ -122,11 +122,7 @@ func (r *Release) GitCloneURL() (string, error) {
 
 // GitReleaseURL constructs the URL where the release must be stored
 func (r *Release) GitReleaseURL(host string) string {
-	repository := r.Spec.GitRepository
-	if r.IsGitHubSource() {
-		repository = filepath.Join(r.Namespace, r.Spec.DeployName)
-	}
-	urlPath := filepath.Join("releases", repository, r.Spec.GitRevision)
+	urlPath := filepath.Join("releases", r.Namespace, r.Spec.DeployName, r.Spec.GitRevision)
 	return fmt.Sprintf("%s/%s", host, urlPath)
 }
 

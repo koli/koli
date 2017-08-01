@@ -419,7 +419,6 @@ func TestWebhookDeployOneApp(t *testing.T) {
 				platform.AnnotationGitRepository: path.Join(ownerRepo, repoName),
 				platform.AnnotationGitRevision:   commit,
 				platform.AnnotationBuildSource:   "github",
-				platform.AnnotationAuthToken:     "",
 				platform.AnnotationBuild:         "true",
 			},
 		}
@@ -455,7 +454,6 @@ func TestWebhookDeployOneApp(t *testing.T) {
 			if err := json.Unmarshal(tp.Patch, d); err != nil {
 				t.Fatalf("unexpected error unmarshaling deploy: %#v", err)
 			}
-			expectedDeployMeta.Annotations[platform.AnnotationAuthToken] = d.Annotations[platform.AnnotationAuthToken]
 			if !reflect.DeepEqual(expectedDeployMeta.Annotations, d.Annotations) {
 				t.Errorf("GOT: %#v, EXPECTED: %#v", d.Annotations, expectedDeployMeta.Annotations)
 			}

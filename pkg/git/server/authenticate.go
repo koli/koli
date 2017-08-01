@@ -25,7 +25,7 @@ func (h *Handler) Authenticate(w http.ResponseWriter, r *http.Request, next http
 		return
 	}
 	h.user = u
-	// A system token is only allowed to download releases,
+	// A system token is only allowed to download/upload releases,
 	if u.Type == platform.SystemTokenType {
 		w.WriteHeader(http.StatusForbidden)
 		fmt.Fprintf(w, "Access Denied! Not allowed to access the resource\n")

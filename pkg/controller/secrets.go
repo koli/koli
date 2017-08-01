@@ -114,7 +114,12 @@ func (c *SecretController) syncHandler(key string) error {
 	// Verify the last time an object was synced, using a shared informer doesn't permit having a
 	// custom resync time, thus veryfing if an object can perform a sync operation is important.
 	// This validation prevents starving resources from the api server
-	if obj, exists, _ = c.skInf.GetStore().GetByKey(fmt.Sprintf("%s/%s", key, platform.SystemSecretName)); exists {
+	obj, exists, err = c.skInf.GetStore().GetByKey(fmt.Sprintf("%s/%s", key, platform.SystemSecretName))
+	if err != nil {
+		glog.Warningf("%s/%s - failed retrieving secret from store [%v]", key, platform.SystemSecretName, err)
+	}
+	if exists {
+		glog.V(5).Infof("%s/%s - secret exists in cache", key, platform.SystemSecretName)
 		s := obj.(*v1.Secret)
 		if s.Annotations != nil {
 			lastUpdated, err := time.Parse(time.RFC3339, s.Annotations[platform.AnnotationSecretLastUpdated])
@@ -152,7 +157,7 @@ func (c *SecretController) syncHandler(key string) error {
 		return fmt.Errorf("failed updating secret [%v]", err)
 	}
 	if err == nil {
-		glog.V(3).Infof(`%s/%s secret updated with success`, key, platform.SystemSecretName)
+		glog.Infof(`%s/%s secret updated with success`, key, platform.SystemSecretName)
 		return nil
 	}
 
@@ -173,7 +178,7 @@ func (c *SecretController) syncHandler(key string) error {
 	if err != nil {
 		return fmt.Errorf("failed creating secret [%v]", err)
 	}
-	glog.V(3).Infof("%s/%s secret created with success", key, platform.SystemSecretName)
+	glog.Infof("%s/%s secret created with success", key, platform.SystemSecretName)
 	return nil
 }
 

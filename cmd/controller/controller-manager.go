@@ -10,11 +10,11 @@ import (
 	"github.com/golang/glog"
 	"github.com/spf13/pflag"
 
+	_ "kolihub.io/koli/pkg/apis/v1alpha1/install"
 	"kolihub.io/koli/pkg/clientset"
 	"kolihub.io/koli/pkg/controller"
 	"kolihub.io/koli/pkg/controller/informers"
 	_ "kolihub.io/koli/pkg/controller/install"
-	_ "kolihub.io/koli/pkg/spec/install"
 	koliversion "kolihub.io/koli/pkg/version"
 
 	"k8s.io/apimachinery/pkg/labels"

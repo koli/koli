@@ -122,6 +122,7 @@ func (r *ReleaseController) syncHandler(key string) error {
 	}
 
 	dp := obj.(*extensions.Deployment)
+	// TODO: change to namespace meta!
 	_, err = platform.NewNamespace(dp.Namespace)
 	if err != nil {
 		glog.V(2).Infof("%s - noop, it's not a valid namespace", key)
@@ -247,6 +248,6 @@ func activateBuildPayload(activate bool) []byte {
 	if activate {
 		build = "true"
 	}
-	payload := fmt.Sprintf(`{"metadata": {"annotations": {"%s": "%s"}}}`, spec.KoliPrefix("build"), build)
+	payload := fmt.Sprintf(`{"metadata": {"annotations": {"%s": "%s"}}}`, platform.AnnotationBuild, build)
 	return []byte(payload)
 }

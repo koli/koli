@@ -163,7 +163,7 @@ func (b *BuildController) syncHandler(key string) error {
 	// a build has started for this release, disable it!
 	_, err = b.clientset.Release(release.Namespace).Patch(release.Name, types.MergePatchType, []byte(`{"spec": {"build": false}}`))
 	if err != nil {
-		return fmt.Errorf("%s - failed updating release: %s", key, err)
+		return fmt.Errorf("failed updating release [%s]", err)
 	}
 	return nil
 }
@@ -181,7 +181,7 @@ func slugbuilderPod(cfg *Config, rel *platform.Release, gitSha *koliutil.SHA, in
 		"GIT_CLONE_URL":   gitCloneURL,
 		"GIT_RELEASE_URL": rel.GitReleaseURL(cfg.GitReleaseHost),
 		"GIT_REVISION":    rel.Spec.GitRevision,
-		"AUTH_TOKEN":      rel.Spec.AuthToken,
+		// "AUTH_TOKEN":      rel.Spec.AuthToken,
 	}
 	if cfg.DebugBuild {
 		env["DEBUG"] = "TRUE"
@@ -192,6 +192,18 @@ func slugbuilderPod(cfg *Config, rel *platform.Release, gitSha *koliutil.SHA, in
 	pod.Spec.Containers[0].Image = cfg.SlugBuildImage
 	pod.Spec.Containers[0].Name = rel.Name
 
+	// A dynamic JWT Token secret provisioned by a controller
+	pod.Spec.Containers[0].Env = append(pod.Spec.Containers[0].Env, v1.EnvVar{
+		Name: "AUTH_TOKEN",
+		ValueFrom: &v1.EnvVarSource{
+			SecretKeyRef: &v1.SecretKeySelector{
+				LocalObjectReference: v1.LocalObjectReference{
+					Name: platform.SystemSecretName,
+				},
+				Key: "token.jwt", // TODO: hard-coded
+			},
+		},
+	})
 	// addEnvToContainer(pod,a "PUT_PATH", info.PushKey(), 0)
 	return &pod, nil
 }
@@ -229,14 +241,12 @@ func podResource(rel *platform.Release, gitSha *koliutil.SHA, env map[string]int
 		}
 	}
 
-	if len(pod.Spec.Containers) > 0 {
-		for k, v := range env {
-			for i := range pod.Spec.Containers {
-				pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{
-					Name:  k,
-					Value: fmt.Sprintf("%v", v),
-				})
-			}
+	for k, v := range env {
+		for i := range pod.Spec.Containers {
+			pod.Spec.Containers[i].Env = append(pod.Spec.Containers[i].Env, v1.EnvVar{
+				Name:  k,
+				Value: fmt.Sprintf("%v", v),
+			})
 		}
 	}
 	return pod

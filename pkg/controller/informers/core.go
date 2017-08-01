@@ -274,11 +274,11 @@ func (f *secretInformer) Informer() cache.SharedIndexInformer {
 		&cache.ListWatch{
 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
 				options.LabelSelector = fmt.Sprintf("%s=true", platform.LabelSecretController)
-				return f.client.Core().Pods(metav1.NamespaceAll).List(options)
+				return f.client.Core().Secrets(metav1.NamespaceAll).List(options)
 			},
 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
 				options.LabelSelector = fmt.Sprintf("%s=true", platform.LabelSecretController)
-				return f.client.Core().Pods(metav1.NamespaceAll).Watch(options)
+				return f.client.Core().Secrets(metav1.NamespaceAll).Watch(options)
 			},
 		},
 		&v1.Secret{},
