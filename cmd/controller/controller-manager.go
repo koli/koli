@@ -152,7 +152,8 @@ func main() {
 		}
 		fmt.Println(string(b))
 	} else {
-		err := startControllers(make(chan struct{}))
+		err := startControllers()
 		glog.Fatalf("error running controllers: %v", err)
+		panic("unreachable")
 	}
 }
