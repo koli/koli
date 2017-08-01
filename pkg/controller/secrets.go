@@ -2,6 +2,7 @@ package controller
 
 import (
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"time"
 
@@ -183,7 +184,7 @@ func genSystemTokenPatchData(token string) []byte {
 			platform.LabelSecretController,
 			platform.AnnotationSecretLastUpdated,
 			time.Now().UTC().Format(time.RFC3339),
-			token,
+			base64.StdEncoding.EncodeToString(bytes.NewBufferString(token).Bytes()),
 		),
 	)
 }
