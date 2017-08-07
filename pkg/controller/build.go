@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang/glog"
 	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+	"kolihub.io/koli/pkg/apis/v1alpha1/draft"
 	clientset "kolihub.io/koli/pkg/clientset"
 	"kolihub.io/koli/pkg/spec"
 	koliutil "kolihub.io/koli/pkg/util"
@@ -125,8 +126,8 @@ func (b *BuildController) syncHandler(key string) error {
 		glog.V(3).Infof("%s - release marked for deletion, skipping ...", key)
 		return nil
 	}
-	pns, err := platform.NewNamespace(release.Namespace)
-	if err != nil {
+
+	if !draft.NewNamespaceMetadata(release.Namespace).IsValid() {
 		glog.V(3).Infof("%s - noop, it's not a valid namespace", key)
 		return nil
 	}
@@ -143,7 +144,7 @@ func (b *BuildController) syncHandler(key string) error {
 	}
 
 	info := koliutil.NewSlugBuilderInfo(
-		pns.GetNamespace(),
+		release.Namespace,
 		release.Spec.DeployName,
 		platform.GitReleasesPathPrefix,
 		gitSha)

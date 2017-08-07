@@ -7,6 +7,7 @@ import (
 	"github.com/golang/glog"
 
 	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+	"kolihub.io/koli/pkg/apis/v1alpha1/draft"
 	clientset "kolihub.io/koli/pkg/clientset"
 	"kolihub.io/koli/pkg/spec"
 	koliutil "kolihub.io/koli/pkg/util"
@@ -123,8 +124,7 @@ func (r *ReleaseController) syncHandler(key string) error {
 
 	dp := obj.(*extensions.Deployment)
 	// TODO: change to namespace meta!
-	_, err = platform.NewNamespace(dp.Namespace)
-	if err != nil {
+	if !draft.NewNamespaceMetadata(dp.Namespace).IsValid() {
 		glog.V(2).Infof("%s - noop, it's not a valid namespace", key)
 		return nil
 	}
@@ -134,40 +134,6 @@ func (r *ReleaseController) syncHandler(key string) error {
 		return nil
 	}
 
-	// TODO: validate if it's a valid candidate for a new release,
-	// maybe the deployment was already builded but the resource was not updated
-	// properly (build=false)
-
-	// EXPERIMENTAL: check if there's is a specific release for building it
-	// TODO: The release is immutable from an user perspective?
-	// releaseTarget := dp.Annotations[spec.KoliPrefix("buildrelease")]
-	// if releaseTarget != "" {
-	// 	releaseExists := false
-	// 	cache.ListAll(r.releaseInf.GetStore(), labels.Everything(), func(obj interface{}) {
-	// 		// TODO: check for nil
-	// 		rel := obj.(*spec.Release)
-	// 		if rel.Namespace == dp.Namespace && rel.Name == releaseTarget {
-	// 			releaseExists = true
-	// 		}
-	// 	})
-	// 	// The releases exists, trigger a build on it
-	// 	if releaseExists {
-	// 		glog.Infof("%s - activating the build for release '%s'", logHeader, releaseTarget)
-	// 		activateBuild := activateBuildPayload(true)
-	// 		_, err := r.clientset.Release(dp.Namespace).Patch(releaseTarget, api.StrategicMergePatchType, activateBuild)
-	// 		if err == nil {
-	// 			// We need to update the 'build' key to false, otherwise the build will be triggered again.
-	// 			// TODO: Need other strategy for dealing with this kind of scenario
-	// 			deactivateBuild := activateBuildPayload(false)
-	// 			_, err = r.kclient.Extensions().Deployments(dp.Namespace).Patch(dp.Name, api.StrategicMergePatchType, deactivateBuild)
-	// 			if err != nil {
-	// 				return fmt.Errorf("%s - failed deactivating deployment: %s", logHeader, err)
-	// 			}
-	// 			return nil
-	// 		}
-	// 		return fmt.Errorf("%s - failed activating build for '%s'", logHeader, releaseTarget)
-	// 	}
-	// }
 	// The release doesn't exists, create/build a new one!
 	if err := validateRequiredKeys(dp); err != nil {
 		r.recorder.Event(dp, v1.EventTypeWarning, "MissingAnnotationKey", err.Error())

@@ -8,6 +8,7 @@ import (
 	"github.com/golang/glog"
 
 	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+	"kolihub.io/koli/pkg/apis/v1alpha1/draft"
 	clientset "kolihub.io/koli/pkg/clientset"
 	"kolihub.io/koli/pkg/spec"
 
@@ -124,8 +125,7 @@ func (d *DeployerController) syncHandler(key string) error {
 	}
 
 	pod := obj.(*v1.Pod)
-	_, err = platform.NewNamespace(pod.Namespace)
-	if err != nil {
+	if !draft.NewNamespaceMetadata(pod.Namespace).IsValid() {
 		glog.V(2).Infof("%s - noop, it's not a valid namespace", key)
 		return nil
 	}

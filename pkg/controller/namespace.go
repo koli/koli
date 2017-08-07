@@ -6,6 +6,7 @@ import (
 
 	"github.com/golang/glog"
 	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+	"kolihub.io/koli/pkg/apis/v1alpha1/draft"
 	"kolihub.io/koli/pkg/clientset"
 	"kolihub.io/koli/pkg/spec"
 
@@ -76,47 +77,6 @@ func (c *NamespaceController) updateNamespace(o, n interface{}) {
 	c.queue.Add(new)
 }
 
-// func (c *NamespaceController) deleteNamespace(n interface{}) {
-// 	ns := n.(*v1.Namespace)
-// 	glog.V(2).Infof("%s(%s) - delete-namespace", ns.Name, ns.ResourceVersion)
-// }
-
-func (c *NamespaceController) updateServicePlan(o, n interface{}) {
-	old := o.(*platform.Plan)
-	new := n.(*platform.Plan)
-
-	if old.ResourceVersion == new.ResourceVersion {
-		return
-	}
-
-	pns, err := platform.NewNamespace(new.Namespace)
-	if err != nil {
-		// it's not a valid namespace of the platform, skip
-		return
-	}
-	// Process only broker serviceplans
-	if pns.IsSystem() {
-		glog.V(2).Infof("%s/%s - update-service-plan", new.Namespace, new.Name)
-		c.enqueueForServicePlan(new.Name, pns)
-	}
-}
-
-// enqueueForServicePlan queues all the namespaces that belongs to a specific service plan
-func (c *NamespaceController) enqueueForServicePlan(spName string, pns *platform.Namespace) {
-	options := spec.NewLabel().Add(map[string]string{
-		"org":        pns.Organization,
-		"brokerplan": spName,
-	})
-	cache.ListAll(c.nsInf.GetStore(), options.AsSelector(), func(obj interface{}) {
-		// TODO: check for nil
-		ns := obj.(*v1.Namespace)
-		if pns.GetSystemNamespace() == ns.Name {
-			return
-		}
-		c.queue.Add(ns)
-	})
-}
-
 // Run the controller.
 func (c *NamespaceController) Run(workers int, stopc <-chan struct{}) {
 	// don't let panics crash the process
@@ -163,8 +123,8 @@ func (c *NamespaceController) syncHandler(key string) error {
 		Organization: ns.Labels["kolihub.io/org"],
 		Username:     ns.Annotations["kolihub.io/owner"],
 	}
-	pns, err := platform.NewNamespace(ns.Name)
-	if err != nil {
+	nsMeta := draft.NewNamespaceMetadata(ns.Name)
+	if !nsMeta.IsValid() {
 		glog.Infof("%s - %s", key, err)
 		return nil
 	}
@@ -172,71 +132,22 @@ func (c *NamespaceController) syncHandler(key string) error {
 		c.recorder.Event(ns, v1.EventTypeWarning, "IdentityMismatch", "The namespace doesn't have any owner.")
 		return nil
 	}
-	if pns.Organization != user.Organization || pns.Customer != user.Customer {
+	if nsMeta.Organization() != user.Organization || nsMeta.Customer() != user.Customer {
 		msg := "%s - Identity mismatch: the user belongs to the customer '%s' and organization '%s', " +
 			"but the namespace was created for the customer '%s' and organization '%s'."
-		msg = fmt.Sprintf(msg, key, user.Customer, user.Organization, pns.Customer, pns.Organization)
+		msg = fmt.Sprintf(msg, key, user.Customer, user.Organization, nsMeta.Customer(), nsMeta.Organization())
 		c.recorder.Event(ns, v1.EventTypeWarning, "IdentityMismatch", msg)
 		return nil
 	}
 
-	// TODO: updating a serviceplan must enqueue all namespaces (label match)
-	// TODO: add a label in the namespace indicating the service plan
-	var sp *platform.Plan
-	options := spec.NewLabel().Add(make(map[string]string))
-	planName := ns.Annotations[spec.KoliPrefix("brokerplan")]
-	if planName == "" {
-		options.Add(map[string]string{spec.KoliPrefix("default"): "true"})
-		cache.ListAll(c.spInf.GetStore(), options.AsSelector(), func(obj interface{}) {
-			// it will not handle multiple results
-			if obj != nil {
-				splan := obj.(*platform.Plan)
-				if splan.Namespace == pns.GetSystemNamespace() {
-					sp = splan
-				}
-			}
-		})
-	} else {
-		spQ := &platform.Plan{}
-		spQ.Name = planName
-		spQ.Namespace = pns.GetSystemNamespace()
-		obj, exists, err := c.spInf.GetStore().Get(spQ)
-		if err != nil || !exists {
-			glog.Infof("failed retrieving service plan from the store [%s]", err)
-		} else {
-			if obj != nil {
-				sp = obj.(*platform.Plan)
-			}
-		}
+	// Plan for namespaces isn't implemented yet
+	sp := &platform.Plan{ObjectMeta: metav1.ObjectMeta{Name: ""}}
+	if err := c.enforceQuota(ns.Name, sp); err != nil {
+		c.recorder.Event(ns, v1.EventTypeWarning, "SetupQuotaError", err.Error())
+		return fmt.Errorf("SetupQuota [%s]", err)
 	}
-	if sp == nil {
-		sp = &platform.Plan{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: "",
-			},
-		}
-	}
-	// Deep-Copy, otherwise we're mutating our cache
-	spCopy, err := platform.ServicePlanDeepCopy(sp)
-	if err != nil {
-		c.recorder.Event(ns, v1.EventTypeWarning, "SetupPlanError", err.Error())
-		return fmt.Errorf("%s - failed deep copying service plan '%s' [%s]", key, sp.Name, err)
-	}
-	spCopy.Spec.Hard.RemoveUnregisteredResources()
-
-	// TODO: test resource quota, update/delete
-	// TODO: enqueue all namespaces when updating a service plan - TEST
-	// TODO: update or create new quotas
-
-	// Those rules doesn't apply to system broker namespaces
-	if !pns.IsSystem() {
-		if err := c.enforceQuota(ns.Name, spCopy); err != nil {
-			c.recorder.Event(ns, v1.EventTypeWarning, "SetupQuotaError", err.Error())
-			return fmt.Errorf("SetupQuota [%s]", err)
-		}
-		// TODO: check for errors!
-		c.enforceRoleBindings(key, ns, user, spCopy)
-	}
+	// TODO: check for errors!
+	c.enforceRoleBindings(key, ns, user, sp)
 
 	if err := c.createDefaultPermissions(ns.Name, user); err != nil {
 		c.recorder.Event(ns, v1.EventTypeWarning, "SetupRolesError", err.Error())
