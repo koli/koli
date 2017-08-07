@@ -1,8 +1,16 @@
+# v0.6.2-alpha
+
+## Improvements
+
+### controller
+
+- Remove deprecated namespace validation.
+
 # v0.6.1-alpha
 
 ## Bugs
 
-Implement correctly removing ingresses resources. [#114](https://github.com/kolihub/koli/issues/114)
+- Implement correctly removing ingresses resources. [#114](https://github.com/kolihub/koli/issues/114)
 
 # v0.6.0-alpha
 
