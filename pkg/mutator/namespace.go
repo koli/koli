@@ -51,7 +51,7 @@ func (h *Handler) NamespaceOnList(w http.ResponseWriter, r *http.Request) {
 		platform.LabelCustomer:     h.user.Customer,
 		platform.LabelOrganization: h.user.Organization,
 	}
-	nsList, err := h.usrClientset.Core().Namespaces().List(metav1.ListOptions{LabelSelector: selector.String()})
+	nsList, err := h.clientset.Core().Namespaces().List(metav1.ListOptions{LabelSelector: selector.String()})
 	switch e := err.(type) {
 	case *apierrors.StatusError:
 		e.ErrStatus.APIVersion = nsList.APIVersion
