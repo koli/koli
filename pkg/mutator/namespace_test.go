@@ -58,7 +58,7 @@ func TestOnNamespaceList(t *testing.T) {
 	ts := httptest.NewServer(router)
 	defer ts.Close()
 
-	h.usrClientset, _ = kubernetes.NewForConfig(&rest.Config{})
+	h.clientset, _ = kubernetes.NewForConfig(&rest.Config{})
 	nsFakeClient := fakerest.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 		if req.Method != "GET" || req.URL.Path != "/api/v1/namespaces" {
 			t.Fatal("unexpected method or url path")
@@ -78,7 +78,7 @@ func TestOnNamespaceList(t *testing.T) {
 			Body:       objBody(expectedNs),
 		}, nil
 	})
-	h.usrClientset.Core().RESTClient().(*rest.RESTClient).Client = nsFakeClient
+	h.clientset.Core().RESTClient().(*rest.RESTClient).Client = nsFakeClient
 
 	nsMeta := draft.NewNamespaceMetadata(expectedNs.Items[0].Name)
 	h.user = &platform.User{Customer: nsMeta.Customer(), Organization: nsMeta.Organization()}
