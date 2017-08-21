@@ -52,7 +52,9 @@ type PlanSpec struct {
 	Hard ResourceList `json:"hard,omitempty"`
 	// Storage is the ammount of storage requested
 	Storage resource.Quantity `json:"storage,omitempty"`
-	Roles   []PlatformRole    `json:"roles,omitempty"`
+	// DefaultClusterRole is the reference cluster role name
+	// to create a rolebinding for each user on the platform
+	DefaultClusterRole string `json:"defaultClusterRole,omitempty"`
 }
 
 const (

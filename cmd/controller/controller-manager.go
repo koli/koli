@@ -78,7 +78,7 @@ func startControllers() error {
 	}
 	printSystemVersion(kubeServerVersion)
 
-	controller.CreatePlatformRoles(client)
+	// controller.CreatePlatformRoles(client)
 	// Create required third party resources
 	controller.CreateAddonTPRs(cfg.Host, client)
 	controller.CreatePlan3PRs(cfg.Host, client)

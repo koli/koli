@@ -2,13 +2,14 @@ package controller
 
 import (
 	"fmt"
+	"path"
+	"strings"
 	"time"
 
 	"github.com/golang/glog"
 	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 	"kolihub.io/koli/pkg/apis/v1alpha1/draft"
 	"kolihub.io/koli/pkg/clientset"
-	"kolihub.io/koli/pkg/spec"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/pkg/api/v1"
@@ -17,6 +18,7 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	extensions "k8s.io/client-go/pkg/apis/extensions/v1beta1"
 	rbac "k8s.io/client-go/pkg/apis/rbac/v1beta1"
@@ -123,9 +125,10 @@ func (c *NamespaceController) syncHandler(key string) error {
 		Organization: ns.Labels["kolihub.io/org"],
 		Username:     ns.Annotations["kolihub.io/owner"],
 	}
+	user.Groups = strings.Split(ns.Annotations["kolihub.io/groups"], ",")
 	nsMeta := draft.NewNamespaceMetadata(ns.Name)
 	if !nsMeta.IsValid() {
-		glog.Infof("%s - %s", key, err)
+		glog.Infof("%s - it's not a valid resource", key)
 		return nil
 	}
 	if len(user.Username) == 0 {
@@ -140,60 +143,120 @@ func (c *NamespaceController) syncHandler(key string) error {
 		return nil
 	}
 
-	// Plan for namespaces isn't implemented yet
-	sp := &platform.Plan{ObjectMeta: metav1.ObjectMeta{Name: ""}}
-	if err := c.enforceQuota(ns.Name, sp); err != nil {
+	var plan *platform.Plan
+	obj, exists, err = c.spInf.GetStore().GetByKey(path.Join(platform.SystemNamespace, ns.Annotations[platform.LabelClusterPlan]))
+	if err != nil {
+		return fmt.Errorf("failed retrieving plan from cache [%v]", err)
+	}
+	if !exists {
+		glog.V(3).Infof("%s - searching for a default plan", key)
+		s := labels.Set{platform.LabelDefault: "true"}
+		cache.ListAll(c.spInf.GetStore(), s.AsSelector(), func(obj interface{}) {
+			if plan != nil { // break
+				return
+			}
+			p := obj.(*platform.Plan)
+			if p.Namespace != platform.SystemNamespace {
+				return
+			}
+			if _, ok := p.Labels[platform.LabelDefault]; ok {
+				plan = p
+			}
+		})
+	} else {
+		plan = obj.(*platform.Plan)
+	}
+	if plan == nil {
+		// TODO: change message output
+		return fmt.Errorf("a custom or a default plan wasn't found")
+	}
+	glog.V(3).Infof(`%s - found plan "%s", role: %#v`, key, plan.Name, plan.Spec.DefaultClusterRole)
+
+	// TODO: should retry
+	if err := c.createDefaultRoleBinding(ns.Name, user, plan); err != nil {
+		if !apierrors.IsAlreadyExists(err) {
+			c.recorder.Event(ns, v1.EventTypeWarning, "SetupRolesError", err.Error())
+			return fmt.Errorf("SetupRoles [%v]", err)
+		}
+	}
+	if err := c.enforceQuota(ns.Name, plan); err != nil {
 		c.recorder.Event(ns, v1.EventTypeWarning, "SetupQuotaError", err.Error())
-		return fmt.Errorf("SetupQuota [%s]", err)
+		return fmt.Errorf("SetupQuota [%v]", err)
 	}
 	// TODO: check for errors!
-	c.enforceRoleBindings(key, ns, user, sp)
+	// c.enforceRoleBindings(key, ns, user, sp)
 
-	if err := c.createDefaultPermissions(ns.Name, user); err != nil {
-		c.recorder.Event(ns, v1.EventTypeWarning, "SetupRolesError", err.Error())
-		return fmt.Errorf("SetupRoles [%s]", err)
-	}
+	// if err := c.createDefaultPermissions(ns.Name, user); err != nil {
+	// 	c.recorder.Event(ns, v1.EventTypeWarning, "SetupRolesError", err.Error())
+	// 	return fmt.Errorf("SetupRoles [%s]", err)
+	// }
 	if err := c.createNetworkPolicy(ns.Name); err != nil {
 		c.recorder.Event(ns, v1.EventTypeWarning, "SetupNetworkError", err.Error())
-		return fmt.Errorf("SetupNetwork [%s]", err)
+		return fmt.Errorf("SetupNetwork [%v]", err)
 	}
+	glog.V(3).Infof("%s - namespace provisioned successfully", key)
 	return nil
 }
 
 // create the permissions (role/role binding) needed for the user
 // to access the resources of the namespace.
-func (c *NamespaceController) createDefaultPermissions(ns string, usr *platform.User) error {
-	role := &rbac.Role{
-		ObjectMeta: metav1.ObjectMeta{Name: "default"},
-		Rules: []rbac.PolicyRule{
-			{
-				APIGroups: []string{"*"},
-				Resources: platform.RoleResources,
-				Verbs:     platform.RoleVerbs,
-			},
-		},
-	}
-	if _, err := c.kclient.Rbac().Roles(ns).Create(role); err != nil && !apierrors.IsAlreadyExists(err) {
-		return fmt.Errorf("Failed creating role: %s", err)
-	}
+// func (c *NamespaceController) createDefaultPermissions(ns string, usr *platform.User) error {
+// 	role := &rbac.Role{
+// 		ObjectMeta: metav1.ObjectMeta{Name: "default"},
+// 		Rules: []rbac.PolicyRule{
+// 			{
+// 				APIGroups: []string{"*"},
+// 				Resources: platform.RoleResources,
+// 				Verbs:     platform.RoleVerbs,
+// 			},
+// 		},
+// 	}
+// 	if _, err := c.kclient.Rbac().Roles(ns).Create(role); err != nil && !apierrors.IsAlreadyExists(err) {
+// 		return fmt.Errorf("Failed creating role: %s", err)
+// 	}
 
+// 	roleBinding := &rbac.RoleBinding{
+// 		ObjectMeta: metav1.ObjectMeta{Name: "default"},
+// 		Subjects: []rbac.Subject{
+// 			{
+// 				Kind: "User",
+// 				Name: usr.Username, // TODO: change to ID
+// 			},
+// 		},
+// 		RoleRef: rbac.RoleRef{
+// 			Kind: "Role",
+// 			Name: "default", // must match role name
+// 		},
+// 	}
+// 	if _, err := c.kclient.Rbac().RoleBindings(ns).Create(roleBinding); err != nil && !apierrors.IsAlreadyExists(err) {
+// 		return fmt.Errorf("Failed creating rolebinding: %s", err)
+// 	}
+// 	return nil
+// }
+
+func (c *NamespaceController) createDefaultRoleBinding(namespace string, u *platform.User, sp *platform.Plan) error {
 	roleBinding := &rbac.RoleBinding{
-		ObjectMeta: metav1.ObjectMeta{Name: "default"},
-		Subjects: []rbac.Subject{
-			{
-				Kind: "User",
-				Name: usr.Username, // TODO: change to ID
-			},
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "koli:default",
+			Namespace: namespace,
 		},
 		RoleRef: rbac.RoleRef{
 			Kind: "Role",
-			Name: "default", // must match role name
+			Name: sp.Spec.DefaultClusterRole,
 		},
 	}
-	if _, err := c.kclient.Rbac().RoleBindings(ns).Create(roleBinding); err != nil && !apierrors.IsAlreadyExists(err) {
-		return fmt.Errorf("Failed creating rolebinding: %s", err)
+	// Add permission to the owner of the namespace
+	subjects := []rbac.Subject{{Kind: rbac.UserKind, Name: u.Username}}
+	// Configure groups that this customer belongs to
+	for _, group := range u.Groups {
+		if len(group) == 0 {
+			continue
+		}
+		subjects = append(subjects, rbac.Subject{Kind: rbac.GroupKind, Name: group})
 	}
-	return nil
+	roleBinding.Subjects = subjects
+	_, err := c.kclient.Rbac().RoleBindings(namespace).Create(roleBinding)
+	return err
 }
 
 func (c *NamespaceController) createNetworkPolicy(ns string) error {
@@ -274,64 +337,64 @@ func (c *NamespaceController) enforceQuota(ns string, sp *platform.Plan) error {
 	return nil
 }
 
-func (c *NamespaceController) enforceRoleBindings(logHeader string, ns *v1.Namespace, user *platform.User, sp *platform.Plan) {
-	// Platform Roles
-	userRoles := platform.NewPlatformRoles(ns.Annotations[spec.KoliPrefix("roles")])
-	hasUserRoles := false
-	if len(userRoles) > 0 {
-		hasUserRoles = true
-	}
+// func (c *NamespaceController) enforceRoleBindings(logHeader string, ns *v1.Namespace, user *platform.User, sp *platform.Plan) {
+// 	// Platform Roles
+// 	userRoles := platform.NewPlatformRoles(ns.Annotations[spec.KoliPrefix("roles")])
+// 	hasUserRoles := false
+// 	if len(userRoles) > 0 {
+// 		hasUserRoles = true
+// 	}
 
-	if len(platform.PlatformRegisteredRoles) == 0 {
-		glog.Warningf("%s - platform roles not found", logHeader)
-	}
-	for _, role := range platform.PlatformRegisteredRoles {
-		// Manual Operation - it has an annotation
-		if hasUserRoles {
-			if role.Exists(userRoles) {
-				subjects := []rbac.Subject{}
-				for _, group := range user.Groups {
-					// TODO: adding a new group will not make effect
-					// if the rolebinding exists
-					subjects = append(subjects, rbac.Subject{Kind: rbac.GroupKind, Name: group})
-				}
-				subjects = append(subjects, rbac.Subject{Kind: rbac.UserKind, Name: user.Username})
-				_, err := c.kclient.Rbac().RoleBindings(ns.Name).Create(role.GetRoleBinding(subjects))
-				if err != nil && !apierrors.IsAlreadyExists(err) {
-					// TODO: requeue on errors?
-					glog.Warningf("%s - failed creating manual role binding '%s': %s", logHeader, role, err)
-					continue
-				}
-				glog.Infof("%s - manual role binding created '%s'", logHeader, role)
-			} else {
-				opts := &metav1.DeleteOptions{}
-				err := c.kclient.Rbac().RoleBindings(ns.Name).Delete(string(role), opts)
-				if err != nil && !apierrors.IsNotFound(err) {
-					// TODO: requeue on errors?
-					glog.Warningf("%s - failed removing manual role binding '%s'", logHeader, role)
-					continue
-				}
-				glog.Infof("%s - manual role binding removed '%s'", logHeader, role)
-			}
-			// Go to the next platform role because it's a manual operation (has annotations)
-			continue
-		}
+// 	if len(platform.PlatformRegisteredRoles) == 0 {
+// 		glog.Warningf("%s - platform roles not found", logHeader)
+// 	}
+// 	for _, role := range platform.PlatformRegisteredRoles {
+// 		// Manual Operation - it has an annotation
+// 		if hasUserRoles {
+// 			if role.Exists(userRoles) {
+// 				subjects := []rbac.Subject{}
+// 				for _, group := range user.Groups {
+// 					// TODO: adding a new group will not make effect
+// 					// if the rolebinding exists
+// 					subjects = append(subjects, rbac.Subject{Kind: rbac.GroupKind, Name: group})
+// 				}
+// 				subjects = append(subjects, rbac.Subject{Kind: rbac.UserKind, Name: user.Username})
+// 				_, err := c.kclient.Rbac().RoleBindings(ns.Name).Create(role.GetRoleBinding(subjects))
+// 				if err != nil && !apierrors.IsAlreadyExists(err) {
+// 					// TODO: requeue on errors?
+// 					glog.Warningf("%s - failed creating manual role binding '%s': %s", logHeader, role, err)
+// 					continue
+// 				}
+// 				glog.Infof("%s - manual role binding created '%s'", logHeader, role)
+// 			} else {
+// 				opts := &metav1.DeleteOptions{}
+// 				err := c.kclient.Rbac().RoleBindings(ns.Name).Delete(string(role), opts)
+// 				if err != nil && !apierrors.IsNotFound(err) {
+// 					// TODO: requeue on errors?
+// 					glog.Warningf("%s - failed removing manual role binding '%s'", logHeader, role)
+// 					continue
+// 				}
+// 				glog.Infof("%s - manual role binding removed '%s'", logHeader, role)
+// 			}
+// 			// Go to the next platform role because it's a manual operation (has annotations)
+// 			continue
+// 		}
 
-		// Automatic Operation - inherit from a service plan
-		if role.Exists(sp.Spec.Roles) {
-			roleBinding := role.GetRoleBinding([]rbac.Subject{{Kind: "User", Name: user.Username}})
-			_, err := c.kclient.Rbac().RoleBindings(ns.Name).Create(roleBinding)
-			if err != nil && !apierrors.IsAlreadyExists(err) {
-				glog.Warningf("%s - failed creating role binding '%s': %s", logHeader, role, err)
-				continue
-			}
-			glog.Infof("%s - role binding created '%s'", logHeader, role)
-		} else {
-			opts := &metav1.DeleteOptions{}
-			err := c.kclient.Rbac().RoleBindings(ns.Name).Delete(string(role), opts)
-			if err != nil && !apierrors.IsNotFound(err) {
-				glog.Warningf("%s - failed removing role binding '%s'", logHeader, role)
-			}
-		}
-	}
-}
+// 		// Automatic Operation - inherit from a service plan
+// 		if role.Exists(sp.Spec.Roles) {
+// 			roleBinding := role.GetRoleBinding([]rbac.Subject{{Kind: "User", Name: user.Username}})
+// 			_, err := c.kclient.Rbac().RoleBindings(ns.Name).Create(roleBinding)
+// 			if err != nil && !apierrors.IsAlreadyExists(err) {
+// 				glog.Warningf("%s - failed creating role binding '%s': %s", logHeader, role, err)
+// 				continue
+// 			}
+// 			glog.Infof("%s - role binding created '%s'", logHeader, role)
+// 		} else {
+// 			opts := &metav1.DeleteOptions{}
+// 			err := c.kclient.Rbac().RoleBindings(ns.Name).Delete(string(role), opts)
+// 			if err != nil && !apierrors.IsNotFound(err) {
+// 				glog.Warningf("%s - failed removing role binding '%s'", logHeader, role)
+// 			}
+// 		}
+// 	}
+// }

@@ -4,7 +4,6 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
 
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
@@ -40,14 +39,14 @@ func watch3PRs(host, endpoint string, kclient kubernetes.Interface) error {
 }
 
 // CreatePlatformRoles initialize the needed roles for the platform
-func CreatePlatformRoles(kclient kubernetes.Interface) {
-	for _, role := range platform.GetRoles() {
-		if _, err := kclient.Rbac().ClusterRoles().Create(role); err != nil && !apierrors.IsAlreadyExists(err) {
-			panic(err)
-		}
-		glog.Infof("provisioned role %s", role.Name)
-	}
-}
+// func CreatePlatformRoles(kclient kubernetes.Interface) {
+// 	for _, role := range platform.GetRoles() {
+// 		if _, err := kclient.Rbac().ClusterRoles().Create(role); err != nil && !apierrors.IsAlreadyExists(err) {
+// 			panic(err)
+// 		}
+// 		glog.Infof("provisioned role %s", role.Name)
+// 	}
+// }
 
 func newRecorder(client kubernetes.Interface, component string) record.EventRecorder {
 	eventBroadcaster := record.NewBroadcaster()
