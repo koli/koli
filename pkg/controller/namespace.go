@@ -241,7 +241,7 @@ func (c *NamespaceController) createDefaultRoleBinding(namespace string, u *plat
 			Namespace: namespace,
 		},
 		RoleRef: rbac.RoleRef{
-			Kind: "Role",
+			Kind: "ClusterRole",
 			Name: sp.Spec.DefaultClusterRole,
 		},
 	}
