@@ -9,12 +9,16 @@ DEV_ENV_PREFIX := docker run --rm -v ${CURDIR}:${DEV_ENV_WORK_DIR} -w ${DEV_ENV_
 DEV_ENV_CMD := ${DEV_ENV_PREFIX} ${DEV_ENV_IMAGE}
 
 BINARY_DEST_DIR := rootfs/usr/bin
+ROOTFS := rootfs
+BINARY_DEST_CONTROLLER_DIR := ${ROOTFS}/controller/usr/bin
+BINARY_DEST_GITSTEP_DIR := ${ROOTFS}/gitstep/usr/bin
+BINARY_DEST_MUTATOR_DIR := ${ROOTFS}/mutator/usr/bin
 
 # # It's necessary to set this because some environments don't link sh -> bash.
 SHELL := /bin/bash
 
 # Common flags passed into Go's linker.
-GOTEST := go test --race 
+GOTEST := go test --race -v
 KUBECLIVERSION ?= unknown # glide.yaml
 GITCOMMIT ?= $(shell git rev-parse HEAD)
 DATE ?= $(shell date -u "+%Y-%m-%dT%H:%M:%SZ")
@@ -27,55 +31,38 @@ LDFLAGS := "-s -w \
 GOOS ?= linux
 GOARCH ?= amd64
 
-build-git: clean
-	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/gitserver cmd/gitserver/gitserver.go
-	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/gitreceive cmd/gitreceive/gitreceive.go
-	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/gitapi cmd/gitapi/gitapi.go
+build-git:
+	rm -f ${BINARY_DEST_GITSTEP_DIR}/*
+	mkdir -p ${BINARY_DEST_GITSTEP_DIR}
+	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_GITSTEP_DIR}/gitserver cmd/gitserver/gitserver.go
+	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_GITSTEP_DIR}/gitreceive cmd/gitreceive/gitreceive.go
+	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_GITSTEP_DIR}/gitapi cmd/gitapi/gitapi.go
 
-compress:
-	upx -9 ${BINARY_DEST_DIR}/*
+build-controller:
+	rm -f ${BINARY_DEST_CONTROLLER_DIR}/*
+	mkdir -p ${BINARY_DEST_CONTROLLER_DIR}
+	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_CONTROLLER_DIR}/koli-controller cmd/controller/controller-manager.go
 
-build-git-server: clean
-	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/gitserver cmd/gitserver/gitserver.go
+build-mutator:
+	rm -f ${BINARY_DEST_MUTATOR_DIR}/*
+	mkdir -p ${BINARY_DEST_MUTATOR_DIR}
+	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_MUTATOR_DIR}/k8smutator cmd/mutator/main.go
 
-build-git-receive: clean
-	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/gitreceive cmd/gitreceive/gitreceive.go
-
-build-git-api: clean
-	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/gitapi cmd/gitapi/gitapi.go
-
-build-controller: clean
-	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/koli-controller cmd/controller/controller-manager.go
-
-build-mutator: clean
-	env GOOS=${GOOS} GOARCH=${GOARCH} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/k8smutator cmd/mutator/main.go
-	
-build:
-	mkdir -p ${BINARY_DEST_DIR}
-	${DEV_ENV_CMD} go build -ldflags ${LDFLAGS} -o ${BINARY_DEST_DIR}/koli-controller cmd/controller/controller-manager.go
-	${DEV_ENV_CMD} upx -9 ${BINARY_DEST_DIR}/koli-controller
-
-docker-build:
-	docker build --rm -t ${IMAGE} rootfs
-	docker tag ${IMAGE} ${MUTABLE_IMAGE}
+build: build-git build-controller build-mutator
 
 docker-build-gitstep:
-	docker build -f rootfs/Dockerfile.gitstep --rm -t ${IMAGE} rootfs
-	docker tag ${IMAGE} ${MUTABLE_IMAGE}
+	docker build -f ${ROOTFS}/gitstep/Dockerfile --rm -t ${KOLI_REGISTRY}${IMAGE_PREFIX}/gitstep:${VERSION} ${ROOTFS}/gitstep
 
 docker-build-mutator:
-	docker build -f rootfs/Dockerfile.mutator --rm -t ${IMAGE} rootfs
-	docker tag ${IMAGE} ${MUTABLE_IMAGE}
+	docker build -f ${ROOTFS}/mutator/Dockerfile --rm -t ${KOLI_REGISTRY}${IMAGE_PREFIX}/k8s-mutator:${VERSION} ${ROOTFS}/mutator
 
 docker-build-controller:
-	docker build -f rootfs/Dockerfile.controller --rm -t ${IMAGE} rootfs
-	docker tag ${IMAGE} ${MUTABLE_IMAGE}
+	docker build -f ${ROOTFS}/controller/Dockerfile --rm -t ${KOLI_REGISTRY}${IMAGE_PREFIX}/koli-controller:${VERSION} ${ROOTFS}/controller
 
-clean:
-	rm -f ${BINARY_DEST_DIR}/*
-	mkdir -p ${BINARY_DEST_DIR}
+docker-build: docker-build-gitstep docker-build-mutator docker-build-controller
 
-test-unit:
+test:
 	${GOTEST} ./pkg/...
 
-.PHONY: build docker-build
+.PHONY: build docker-build test
+

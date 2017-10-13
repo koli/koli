@@ -1,5 +1,6 @@
+GIT_TAG ?= $(or ${TRAVIS_TAG},${TRAVIS_TAG},latest)
 MUTABLE_VERSION ?= latest
-VERSION ?= unknown
+VERSION ?= ${GIT_TAG}
 GITCOMMIT ?= $(shell git rev-parse HEAD)
 DATE ?= $(shell date -u "+%Y-%m-%dT%H:%M:%SZ")
 
@@ -15,8 +16,13 @@ info:
 	@echo "Immutable tag:   ${IMAGE}"
 	@echo "Mutable tag:     ${MUTABLE_IMAGE}"
 
-.PHONY: docker-push
-docker-push: docker-immutable-push docker-mutable-push
+docker-push: docker-login
+	docker push ${KOLI_REGISTRY}${IMAGE_PREFIX}/koli-controller:${VERSION}
+	docker push ${KOLI_REGISTRY}${IMAGE_PREFIX}/gitstep:${VERSION}
+	docker push ${KOLI_REGISTRY}${IMAGE_PREFIX}/k8s-mutator:${VERSION}
+
+docker-login:
+	docker login quay.io -u="${DOCKER_USERNAME}" -p="${DOCKER_PASSWORD}"
 
 .PHONY: docker-immutable-push
 docker-immutable-push:
@@ -25,3 +31,6 @@ docker-immutable-push:
 .PHONY: docker-mutable-push
 docker-mutable-push:
 	docker push ${MUTABLE_IMAGE}
+
+.PHONY: docker-push docker-login
+
