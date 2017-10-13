@@ -1,4 +1,4 @@
-[![Docker Repository on Quay](https://quay.io/repository/koli/koli-controller/status "Docker Repository on Quay")](https://quay.io/repository/koli/koli-controller)
+[![Build Status](https://travis-ci.org/koli/koli.svg?branch=master)](https://travis-ci.org/koli/koli)
 
 <img src="https://s3.amazonaws.com/kolihub/logos/01.png" width="350">
 
