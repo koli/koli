@@ -1,4 +1,6 @@
 vendor
 .vscode
 build
-rootfs/usr/bin/
+rootfs/controller/usr/bin/
+rootfs/gitstep/usr/bin/
+rootfs/mutator/usr/bin/
