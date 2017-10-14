@@ -61,7 +61,7 @@ func TestDomainOnHead(t *testing.T) {
 	}
 
 	h.tprClient = &fakerest.RESTClient{
-		// APIRegistry:          api.Registry,
+		APIRegistry:          registry,
 		NegotiatedSerializer: scheme.Codecs,
 		Client: fakerest.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			pList := &platform.DomainList{
@@ -103,7 +103,7 @@ func TestDomainOnHeadNotFound(t *testing.T) {
 	}
 
 	h.tprClient = &fakerest.RESTClient{
-		// APIRegistry:          api.Registry,
+		APIRegistry:          registry,
 		NegotiatedSerializer: scheme.Codecs,
 		Client: fakerest.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			pList := &platform.DomainList{

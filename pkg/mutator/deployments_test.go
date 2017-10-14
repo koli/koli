@@ -16,17 +16,30 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/api/extensions/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/apimachinery"
+	registered "k8s.io/apimachinery/pkg/apimachinery/registered"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	fakerest "k8s.io/client-go/rest/fake"
 	core "k8s.io/client-go/testing"
+
 	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 	"kolihub.io/koli/pkg/util"
 )
+
+// Needed for Custom Resource Defintion clientset
+var registry = registered.NewOrDie("")
+
+func init() {
+	registry.RegisterGroup(apimachinery.GroupMeta{
+		GroupVersion: schema.GroupVersion{Group: "", Version: "v1"},
+	})
+}
 
 func newDeployment(name, ns string, notes, labels, selector map[string]string, container v1.Container) *v1beta1.Deployment {
 	return &v1beta1.Deployment{
@@ -151,7 +164,7 @@ func TestDeploymentOnCreate(t *testing.T) {
 	// Fake Clients
 	responseHeader := http.Header{"Content-Type": []string{"application/json"}}
 	h.tprClient = &fakerest.RESTClient{
-		// APIRegistry:          api.Registry,
+		APIRegistry:          registry,
 		NegotiatedSerializer: scheme.Codecs,
 		Client: fakerest.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			if req.URL.Path != "/namespaces/koli-system/plans" {
@@ -220,7 +233,7 @@ func TestDeploymentOnCreate(t *testing.T) {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		t.Fatalf("unexpected error: %#v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 
 	respBody, err := ioutil.ReadAll(resp.Body)
@@ -285,7 +298,7 @@ func TestDeploymentOnPatch(t *testing.T) {
 
 	// Fake TPR Client
 	h.tprClient = &fakerest.RESTClient{
-		// APIRegistry:          api.Registry,
+		APIRegistry:          registry,
 		NegotiatedSerializer: scheme.Codecs,
 		Client: fakerest.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			var plan *platform.Plan

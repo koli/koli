@@ -33,7 +33,7 @@ import (
 func runHttpTestServer(router *mux.Router, gitHandler *Handler, client *fake.Clientset) (*url.URL, *httptest.Server) {
 	ts := httptest.NewServer(router)
 	gitHandler.gitClient = github.NewClient(nil)
-	url, _ := url.Parse(ts.URL)
+	url, _ := url.Parse(ts.URL + "/")
 	gitHandler.gitClient.BaseURL = url
 	gitHandler.gitClient.UploadURL = url
 	requestURL, _ := url.Parse(ts.URL)

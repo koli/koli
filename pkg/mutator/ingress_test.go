@@ -210,7 +210,7 @@ func TestIngressOnCreateWithMissingService(t *testing.T) {
 				Kind:       "Status",
 			},
 			Status:  metav1.StatusFailure,
-			Message: fmt.Sprintf(`failed retrieving service [Service "%s" not found]`, unknownSvc),
+			Message: fmt.Sprintf(`failed retrieving service [services "%s" not found]`, unknownSvc),
 			Reason:  metav1.StatusReasonBadRequest,
 			Code:    int32(http.StatusBadRequest),
 			Details: &metav1.StatusDetails{},
@@ -443,7 +443,7 @@ func TestIngressOnDelete(t *testing.T) {
 	ts := runIngressEndpointFakeServer(h, "/apis/extensions/v1beta1/namespaces/{namespace}/ingresses/{name}", "DELETE")
 	defer ts.Close()
 	h.usrTprClient = &fakerest.RESTClient{
-		// APIRegistry:          api.Registry,
+		APIRegistry:          registry,
 		NegotiatedSerializer: scheme.Codecs,
 		Client: fakerest.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			var obj runtime.Object

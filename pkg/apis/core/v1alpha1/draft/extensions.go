@@ -6,6 +6,7 @@ import (
 
 	"k8s.io/api/core/v1"
 	"k8s.io/api/extensions/v1beta1"
+	"k8s.io/client-go/kubernetes/scheme"
 	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 )
 
@@ -32,11 +33,11 @@ func (d *Deployment) GetObject() *v1beta1.Deployment {
 
 // Copy performs a deep copy of the resource
 func (d *Deployment) Copy() (*Deployment, error) {
-	objCopy := d.DeepCopy()
-	if objCopy == nil {
+	objCopy, err := scheme.Scheme.DeepCopy(d.GetObject())
+	if err != nil {
 		return nil, fmt.Errorf("Failed deep copying Deployment resource")
 	}
-	return NewDeployment(objCopy), nil
+	return NewDeployment(objCopy.(*v1beta1.Deployment)), nil
 }
 
 func (d Deployment) BuildRevision() int {
