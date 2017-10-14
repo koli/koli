@@ -6,11 +6,11 @@ import (
 	"log"
 	"strconv"
 
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/pkg/api"
 	"k8s.io/client-go/rest"
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
-	"kolihub.io/koli/pkg/apis/v1alpha1/draft"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
+	"kolihub.io/koli/pkg/apis/core/v1alpha1/draft"
 	"kolihub.io/koli/pkg/clientset"
 	"kolihub.io/koli/pkg/git/k8s"
 	gitutil "kolihub.io/koli/pkg/git/util"
@@ -105,9 +105,9 @@ func Run(conf *Config, oldRev, newRev, refName string) error {
 		Name(buildPodName).
 		Resource("pods").
 		SubResource("log").
-		VersionedParams(&api.PodLogOptions{
+		VersionedParams(&v1.PodLogOptions{
 			Follow: true,
-		}, api.ParameterCodec)
+		}, metav1.ParameterCodec)
 
 	rc, err := req.Stream()
 	defer rc.Close()

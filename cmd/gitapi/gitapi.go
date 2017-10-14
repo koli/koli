@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"runtime"
 
-	"github.com/codegangsta/negroni"
 	"github.com/golang/glog"
 	"github.com/gorilla/mux"
 	"github.com/spf13/pflag"
+	"github.com/urfave/negroni"
 	gitapi "kolihub.io/koli/pkg/git/api"
 	"kolihub.io/koli/pkg/git/conf"
 	gitutil "kolihub.io/koli/pkg/git/util"

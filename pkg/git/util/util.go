@@ -13,11 +13,11 @@ import (
 	"sync"
 	"time"
 
-	jwt "gopkg.in/dgrijalva/jwt-go.v2"
+	jwt "github.com/dgrijalva/jwt-go"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 )
 
 const (

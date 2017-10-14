@@ -9,7 +9,6 @@ import (
 type CoreInterface interface {
 	RESTClient() rest.Interface
 
-	AddonGetter
 	ServicePlanGetter
 	ReleaseGetter
 }
@@ -33,11 +32,6 @@ func (c *CoreClient) ServicePlan(namespace string) ServicePlanInterface {
 	return newServicePlan(c, namespace)
 }
 
-// Addon generates a new client to communicate with Addon resources
-func (c *CoreClient) Addon(namespace string) AddonInterface {
-	return newAddon(c, namespace)
-}
-
 // Release generates a new client to communicate with Release resources
 func (c *CoreClient) Release(namespace string) ReleaseInterface {
 	return newRelease(c, namespace)
@@ -51,18 +45,6 @@ func newServicePlan(c *CoreClient, namespace string) *servicePlan {
 			Name:       "plans",
 			Namespaced: true,
 			Kind:       "Plan",
-		},
-	}
-}
-
-func newAddon(c *CoreClient, namespace string) *addon {
-	return &addon{
-		client:    c.RESTClient(),
-		namespace: namespace,
-		resource: &metav1.APIResource{
-			Name:       "addons",
-			Namespaced: true,
-			Kind:       "Addon",
 		},
 	}
 }

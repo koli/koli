@@ -10,8 +10,8 @@ import (
 
 	"k8s.io/apimachinery/pkg/labels"
 
+	rbac "k8s.io/api/rbac/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	rbac "k8s.io/client-go/pkg/apis/rbac/v1beta1"
 )
 
 // KoliPrefixValue is used for creating annotations and labels

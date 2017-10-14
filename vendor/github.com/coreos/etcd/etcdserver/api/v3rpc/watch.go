@@ -21,6 +21,7 @@ import (
 
 	"golang.org/x/net/context"
 
+	"github.com/coreos/etcd/auth"
 	"github.com/coreos/etcd/etcdserver"
 	"github.com/coreos/etcd/etcdserver/api/v3rpc/rpctypes"
 	pb "github.com/coreos/etcd/etcdserver/etcdserverpb"
@@ -33,6 +34,8 @@ type watchServer struct {
 	memberID  int64
 	raftTimer etcdserver.RaftTimer
 	watchable mvcc.WatchableKV
+
+	ag AuthGetter
 }
 
 func NewWatchServer(s *etcdserver.EtcdServer) pb.WatchServer {
@@ -41,6 +44,7 @@ func NewWatchServer(s *etcdserver.EtcdServer) pb.WatchServer {
 		memberID:  int64(s.ID()),
 		raftTimer: s,
 		watchable: s.Watchable(),
+		ag:        s,
 	}
 }
 
@@ -92,6 +96,7 @@ type serverWatchStream struct {
 	mu sync.Mutex
 	// progress tracks the watchID that stream might need to send
 	// progress to.
+	// TODO: combine progress and prevKV into a single struct?
 	progress map[mvcc.WatchID]bool
 	prevKV   map[mvcc.WatchID]bool
 
@@ -100,6 +105,8 @@ type serverWatchStream struct {
 
 	// wg waits for the send loop to complete
 	wg sync.WaitGroup
+
+	ag AuthGetter
 }
 
 func (ws *watchServer) Watch(stream pb.Watch_WatchServer) (err error) {
@@ -117,6 +124,8 @@ func (ws *watchServer) Watch(stream pb.Watch_WatchServer) (err error) {
 		progress:   make(map[mvcc.WatchID]bool),
 		prevKV:     make(map[mvcc.WatchID]bool),
 		closec:     make(chan struct{}),
+
+		ag: ws.ag,
 	}
 
 	sws.wg.Add(1)
@@ -130,10 +139,14 @@ func (ws *watchServer) Watch(stream pb.Watch_WatchServer) (err error) {
 	// but when stream.Context().Done() is closed, the stream's recv
 	// may continue to block since it uses a different context, leading to
 	// deadlock when calling sws.close().
-	go func() { errc <- sws.recvLoop() }()
-
+	go func() {
+		if rerr := sws.recvLoop(); rerr != nil {
+			errc <- rerr
+		}
+	}()
 	select {
 	case err = <-errc:
+		close(sws.ctrlStream)
 	case <-stream.Context().Done():
 		err = stream.Context().Err()
 		// the only server-side cancellation is noleader for now.
@@ -145,8 +158,20 @@ func (ws *watchServer) Watch(stream pb.Watch_WatchServer) (err error) {
 	return err
 }
 
+func (sws *serverWatchStream) isWatchPermitted(wcr *pb.WatchCreateRequest) bool {
+	authInfo, err := sws.ag.AuthInfoFromCtx(sws.gRPCStream.Context())
+	if err != nil {
+		return false
+	}
+	if authInfo == nil {
+		// if auth is enabled, IsRangePermitted() can cause an error
+		authInfo = &auth.AuthInfo{}
+	}
+
+	return sws.ag.AuthStore().IsRangePermitted(authInfo, wcr.Key, wcr.RangeEnd) == nil
+}
+
 func (sws *serverWatchStream) recvLoop() error {
-	defer close(sws.ctrlStream)
 	for {
 		req, err := sws.gRPCStream.Recv()
 		if err == io.EOF {
@@ -167,16 +192,40 @@ func (sws *serverWatchStream) recvLoop() error {
 				// \x00 is the smallest key
 				creq.Key = []byte{0}
 			}
+			if len(creq.RangeEnd) == 0 {
+				// force nil since watchstream.Watch distinguishes
+				// between nil and []byte{} for single key / >=
+				creq.RangeEnd = nil
+			}
 			if len(creq.RangeEnd) == 1 && creq.RangeEnd[0] == 0 {
 				// support  >= key queries
 				creq.RangeEnd = []byte{}
 			}
+
+			if !sws.isWatchPermitted(creq) {
+				wr := &pb.WatchResponse{
+					Header:       sws.newResponseHeader(sws.watchStream.Rev()),
+					WatchId:      -1,
+					Canceled:     true,
+					Created:      true,
+					CancelReason: rpctypes.ErrGRPCPermissionDenied.Error(),
+				}
+
+				select {
+				case sws.ctrlStream <- wr:
+				case <-sws.closec:
+				}
+				return nil
+			}
+
+			filters := FiltersFromRequest(creq)
+
 			wsrev := sws.watchStream.Rev()
 			rev := creq.StartRevision
 			if rev == 0 {
 				rev = wsrev + 1
 			}
-			id := sws.watchStream.Watch(creq.Key, creq.RangeEnd, rev)
+			id := sws.watchStream.Watch(creq.Key, creq.RangeEnd, rev, filters...)
 			if id != -1 {
 				sws.mu.Lock()
 				if creq.ProgressNotify {
@@ -352,4 +401,26 @@ func (sws *serverWatchStream) newResponseHeader(rev int64) *pb.ResponseHeader {
 		Revision:  rev,
 		RaftTerm:  sws.raftTimer.Term(),
 	}
+}
+
+func filterNoDelete(e mvccpb.Event) bool {
+	return e.Type == mvccpb.DELETE
+}
+
+func filterNoPut(e mvccpb.Event) bool {
+	return e.Type == mvccpb.PUT
+}
+
+func FiltersFromRequest(creq *pb.WatchCreateRequest) []mvcc.FilterFunc {
+	filters := make([]mvcc.FilterFunc, 0, len(creq.Filters))
+	for _, ft := range creq.Filters {
+		switch ft {
+		case pb.WatchCreateRequest_NOPUT:
+			filters = append(filters, filterNoPut)
+		case pb.WatchCreateRequest_NODELETE:
+			filters = append(filters, filterNoDelete)
+		default:
+		}
+	}
+	return filters
 }

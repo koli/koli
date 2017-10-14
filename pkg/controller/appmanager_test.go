@@ -1,26 +1,30 @@
 package controller
 
 import (
+	"flag"
 	"fmt"
 	"testing"
 
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 	"kolihub.io/koli/pkg/controller/informers"
 
+	"k8s.io/api/core/v1"
+	"k8s.io/api/extensions/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/apimachinery/pkg/util/uuid"
-	"k8s.io/client-go/pkg/api"
-	"k8s.io/client-go/pkg/api/v1"
-	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
 	"k8s.io/client-go/tools/record"
 
 	"k8s.io/client-go/kubernetes/fake"
 	core "k8s.io/client-go/testing"
 	koli "kolihub.io/koli/pkg/clientset"
 )
+
+func init() {
+	flag.CommandLine.Parse([]string{})
+}
 
 type fixture struct {
 	t *testing.T
@@ -164,8 +168,9 @@ func newStoragePlan(name, ns string, storage resource.Quantity) *platform.Plan {
 }
 
 func newDeployment(name, ns string, notes, labels, selector map[string]string, container v1.Container) *v1beta1.Deployment {
+	fmt.Println("GVK", v1beta1.SchemeGroupVersion.String())
 	return &v1beta1.Deployment{
-		TypeMeta: metav1.TypeMeta{APIVersion: api.Registry.GroupOrDie(v1beta1.GroupName).GroupVersion.String()},
+		TypeMeta: metav1.TypeMeta{APIVersion: v1beta1.SchemeGroupVersion.String()},
 		ObjectMeta: metav1.ObjectMeta{
 			UID:         uuid.NewUUID(),
 			Name:        name,

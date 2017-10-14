@@ -5,14 +5,14 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
-	"kolihub.io/koli/pkg/apis/v1alpha1/draft"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
+	"kolihub.io/koli/pkg/apis/core/v1alpha1/draft"
 	clientset "kolihub.io/koli/pkg/clientset"
 	"kolihub.io/koli/pkg/spec"
 	koliutil "kolihub.io/koli/pkg/util"
 
+	"k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/pkg/api/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 

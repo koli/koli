@@ -13,7 +13,7 @@ import (
 	"github.com/golang/glog"
 	"github.com/gorilla/mux"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"kolihub.io/koli/pkg/apis/v1alpha1/draft"
+	"kolihub.io/koli/pkg/apis/core/v1alpha1/draft"
 	gitutil "kolihub.io/koli/pkg/git/util"
 	"kolihub.io/koli/pkg/util"
 )

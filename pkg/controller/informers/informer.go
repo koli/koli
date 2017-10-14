@@ -16,7 +16,6 @@ type SharedInformerFactory interface {
 	Start(stopCh <-chan struct{})
 	WaitForCacheSync(stopCh <-chan struct{}) map[reflect.Type]bool
 
-	Addons() AddonInformer
 	ServicePlans() ServicePlanInformer
 	Releases() ReleaseInformer
 	PetSets() PetSetInformer
@@ -80,11 +79,6 @@ func (f *sharedInformerFactory) WaitForCacheSync(stopCh <-chan struct{}) map[ref
 		res[informType] = cache.WaitForCacheSync(stopCh, informer.HasSynced)
 	}
 	return res
-}
-
-// Addons returns a SharedIndexInformer that lists and watches all addons
-func (f *sharedInformerFactory) Addons() AddonInformer {
-	return &addonInformer{sharedInformerFactory: f}
 }
 
 // ServicePlans returns a SharedIndexInformer that lists and watches all service plans

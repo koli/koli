@@ -2,30 +2,29 @@ package mutator
 
 import (
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
 	"testing"
 
-	"io/ioutil"
-
 	"github.com/gorilla/mux"
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/pkg/api"
-	"k8s.io/client-go/pkg/api/v1"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	fakerest "k8s.io/client-go/rest/fake"
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
-	"kolihub.io/koli/pkg/apis/v1alpha1/draft"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
+	"kolihub.io/koli/pkg/apis/core/v1alpha1/draft"
 )
 
 func newNamespace(name string) v1.Namespace {
 	return v1.Namespace{
 		TypeMeta: metav1.TypeMeta{
-			APIVersion: api.Registry.GroupOrDie(v1.SchemeGroupVersion.Group).GroupVersion.String(),
+			APIVersion: v1.SchemeGroupVersion.String(),
 			Kind:       "Namespace",
 		},
 		ObjectMeta: metav1.ObjectMeta{Name: name},
@@ -37,7 +36,7 @@ func TestOnNamespaceList(t *testing.T) {
 		expCustomer, expOrg = "c1", "koli"
 		expectedNs          = v1.NamespaceList{
 			TypeMeta: metav1.TypeMeta{
-				APIVersion: api.Registry.GroupOrDie(v1.SchemeGroupVersion.Group).GroupVersion.String(),
+				APIVersion: v1.SchemeGroupVersion.String(),
 				Kind:       "NamespaceList",
 			},
 			Items: []v1.Namespace{
@@ -88,7 +87,7 @@ func TestOnNamespaceList(t *testing.T) {
 		t.Fatalf("unexpected error fetching namespaces: %v", err)
 	}
 	nsList := &v1.NamespaceList{}
-	if err := runtime.DecodeInto(api.Codecs.UniversalDecoder(), dataBody, nsList); err != nil {
+	if err := runtime.DecodeInto(scheme.Codecs.UniversalDecoder(), dataBody, nsList); err != nil {
 		t.Fatalf("unexpected error decoding to obj, %v", err)
 	}
 	if !reflect.DeepEqual(nsList.Items, expectedNs.Items) {

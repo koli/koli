@@ -10,13 +10,14 @@ import (
 	"github.com/golang/glog"
 	"github.com/spf13/pflag"
 
-	_ "kolihub.io/koli/pkg/apis/v1alpha1/install"
+	_ "kolihub.io/koli/pkg/apis/core/v1alpha1/install"
 	"kolihub.io/koli/pkg/clientset"
 	"kolihub.io/koli/pkg/controller"
 	"kolihub.io/koli/pkg/controller/informers"
 	_ "kolihub.io/koli/pkg/controller/install"
 	koliversion "kolihub.io/koli/pkg/version"
 
+	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/apimachinery/pkg/version"
@@ -80,17 +81,18 @@ func startControllers() error {
 
 	// controller.CreatePlatformRoles(client)
 	// Create required third party resources
-	controller.CreateAddonTPRs(cfg.Host, client)
-	controller.CreatePlan3PRs(cfg.Host, client)
-	controller.CreateReleaseTPRs(cfg.Host, client)
-
+	// controller.CreateAddonTPRs(cfg.Host, client)
+	// controller.CreatePlan3PRs(cfg.Host, client)
+	// controller.CreateReleaseTPRs(cfg.Host, client)
 	sysClient, err := clientset.NewSysRESTClient(kcfg)
 	if err != nil {
 		return err
 	}
+	if err := controller.CreateCRD(apiextensionsclient.NewForConfigOrDie(kcfg)); err != nil {
+		return err
+	}
 
 	sharedInformers := informers.NewSharedInformerFactory(client, 30*time.Second)
-
 	stopC := wait.NeverStop
 	// TODO: should we use the same client instance??
 	go controller.NewNamespaceController(

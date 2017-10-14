@@ -8,21 +8,21 @@ import (
 	"path/filepath"
 	"strings"
 
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 	"kolihub.io/koli/pkg/request"
 
 	jwt "github.com/dgrijalva/jwt-go"
+	"k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/pkg/api"
-	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 )
 
 var (
-	extensionsCodec = api.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion)
+	extensionsCodec = scheme.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion)
 )
 
 // Config is the daemon base configuration
@@ -104,9 +104,9 @@ func getKubernetesUserClients(mutatorCfg *Config, bearerToken string) (*kubernet
 	tprConfig.APIPath = "/apis"
 	tprConfig.GroupVersion = &platform.SchemeGroupVersion
 	tprConfig.ContentType = runtime.ContentTypeJSON
-	tprConfig.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: api.Codecs}
-	metav1.AddToGroupVersion(api.Scheme, platform.SchemeGroupVersion)
-	platform.SchemeBuilder.AddToScheme(api.Scheme)
+	tprConfig.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: scheme.Codecs}
+	metav1.AddToGroupVersion(scheme.Scheme, platform.SchemeGroupVersion)
+	platform.SchemeBuilder.AddToScheme(scheme.Scheme)
 
 	userTprClient, err := rest.RESTClientFor(tprConfig)
 	if err != nil {

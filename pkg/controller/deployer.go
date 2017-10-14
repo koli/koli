@@ -7,8 +7,8 @@ import (
 
 	"github.com/golang/glog"
 
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
-	"kolihub.io/koli/pkg/apis/v1alpha1/draft"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
+	"kolihub.io/koli/pkg/apis/core/v1alpha1/draft"
 	clientset "kolihub.io/koli/pkg/clientset"
 	"kolihub.io/koli/pkg/spec"
 
@@ -16,10 +16,10 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 
+	"k8s.io/api/core/v1"
+	extensions "k8s.io/api/extensions/v1beta1"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	"k8s.io/client-go/pkg/api/v1"
-	extensions "k8s.io/client-go/pkg/apis/extensions/v1beta1"
 )
 
 const (
@@ -208,9 +208,9 @@ func (d *DeployerController) syncHandler(key string) error {
 }
 
 func (d *DeployerController) deploySlug(release *platform.Release, deploy *extensions.Deployment) error {
-	dpCopy, err := platform.DeploymentDeepCopy(deploy)
-	if err != nil {
-		return fmt.Errorf("failed deep copying: %s", err)
+	dpCopy := deploy.DeepCopy()
+	if dpCopy == nil {
+		return fmt.Errorf("failed deep copying: %v", deploy)
 	}
 	dpCopy.Spec.Paused = false
 	if dpCopy.Annotations == nil {
@@ -252,7 +252,7 @@ func (d *DeployerController) deploySlug(release *platform.Release, deploy *exten
 			Value: "TRUE",
 		},
 	}
-	_, err = d.kclient.Extensions().Deployments(dpCopy.Namespace).Update(dpCopy)
+	_, err := d.kclient.Extensions().Deployments(dpCopy.Namespace).Update(dpCopy)
 	if err != nil {
 		return fmt.Errorf("failed update deployment: %s", err)
 	}

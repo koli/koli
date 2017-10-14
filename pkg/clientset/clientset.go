@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/url"
 
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
@@ -59,7 +59,8 @@ func NewClusterConfig(host string, tlsInsecure bool, tlsConfig *rest.TLSClientCo
 	return cfg, nil
 }
 
-// NewSysRESTClient generates a new *kubernetes.Interface to communicate with system third party resources
+// NewSysRESTClient generates a new *kubernetes.Interface
+// to communicate with Custom Resource Defintions resources
 func NewSysRESTClient(c *rest.Config) (*CoreClient, error) {
 	c.APIPath = "/apis"
 
@@ -77,15 +78,6 @@ func NewSysRESTClient(c *rest.Config) (*CoreClient, error) {
 		return nil, err
 	}
 	return &CoreClient{restClient: cl}, nil
-}
-
-// NewTprRESTClientOrDie creates a client or die for testing purposes
-func NewTprRESTClientOrDie(c *rest.Config) CoreInterface {
-	cl, err := NewSysRESTClient(c)
-	if err != nil {
-		panic(err)
-	}
-	return cl
 }
 
 func NewKubernetesClient(c *rest.Config) (kubernetes.Interface, error) {

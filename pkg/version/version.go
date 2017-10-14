@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"runtime"
 
-	k8sversion "k8s.io/kubernetes/pkg/version"
+	k8sversion "k8s.io/client-go/pkg/version"
 )
 
 // Info contains versioning information.
@@ -35,6 +35,7 @@ func Get() Info {
 	// their absence fallback to the settings in pkg/version/base.go
 	return Info{
 		// KubernetesVersion: kubernetesClientVersion,
+
 		K8SVersion: fmt.Sprintf("v%s.%s.0", k8sversion.Get().Major, k8sversion.Get().Minor),
 		GitVersion: gitVersion,
 		GitCommit:  gitCommit,

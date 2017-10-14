@@ -1,22 +1,27 @@
 package controller
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/golang/glog"
 
+	"k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/pkg/api"
-	"k8s.io/client-go/pkg/api/v1"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
+	extensions "k8s.io/api/extensions/v1beta1"
+	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
+	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
-	extensions "k8s.io/client-go/pkg/apis/extensions/v1beta1"
+
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 )
 
 const (
@@ -54,7 +59,7 @@ func newRecorder(client kubernetes.Interface, component string) record.EventReco
 	eventBroadcaster.StartRecordingToSink(&v1core.EventSinkImpl{
 		Interface: v1core.New(client.Core().RESTClient()).Events(""),
 	})
-	return eventBroadcaster.NewRecorder(api.Scheme, v1.EventSource{Component: component})
+	return eventBroadcaster.NewRecorder(scheme.Scheme, v1.EventSource{Component: component})
 }
 
 // TaskQueue manages a work queue through an independent worker that
@@ -127,6 +132,78 @@ func NewTaskQueue(syncFn func(string) error) *TaskQueue {
 		sync:       syncFn,
 		workerDone: make(chan struct{}),
 	}
+}
+
+// CreateCRD provision the Custom Resource Definition and
+// wait until the API is ready to interact it with
+func CreateCRD(clientset apiextensionsclient.Interface) error {
+	for _, r := range []struct {
+		name   string
+		kind   string
+		plural string
+	}{
+		{
+			platform.PlanResourceName,
+			platform.PlanResourceKind,
+			platform.PlanResourcePlural,
+		},
+		{
+			platform.ReleaseResourceName,
+			platform.ReleaseResourceKind,
+			platform.PlanResourcePlural,
+		},
+	} {
+		crd := &apiextensionsv1beta1.CustomResourceDefinition{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: r.name,
+			},
+			Spec: apiextensionsv1beta1.CustomResourceDefinitionSpec{
+				Group:   platform.SchemeGroupVersion.Group,
+				Version: platform.SchemeGroupVersion.Version,
+				Scope:   apiextensionsv1beta1.NamespaceScoped,
+				Names: apiextensionsv1beta1.CustomResourceDefinitionNames{
+					Plural: r.plural,
+					Kind:   r.kind,
+					// ShortNames: []string{""},
+				},
+			},
+		}
+		_, err := clientset.ApiextensionsV1beta1().CustomResourceDefinitions().Create(crd)
+		if err == nil || apierrors.IsAlreadyExists(err) {
+			glog.Infof("Custom Resource Definiton '%s' provisioned, waiting to be ready ...", r.name)
+			if err := waitCRDReady(clientset, r.name); err != nil {
+				return err
+			}
+			continue
+		}
+		return err
+	}
+	return nil
+}
+
+func waitCRDReady(clientset apiextensionsclient.Interface, resourceName string) error {
+	return wait.Poll(1*time.Second, 30*time.Second, func() (bool, error) {
+		crd, err := clientset.
+			ApiextensionsV1beta1().
+			CustomResourceDefinitions().
+			Get(resourceName, metav1.GetOptions{})
+		if err != nil {
+			return false, err
+		}
+		for _, cond := range crd.Status.Conditions {
+			switch cond.Type {
+			case apiextensionsv1beta1.Established:
+				if cond.Status == apiextensionsv1beta1.ConditionTrue {
+					return true, nil
+				}
+			case apiextensionsv1beta1.NamesAccepted:
+				if cond.Status == apiextensionsv1beta1.ConditionFalse {
+					return false, fmt.Errorf("Name conflict: %v", cond.Reason)
+				}
+			}
+		}
+		return false, nil
+	})
 }
 
 // CreatePlan3PRs generates the third party resource required for interacting with Service Plans

@@ -82,7 +82,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) {
 	c.reflector = r
 	c.reflectorMutex.Unlock()
 
-	r.RunUntil(stopCh)
+	r.Run(stopCh)
 
 	wait.Until(c.processLoop, time.Second, stopCh)
 }
