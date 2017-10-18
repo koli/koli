@@ -17,7 +17,7 @@ import (
 	"k8s.io/client-go/tools/record"
 
 	extensions "k8s.io/api/extensions/v1beta1"
-	rbac "k8s.io/api/rbac/v1"
+	rbac "k8s.io/api/rbac/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
@@ -255,7 +255,7 @@ func (c *NamespaceController) createDefaultRoleBinding(namespace string, u *plat
 		subjects = append(subjects, rbac.Subject{Kind: rbac.GroupKind, Name: group})
 	}
 	roleBinding.Subjects = subjects
-	_, err := c.kclient.Rbac().RoleBindings(namespace).Create(roleBinding)
+	_, err := c.kclient.RbacV1beta1().RoleBindings(namespace).Create(roleBinding)
 	return err
 }
 
