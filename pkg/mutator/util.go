@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
+	runtimemutator "kolihub.io/koli/pkg/mutator/runtime"
 	"kolihub.io/koli/pkg/request"
 
 	jwt "github.com/dgrijalva/jwt-go"
@@ -22,7 +23,8 @@ import (
 )
 
 var (
-	extensionsCodec = scheme.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion)
+	// extensionsCodec = scheme.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion)
+	extensionsCodec = runtimemutator.LegacyCodec(v1beta1.SchemeGroupVersion)
 )
 
 // Config is the daemon base configuration

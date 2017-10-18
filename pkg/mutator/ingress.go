@@ -112,14 +112,12 @@ func (h *Handler) IngressOnPatch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("OLD RULES %#v\n", old.Spec)
 	if err := util.NewDecoder(r.Body, extensionsCodec).Decode(new); err != nil {
 		msg := fmt.Sprintf("failed decoding request body [%v]", err)
 		glog.V(3).Infof("%s -  %s", key, err)
 		util.WriteResponseError(w, util.StatusInternalError(msg, nil))
 		return
 	}
-	fmt.Printf("DECODED RULES: %#v\n", new.Spec)
 	oldParent := old.GetAnnotation("kolihub.io/parent")
 	if oldParent.Exists() {
 		new.SetAnnotation("kolihub.io/parent", oldParent.String())

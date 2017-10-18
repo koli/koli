@@ -255,7 +255,6 @@ func (h *Handler) NamespaceOnMod(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// fmt.Printf("AFTER: %#v\n", new)
 		reqBody, err := json.Marshal(new)
 		if err != nil {
 			msg := fmt.Sprintf("failed encoding request body [%v]", err)

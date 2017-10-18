@@ -168,7 +168,6 @@ func newStoragePlan(name, ns string, storage resource.Quantity) *platform.Plan {
 }
 
 func newDeployment(name, ns string, notes, labels, selector map[string]string, container v1.Container) *v1beta1.Deployment {
-	fmt.Println("GVK", v1beta1.SchemeGroupVersion.String())
 	return &v1beta1.Deployment{
 		TypeMeta: metav1.TypeMeta{APIVersion: v1beta1.SchemeGroupVersion.String()},
 		ObjectMeta: metav1.ObjectMeta{
