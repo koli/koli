@@ -150,7 +150,7 @@ func CreateCRD(clientset apiextensionsclient.Interface) error {
 		{
 			platform.ReleaseResourceName,
 			platform.ReleaseResourceKind,
-			platform.PlanResourcePlural,
+			platform.ReleaseResourcePlural,
 		},
 	} {
 		crd := &apiextensionsv1beta1.CustomResourceDefinition{

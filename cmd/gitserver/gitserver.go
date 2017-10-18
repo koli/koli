@@ -45,6 +45,9 @@ func init() {
 	pflag.BoolVar(&showVersion, "version", false, "print version information and quit.")
 	pflag.BoolVar(&cfg.TLSInsecure, "tls-insecure", false, "don't verify API server's CA certificate.")
 	pflag.Parse()
+	// Convinces goflags that we have called Parse() to avoid noisy logs.
+	// OSS Issue: kubernetes/kubernetes#17162.
+	flag.CommandLine.Parse([]string{})
 }
 
 func main() {

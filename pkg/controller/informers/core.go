@@ -11,6 +11,7 @@ import (
 	"k8s.io/api/core/v1"
 	"k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
@@ -148,7 +149,7 @@ func (f *deploymentInformer) Informer() cache.SharedIndexInformer {
 	}
 
 	informer = cache.NewSharedIndexInformer(
-		cache.NewListWatchFromClient(f.client.Extensions().RESTClient(), "deployments", metav1.NamespaceAll, nil),
+		cache.NewListWatchFromClient(f.client.Extensions().RESTClient(), "deployments", metav1.NamespaceAll, fields.Everything()),
 		&v1beta1.Deployment{}, f.defaultResync, cache.Indexers{},
 	)
 	f.informers[informerType] = informer
@@ -176,7 +177,7 @@ func (f *petSetInformer) Informer() cache.SharedIndexInformer {
 	}
 
 	informer = cache.NewSharedIndexInformer(
-		cache.NewListWatchFromClient(f.client.Apps().RESTClient(), "statefulsets", metav1.NamespaceAll, nil),
+		cache.NewListWatchFromClient(f.client.Apps().RESTClient(), "statefulsets", metav1.NamespaceAll, fields.Everything()),
 		&apps.StatefulSet{}, f.defaultResync, cache.Indexers{},
 	)
 	f.informers[informerType] = informer
@@ -204,7 +205,7 @@ func (f *namespaceInformer) Informer() cache.SharedIndexInformer {
 	}
 
 	informer = cache.NewSharedIndexInformer(
-		cache.NewListWatchFromClient(f.client.Core().RESTClient(), "namespaces", v1.NamespaceAll, nil),
+		cache.NewListWatchFromClient(f.client.Core().RESTClient(), "namespaces", v1.NamespaceAll, fields.Everything()),
 		&v1.Namespace{}, f.defaultResync, cache.Indexers{},
 	)
 	f.informers[informerType] = informer
