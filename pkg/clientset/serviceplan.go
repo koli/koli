@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"

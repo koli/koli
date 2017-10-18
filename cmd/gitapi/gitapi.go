@@ -8,10 +8,10 @@ import (
 	"net/http"
 	"runtime"
 
-	"github.com/codegangsta/negroni"
 	"github.com/golang/glog"
 	"github.com/gorilla/mux"
 	"github.com/spf13/pflag"
+	"github.com/urfave/negroni"
 	gitapi "kolihub.io/koli/pkg/git/api"
 	"kolihub.io/koli/pkg/git/conf"
 	gitutil "kolihub.io/koli/pkg/git/util"
@@ -50,6 +50,9 @@ func init() {
 	pflag.BoolVar(&showVersion, "version", false, "print version information and quit.")
 	pflag.BoolVar(&cfg.TLSInsecure, "tls-insecure", false, "don't verify API server's CA certificate.")
 	pflag.Parse()
+	// Convinces goflags that we have called Parse() to avoid noisy logs.
+	// OSS Issue: kubernetes/kubernetes#17162.
+	flag.CommandLine.Parse([]string{})
 }
 
 func main() {

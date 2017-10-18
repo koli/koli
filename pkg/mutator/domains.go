@@ -9,7 +9,7 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/gorilla/mux"
-	platform "kolihub.io/koli/pkg/spec"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 	"kolihub.io/koli/pkg/util"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"

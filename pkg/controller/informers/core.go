@@ -4,56 +4,56 @@ import (
 	"fmt"
 	"reflect"
 
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 	"kolihub.io/koli/pkg/clientset"
 
+	apps "k8s.io/api/apps/v1beta1"
+	"k8s.io/api/core/v1"
+	"k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/pkg/api/v1"
 	"k8s.io/client-go/tools/cache"
-
-	v1beta1 "k8s.io/client-go/pkg/apis/apps/v1beta1"
-	extensions "k8s.io/client-go/pkg/apis/extensions/v1beta1"
 )
 
-// AddonInformer is a type of SharedIndexInformer which watches and lists all addons.
-type AddonInformer interface {
-	Informer(client *clientset.CoreClient) cache.SharedIndexInformer
-	// Lister() *cache.ListWatch
-}
+// // AddonInformer is a type of SharedIndexInformer which watches and lists all addons.
+// type AddonInformer interface {
+// 	Informer(client *clientset.CoreClient) cache.SharedIndexInformer
+// 	// Lister() *cache.ListWatch
+// }
 
-type addonInformer struct {
-	*sharedInformerFactory
-}
+// type addonInformer struct {
+// 	*sharedInformerFactory
+// }
 
-func (f *addonInformer) Informer(sysClient *clientset.CoreClient) cache.SharedIndexInformer {
-	f.lock.Lock()
-	defer f.lock.Unlock()
+// func (f *addonInformer) Informer(sysClient *clientset.CoreClient) cache.SharedIndexInformer {
+// 	f.lock.Lock()
+// 	defer f.lock.Unlock()
 
-	informerType := reflect.TypeOf(&platform.Addon{})
-	informer, exists := f.informers[informerType]
-	if exists {
-		return informer
-	}
+// 	informerType := reflect.TypeOf(&platform.Addon{})
+// 	informer, exists := f.informers[informerType]
+// 	if exists {
+// 		return informer
+// 	}
 
-	informer = cache.NewSharedIndexInformer(
-		&cache.ListWatch{
-			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-				return sysClient.Addon(metav1.NamespaceAll).List(&options)
-			},
-			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				return sysClient.Addon(metav1.NamespaceAll).Watch(&options)
-			},
-		},
-		&platform.Addon{},
-		f.defaultResync,
-		cache.Indexers{},
-	)
-	f.informers[informerType] = informer
-	return informer
-}
+// 	informer = cache.NewSharedIndexInformer(
+// 		&cache.ListWatch{
+// 			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
+// 				return sysClient.Addon(metav1.NamespaceAll).List(&options)
+// 			},
+// 			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
+// 				return sysClient.Addon(metav1.NamespaceAll).Watch(&options)
+// 			},
+// 		},
+// 		&platform.Addon{},
+// 		f.defaultResync,
+// 		cache.Indexers{},
+// 	)
+// 	f.informers[informerType] = informer
+// 	return informer
+// }
 
 // ServicePlanInformer is a type of SharedIndexInformer which watches and lists all service plans
 type ServicePlanInformer interface {
@@ -142,15 +142,15 @@ func (f *deploymentInformer) Informer() cache.SharedIndexInformer {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	informerType := reflect.TypeOf(&extensions.Deployment{})
+	informerType := reflect.TypeOf(&v1beta1.Deployment{})
 	informer, exists := f.informers[informerType]
 	if exists {
 		return informer
 	}
 
 	informer = cache.NewSharedIndexInformer(
-		cache.NewListWatchFromClient(f.client.Extensions().RESTClient(), "deployments", metav1.NamespaceAll, nil),
-		&extensions.Deployment{}, f.defaultResync, cache.Indexers{},
+		cache.NewListWatchFromClient(f.client.Extensions().RESTClient(), "deployments", metav1.NamespaceAll, fields.Everything()),
+		&v1beta1.Deployment{}, f.defaultResync, cache.Indexers{},
 	)
 	f.informers[informerType] = informer
 	return informer
@@ -170,15 +170,15 @@ func (f *petSetInformer) Informer() cache.SharedIndexInformer {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 
-	informerType := reflect.TypeOf(&v1beta1.StatefulSet{})
+	informerType := reflect.TypeOf(&apps.StatefulSet{})
 	informer, exists := f.informers[informerType]
 	if exists {
 		return informer
 	}
 
 	informer = cache.NewSharedIndexInformer(
-		cache.NewListWatchFromClient(f.client.Apps().RESTClient(), "statefulsets", metav1.NamespaceAll, nil),
-		&v1beta1.StatefulSet{}, f.defaultResync, cache.Indexers{},
+		cache.NewListWatchFromClient(f.client.Apps().RESTClient(), "statefulsets", metav1.NamespaceAll, fields.Everything()),
+		&apps.StatefulSet{}, f.defaultResync, cache.Indexers{},
 	)
 	f.informers[informerType] = informer
 	return informer
@@ -205,7 +205,7 @@ func (f *namespaceInformer) Informer() cache.SharedIndexInformer {
 	}
 
 	informer = cache.NewSharedIndexInformer(
-		cache.NewListWatchFromClient(f.client.Core().RESTClient(), "namespaces", v1.NamespaceAll, nil),
+		cache.NewListWatchFromClient(f.client.Core().RESTClient(), "namespaces", v1.NamespaceAll, fields.Everything()),
 		&v1.Namespace{}, f.defaultResync, cache.Indexers{},
 	)
 	f.informers[informerType] = informer

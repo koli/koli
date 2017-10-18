@@ -7,15 +7,15 @@ import (
 
 	"github.com/golang/glog"
 	"github.com/gorilla/mux"
+	"k8s.io/api/core/v1"
+	"k8s.io/api/extensions/v1beta1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/pkg/api/v1"
-	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
-	draft "kolihub.io/koli/pkg/apis/v1alpha1/draft"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
+	draft "kolihub.io/koli/pkg/apis/core/v1alpha1/draft"
 	"kolihub.io/koli/pkg/util"
 )
 
@@ -215,7 +215,7 @@ func (h *Handler) DeploymentsOnMod(w http.ResponseWriter, r *http.Request) {
 			util.WriteResponseError(w, errStatus)
 			return
 		}
-		new, err := old.DeepCopy()
+		new, err := old.Copy()
 		if err != nil {
 			msg := fmt.Sprintf("failed deep copying obj [%v]", err)
 			glog.V(3).Infof("%s -  %s", key, err)

@@ -1,40 +1,49 @@
 package mutator
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"regexp"
 	"testing"
 
-	"io/ioutil"
-
-	"bytes"
-
-	"regexp"
-
 	"github.com/gorilla/mux"
+	"k8s.io/api/core/v1"
+	"k8s.io/api/extensions/v1beta1"
 	"k8s.io/apimachinery/pkg/api/resource"
+	"k8s.io/apimachinery/pkg/apimachinery"
+	registered "k8s.io/apimachinery/pkg/apimachinery/registered"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/fake"
-	"k8s.io/client-go/pkg/api"
-	"k8s.io/client-go/pkg/api/v1"
-	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	fakerest "k8s.io/client-go/rest/fake"
 	core "k8s.io/client-go/testing"
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 	"kolihub.io/koli/pkg/util"
 )
 
+// Needed for Custom Resource Defintion clientset
+var registry = registered.NewOrDie("")
+
+func init() {
+	registry.RegisterGroup(apimachinery.GroupMeta{
+		GroupVersion: schema.GroupVersion{Group: "", Version: "v1"},
+	})
+}
+
 func newDeployment(name, ns string, notes, labels, selector map[string]string, container v1.Container) *v1beta1.Deployment {
 	return &v1beta1.Deployment{
-		TypeMeta: metav1.TypeMeta{APIVersion: api.Registry.GroupOrDie(v1beta1.GroupName).GroupVersion.String()},
+		TypeMeta: metav1.TypeMeta{APIVersion: v1beta1.SchemeGroupVersion.String()},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:        name,
 			Namespace:   ns,
@@ -155,8 +164,8 @@ func TestDeploymentOnCreate(t *testing.T) {
 	// Fake Clients
 	responseHeader := http.Header{"Content-Type": []string{"application/json"}}
 	h.tprClient = &fakerest.RESTClient{
-		APIRegistry:          api.Registry,
-		NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: api.Codecs},
+		APIRegistry:          registry,
+		NegotiatedSerializer: scheme.Codecs,
 		Client: fakerest.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			if req.URL.Path != "/namespaces/koli-system/plans" {
 				t.Fatalf("unexpected url path: %v", req.URL.Path)
@@ -224,7 +233,7 @@ func TestDeploymentOnCreate(t *testing.T) {
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		t.Fatalf("unexpected error: %#v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
 
 	respBody, err := ioutil.ReadAll(resp.Body)
@@ -289,8 +298,8 @@ func TestDeploymentOnPatch(t *testing.T) {
 
 	// Fake TPR Client
 	h.tprClient = &fakerest.RESTClient{
-		APIRegistry:          api.Registry,
-		NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: api.Codecs},
+		APIRegistry:          registry,
+		NegotiatedSerializer: scheme.Codecs,
 		Client: fakerest.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			var plan *platform.Plan
 			switch req.URL.Path {
@@ -356,7 +365,7 @@ func TestDeploymentOnPatch(t *testing.T) {
 	// the original annotations only have immutable keys, it must be cleared otherwise
 	// the merge patch will contain the immutable keys
 	original.Annotations = make(map[string]string)
-	expectedPatch, err := util.StrategicMergePatch(api.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion), original, new)
+	expectedPatch, err := util.StrategicMergePatch(scheme.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion), original, new)
 	if err != nil {
 		t.Fatalf("unexpected error merging patch: %v", err)
 	}

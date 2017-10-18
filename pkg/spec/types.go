@@ -1,9 +1,8 @@
 package spec
 
 import (
+	"k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/pkg/api"
-	"k8s.io/client-go/pkg/api/v1"
 )
 
 // ResourceList is a set of (resource name, quantity) pairs.
@@ -36,7 +35,7 @@ type PlanSpec struct {
 
 const (
 	// ResourceNamespace , number
-	ResourceNamespace api.ResourceName = "namespaces"
+	ResourceNamespace v1.ResourceName = "namespaces"
 )
 
 // PlatformRole is the name identifying various roles in a PlatformRoleList.

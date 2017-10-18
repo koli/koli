@@ -4,7 +4,7 @@ import (
 	"github.com/golang/glog"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 	"kolihub.io/koli/pkg/request"
 )
 

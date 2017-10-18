@@ -16,15 +16,15 @@ import (
 	"github.com/google/go-github/github"
 	"github.com/gorilla/mux"
 
+	"k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
 	core "k8s.io/client-go/testing"
 
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
-	"kolihub.io/koli/pkg/apis/v1alpha1/draft"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
+	"kolihub.io/koli/pkg/apis/core/v1alpha1/draft"
 	"kolihub.io/koli/pkg/git/conf"
 	"kolihub.io/koli/pkg/request"
 	koliutil "kolihub.io/koli/pkg/util"
@@ -33,7 +33,7 @@ import (
 func runHttpTestServer(router *mux.Router, gitHandler *Handler, client *fake.Clientset) (*url.URL, *httptest.Server) {
 	ts := httptest.NewServer(router)
 	gitHandler.gitClient = github.NewClient(nil)
-	url, _ := url.Parse(ts.URL)
+	url, _ := url.Parse(ts.URL + "/")
 	gitHandler.gitClient.BaseURL = url
 	gitHandler.gitClient.UploadURL = url
 	requestURL, _ := url.Parse(ts.URL)
@@ -362,7 +362,7 @@ func TestRemoveExistentAssociationHookFromDeployment(t *testing.T) {
 	for _, action := range client.Actions() {
 		switch tp := action.(type) {
 		case core.PatchActionImpl:
-			original, _ := expectedDeploy.DeepCopy()
+			original, _ := expectedDeploy.Copy()
 			delete(expectedDeploy.Labels, "kolihub.io/gitowner")
 			delete(expectedDeploy.Labels, "kolihub.io/gitrepo")
 

@@ -20,11 +20,14 @@ func TestPullRequestsService_ListReviews(t *testing.T) {
 
 	mux.HandleFunc("/repos/o/r/pulls/1/reviews", func(w http.ResponseWriter, r *http.Request) {
 		testMethod(t, r, "GET")
-		testHeader(t, r, "Accept", mediaTypePullRequestReviewsPreview)
+		testFormValues(t, r, values{
+			"page": "2",
+		})
 		fmt.Fprint(w, `[{"id":1},{"id":2}]`)
 	})
 
-	reviews, _, err := client.PullRequests.ListReviews(context.Background(), "o", "r", 1)
+	opt := &ListOptions{Page: 2}
+	reviews, _, err := client.PullRequests.ListReviews(context.Background(), "o", "r", 1, opt)
 	if err != nil {
 		t.Errorf("PullRequests.ListReviews returned error: %v", err)
 	}
@@ -39,7 +42,7 @@ func TestPullRequestsService_ListReviews(t *testing.T) {
 }
 
 func TestPullRequestsService_ListReviews_invalidOwner(t *testing.T) {
-	_, _, err := client.PullRequests.ListReviews(context.Background(), "%", "r", 1)
+	_, _, err := client.PullRequests.ListReviews(context.Background(), "%", "r", 1, nil)
 	testURLParseError(t, err)
 }
 
@@ -49,7 +52,6 @@ func TestPullRequestsService_GetReview(t *testing.T) {
 
 	mux.HandleFunc("/repos/o/r/pulls/1/reviews/1", func(w http.ResponseWriter, r *http.Request) {
 		testMethod(t, r, "GET")
-		testHeader(t, r, "Accept", mediaTypePullRequestReviewsPreview)
 		fmt.Fprint(w, `{"id":1}`)
 	})
 
@@ -75,7 +77,6 @@ func TestPullRequestsService_DeletePendingReview(t *testing.T) {
 
 	mux.HandleFunc("/repos/o/r/pulls/1/reviews/1", func(w http.ResponseWriter, r *http.Request) {
 		testMethod(t, r, "DELETE")
-		testHeader(t, r, "Accept", mediaTypePullRequestReviewsPreview)
 		fmt.Fprint(w, `{"id":1}`)
 	})
 
@@ -101,11 +102,10 @@ func TestPullRequestsService_ListReviewComments(t *testing.T) {
 
 	mux.HandleFunc("/repos/o/r/pulls/1/reviews/1/comments", func(w http.ResponseWriter, r *http.Request) {
 		testMethod(t, r, "GET")
-		testHeader(t, r, "Accept", mediaTypePullRequestReviewsPreview)
 		fmt.Fprint(w, `[{"id":1},{"id":2}]`)
 	})
 
-	comments, _, err := client.PullRequests.ListReviewComments(context.Background(), "o", "r", 1, 1)
+	comments, _, err := client.PullRequests.ListReviewComments(context.Background(), "o", "r", 1, 1, nil)
 	if err != nil {
 		t.Errorf("PullRequests.ListReviewComments returned error: %v", err)
 	}
@@ -119,8 +119,26 @@ func TestPullRequestsService_ListReviewComments(t *testing.T) {
 	}
 }
 
+func TestPullRequestsService_ListReviewComments_withOptions(t *testing.T) {
+	setup()
+	defer teardown()
+
+	mux.HandleFunc("/repos/o/r/pulls/1/reviews/1/comments", func(w http.ResponseWriter, r *http.Request) {
+		testMethod(t, r, "GET")
+		testFormValues(t, r, values{
+			"page": "2",
+		})
+		fmt.Fprint(w, `[]`)
+	})
+
+	_, _, err := client.PullRequests.ListReviewComments(context.Background(), "o", "r", 1, 1, &ListOptions{Page: 2})
+	if err != nil {
+		t.Errorf("PullRequests.ListReviewComments returned error: %v", err)
+	}
+}
+
 func TestPullRequestsService_ListReviewComments_invalidOwner(t *testing.T) {
-	_, _, err := client.PullRequests.ListReviewComments(context.Background(), "%", "r", 1, 1)
+	_, _, err := client.PullRequests.ListReviewComments(context.Background(), "%", "r", 1, 1, nil)
 	testURLParseError(t, err)
 }
 
@@ -129,8 +147,9 @@ func TestPullRequestsService_CreateReview(t *testing.T) {
 	defer teardown()
 
 	input := &PullRequestReviewRequest{
-		Body:  String("b"),
-		Event: String("APPROVE"),
+		CommitID: String("commit_id"),
+		Body:     String("b"),
+		Event:    String("APPROVE"),
 	}
 
 	mux.HandleFunc("/repos/o/r/pulls/1/reviews", func(w http.ResponseWriter, r *http.Request) {
@@ -138,7 +157,6 @@ func TestPullRequestsService_CreateReview(t *testing.T) {
 		json.NewDecoder(r.Body).Decode(v)
 
 		testMethod(t, r, "POST")
-		testHeader(t, r, "Accept", mediaTypePullRequestReviewsPreview)
 		if !reflect.DeepEqual(v, input) {
 			t.Errorf("Request body = %+v, want %+v", v, input)
 		}
@@ -176,7 +194,6 @@ func TestPullRequestsService_SubmitReview(t *testing.T) {
 		json.NewDecoder(r.Body).Decode(v)
 
 		testMethod(t, r, "POST")
-		testHeader(t, r, "Accept", mediaTypePullRequestReviewsPreview)
 		if !reflect.DeepEqual(v, input) {
 			t.Errorf("Request body = %+v, want %+v", v, input)
 		}
@@ -211,7 +228,6 @@ func TestPullRequestsService_DismissReview(t *testing.T) {
 		json.NewDecoder(r.Body).Decode(v)
 
 		testMethod(t, r, "PUT")
-		testHeader(t, r, "Accept", mediaTypePullRequestReviewsPreview)
 		if !reflect.DeepEqual(v, input) {
 			t.Errorf("Request body = %+v, want %+v", v, input)
 		}

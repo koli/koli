@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net/http"
 
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 	gitutil "kolihub.io/koli/pkg/git/util"
 )
 

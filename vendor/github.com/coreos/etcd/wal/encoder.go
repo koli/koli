@@ -27,8 +27,8 @@ import (
 )
 
 // walPageBytes is the alignment for flushing records to the backing Writer.
-// It should be a multiple of the minimum sector size so that WAL repair can
-// safely between torn writes and ordinary data corruption.
+// It should be a multiple of the minimum sector size so that WAL can safely
+// distinguish between torn writes and ordinary data corruption.
 const walPageBytes = 8 * minSectorSize
 
 type encoder struct {
@@ -52,7 +52,7 @@ func newEncoder(w io.Writer, prevCrc uint32, pageOffset int) *encoder {
 
 // newFileEncoder creates a new encoder with current file offset for the page writer.
 func newFileEncoder(f *os.File, prevCrc uint32) (*encoder, error) {
-	offset, err := f.Seek(0, os.SEEK_CUR)
+	offset, err := f.Seek(0, io.SeekCurrent)
 	if err != nil {
 		return nil, err
 	}

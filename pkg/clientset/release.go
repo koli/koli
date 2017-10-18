@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -55,7 +55,6 @@ func (r *release) List(opts *metav1.ListOptions) (*platform.ReleaseList, error) 
 	err := r.client.Get().
 		NamespaceIfScoped(r.namespace, r.resource.Namespaced).
 		Resource(r.resource.Name).
-		FieldsSelectorParam(nil).
 		VersionedParams(opts, metav1.ParameterCodec). // TODO: test this option
 		Do().
 		Into(releaseList)

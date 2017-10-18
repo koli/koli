@@ -5,7 +5,7 @@ import (
 	"github.com/google/go-github/github"
 
 	"k8s.io/client-go/kubernetes"
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 	"kolihub.io/koli/pkg/clientset/auth0"
 	"kolihub.io/koli/pkg/git/conf"
 )

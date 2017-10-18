@@ -1,4 +1,0 @@
-package: kolihub.io/koli
-import:
-- package: k8s.io/kubernetes
-  version: v1.6.0

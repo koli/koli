@@ -4,21 +4,19 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"path"
 	"reflect"
 	"testing"
 	"time"
 
 	"github.com/gorilla/mux"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
-	"k8s.io/client-go/pkg/api"
+	"k8s.io/client-go/kubernetes/scheme"
 	fakerest "k8s.io/client-go/rest/fake"
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 )
 
 var (
-	groupVersion = path.Join(platform.SchemeGroupVersion.Group, platform.SchemeGroupVersion.Version)
+	groupVersion = platform.SchemeGroupVersion.String()
 )
 
 func runDomainsFakeServer(h *Handler, path, method string) *httptest.Server {
@@ -63,8 +61,8 @@ func TestDomainOnHead(t *testing.T) {
 	}
 
 	h.tprClient = &fakerest.RESTClient{
-		APIRegistry:          api.Registry,
-		NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: api.Codecs},
+		APIRegistry:          registry,
+		NegotiatedSerializer: scheme.Codecs,
 		Client: fakerest.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			pList := &platform.DomainList{
 				Items: []platform.Domain{*expObj},
@@ -105,8 +103,8 @@ func TestDomainOnHeadNotFound(t *testing.T) {
 	}
 
 	h.tprClient = &fakerest.RESTClient{
-		APIRegistry:          api.Registry,
-		NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: api.Codecs},
+		APIRegistry:          registry,
+		NegotiatedSerializer: scheme.Codecs,
 		Client: fakerest.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			pList := &platform.DomainList{
 				Items: []platform.Domain{

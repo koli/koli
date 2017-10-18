@@ -16,10 +16,10 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/pkg/api"
+	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 	"kolihub.io/koli/pkg/mutator"
 	"kolihub.io/koli/pkg/request"
 	"kolihub.io/koli/pkg/version"
@@ -52,6 +52,9 @@ func init() {
 	pflag.BoolVar(&showVersion, "version", false, "print version information and quit")
 	pflag.BoolVar(&cfg.TLSInsecure, "tls-insecure", false, "don't verify API server's CA certificate")
 	pflag.Parse()
+	// Convinces goflags that we have called Parse() to avoid noisy logs.
+	// OSS Issue: kubernetes/kubernetes#17162.
+	flag.CommandLine.Parse([]string{})
 }
 
 func main() {
@@ -89,9 +92,9 @@ func main() {
 	tprConfig.APIPath = "/apis"
 	tprConfig.GroupVersion = &platform.SchemeGroupVersion
 	tprConfig.ContentType = runtime.ContentTypeJSON
-	tprConfig.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: api.Codecs}
-	metav1.AddToGroupVersion(api.Scheme, platform.SchemeGroupVersion)
-	platform.SchemeBuilder.AddToScheme(api.Scheme)
+	tprConfig.NegotiatedSerializer = serializer.DirectCodecFactory{CodecFactory: scheme.Codecs}
+	metav1.AddToGroupVersion(scheme.Scheme, platform.SchemeGroupVersion)
+	platform.SchemeBuilder.AddToScheme(scheme.Scheme)
 
 	tprClient, err := rest.RESTClientFor(tprConfig)
 	if err != nil {

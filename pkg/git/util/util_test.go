@@ -3,7 +3,7 @@ package util
 import (
 	"testing"
 
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 )
 
 func TestSystemTokenClaims(t *testing.T) {

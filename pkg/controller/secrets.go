@@ -7,17 +7,17 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	"k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/pkg/api/v1"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
 
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
-	"kolihub.io/koli/pkg/apis/v1alpha1/draft"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
+	"kolihub.io/koli/pkg/apis/core/v1alpha1/draft"
 	"kolihub.io/koli/pkg/util"
 )
 

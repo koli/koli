@@ -9,17 +9,16 @@ import (
 	"testing"
 
 	"github.com/gorilla/mux"
+	"k8s.io/api/core/v1"
+	"k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes/fake"
-	"k8s.io/client-go/pkg/api"
-	"k8s.io/client-go/pkg/api/v1"
-	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
+	"k8s.io/client-go/kubernetes/scheme"
 	fakerest "k8s.io/client-go/rest/fake"
 	core "k8s.io/client-go/testing"
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 	"kolihub.io/koli/pkg/util"
 )
 
@@ -65,7 +64,7 @@ func newIngress(name, ns string, httpIngRuleValue *v1beta1.HTTPIngressRuleValue)
 	return &v1beta1.Ingress{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Ingress",
-			APIVersion: api.Registry.GroupOrDie(v1beta1.GroupName).GroupVersion.String(),
+			APIVersion: v1beta1.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
@@ -131,7 +130,7 @@ func TestIngressOnCreate(t *testing.T) {
 	}
 
 	got := &v1beta1.Ingress{}
-	runtime.DecodeInto(api.Codecs.UniversalDecoder(v1beta1.SchemeGroupVersion), respBody, got)
+	runtime.DecodeInto(scheme.Codecs.UniversalDecoder(v1beta1.SchemeGroupVersion), respBody, got)
 	if !reflect.DeepEqual(got.Spec.Rules, ing.Spec.Rules) {
 		t.Errorf("GOT: %#v, EXPECTED: %#v", got.Spec, ing.Spec)
 	}
@@ -150,7 +149,7 @@ func TestIngressOnCreateMutatingValues(t *testing.T) {
 			{Path: "/", Backend: v1beta1.IngressBackend{ServiceName: svcName, ServicePort: intstr.FromInt(int(svcPort))}},
 		}))
 	)
-	requestIng := func() *v1beta1.Ingress { o, _ := api.Scheme.DeepCopy(expIng); return o.(*v1beta1.Ingress) }()
+	requestIng := func() *v1beta1.Ingress { o, _ := scheme.Scheme.DeepCopy(expIng); return o.(*v1beta1.Ingress) }()
 	requestIng.Spec.Backend = &v1beta1.IngressBackend{ServiceName: "foo"}
 	requestIng.Spec.TLS = []v1beta1.IngressTLS{{SecretName: "foo-secret"}}
 	ts := runIngressEndpointFakeServer(h, "/apis/extensions/v1beta1/namespaces/{namespace}/ingresses", "POST")
@@ -162,7 +161,7 @@ func TestIngressOnCreateMutatingValues(t *testing.T) {
 	}
 
 	got := &v1beta1.Ingress{}
-	runtime.DecodeInto(api.Codecs.UniversalDecoder(v1beta1.SchemeGroupVersion), respBody, got)
+	runtime.DecodeInto(scheme.Codecs.UniversalDecoder(v1beta1.SchemeGroupVersion), respBody, got)
 	if !reflect.DeepEqual(got, expIng) {
 		t.Errorf("GOT: %#v, EXPECTED: %#v", got, expIng)
 	}
@@ -187,7 +186,7 @@ func TestIngressOnCreateWithMoreThanOneDomain(t *testing.T) {
 	}
 
 	got := &metav1.Status{}
-	runtime.DecodeInto(api.Codecs.UniversalDecoder(metav1.SchemeGroupVersion), respBody, got)
+	runtime.DecodeInto(scheme.Codecs.UniversalDecoder(metav1.SchemeGroupVersion), respBody, got)
 	if got.Message != expMessage {
 		t.Errorf("GOT: %#v, EXPECTED: %#v", got, expMessage)
 	}
@@ -211,7 +210,7 @@ func TestIngressOnCreateWithMissingService(t *testing.T) {
 				Kind:       "Status",
 			},
 			Status:  metav1.StatusFailure,
-			Message: fmt.Sprintf(`failed retrieving service [Service "%s" not found]`, unknownSvc),
+			Message: fmt.Sprintf(`failed retrieving service [services "%s" not found]`, unknownSvc),
 			Reason:  metav1.StatusReasonBadRequest,
 			Code:    int32(http.StatusBadRequest),
 			Details: &metav1.StatusDetails{},
@@ -226,7 +225,7 @@ func TestIngressOnCreateWithMissingService(t *testing.T) {
 	}
 
 	got := &metav1.Status{}
-	runtime.DecodeInto(api.Codecs.UniversalDecoder(metav1.SchemeGroupVersion), respBody, got)
+	runtime.DecodeInto(scheme.Codecs.UniversalDecoder(metav1.SchemeGroupVersion), respBody, got)
 	if !reflect.DeepEqual(got, expectedStatus) {
 		t.Errorf("GOT: %#v, EXPECTED: %#v", got, expectedStatus)
 	}
@@ -347,7 +346,7 @@ func TestIngressOnPatchMultipleRulesError(t *testing.T) {
 	}
 
 	got := &metav1.Status{}
-	runtime.DecodeInto(api.Codecs.UniversalDecoder(), respBody, got)
+	runtime.DecodeInto(scheme.Codecs.UniversalDecoder(), respBody, got)
 	if got.Message != expMsg {
 		t.Errorf("GOT: %#v, EXPECTED: %#v", got.Message, expMsg)
 	}
@@ -373,7 +372,7 @@ func TestIngressOnPatchRemoveRulesError(t *testing.T) {
 	t.Logf(string(respBody))
 
 	got := &metav1.Status{}
-	runtime.DecodeInto(api.Codecs.UniversalDecoder(), respBody, got)
+	runtime.DecodeInto(scheme.Codecs.UniversalDecoder(), respBody, got)
 	if got.Message != expMsg {
 		t.Errorf("GOT: %#v, EXPECTED: %#v", got.Message, expMsg)
 	}
@@ -400,7 +399,7 @@ func TestIngressOnPatchChangeHostError(t *testing.T) {
 	t.Logf(string(respBody))
 
 	got := &metav1.Status{}
-	runtime.DecodeInto(api.Codecs.UniversalDecoder(), respBody, got)
+	runtime.DecodeInto(scheme.Codecs.UniversalDecoder(), respBody, got)
 	if got.Message != expMsg {
 		t.Errorf("GOT: %#v, EXPECTED: %#v", got.Message, expMsg)
 	}
@@ -426,7 +425,7 @@ func TestIngressOnPatchNewPathWithWrongService(t *testing.T) {
 	t.Logf(string(respBody))
 
 	got := &metav1.Status{}
-	runtime.DecodeInto(api.Codecs.UniversalDecoder(), respBody, got)
+	runtime.DecodeInto(scheme.Codecs.UniversalDecoder(), respBody, got)
 	if match, _ := regexp.MatchString(expMsgRgxp, got.Message); !match {
 		t.Errorf("GOT: %#v, EXPECTED REGEXP: %#v", got.Message, expMsgRgxp)
 	}
@@ -444,8 +443,8 @@ func TestIngressOnDelete(t *testing.T) {
 	ts := runIngressEndpointFakeServer(h, "/apis/extensions/v1beta1/namespaces/{namespace}/ingresses/{name}", "DELETE")
 	defer ts.Close()
 	h.usrTprClient = &fakerest.RESTClient{
-		APIRegistry:          api.Registry,
-		NegotiatedSerializer: serializer.DirectCodecFactory{CodecFactory: api.Codecs},
+		APIRegistry:          registry,
+		NegotiatedSerializer: scheme.Codecs,
 		Client: fakerest.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
 			var obj runtime.Object
 			switch req.Method {

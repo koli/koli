@@ -14,15 +14,15 @@ import (
 	"github.com/google/go-github/github"
 	"github.com/gorilla/mux"
 	"golang.org/x/oauth2"
+	"k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
-	"k8s.io/client-go/pkg/apis/extensions/v1beta1"
 
 	"kolihub.io/koli/pkg/apis/authentication"
-	platform "kolihub.io/koli/pkg/apis/v1alpha1"
-	"kolihub.io/koli/pkg/apis/v1alpha1/draft"
+	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
+	"kolihub.io/koli/pkg/apis/core/v1alpha1/draft"
 	"kolihub.io/koli/pkg/clientset/auth0"
 	auth0clientset "kolihub.io/koli/pkg/clientset/auth0"
 	"kolihub.io/koli/pkg/util"
@@ -450,9 +450,9 @@ func (h *Handler) GitHubHooks(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 			}
-			original, err := d.DeepCopy() // performs a copy of the object to create the patch diff
-			if err != nil {
-				msg := fmt.Sprintf("failed performing deep copy, %v", err)
+			original := d.DeepCopy() // performs a copy of the object to create the patch diff
+			if original == nil {
+				msg := fmt.Sprintf("failed performing deep copy, %v", d)
 				util.WriteResponseError(w, util.StatusInternalError(msg, nil))
 				return
 			}
@@ -464,7 +464,7 @@ func (h *Handler) GitHubHooks(w http.ResponseWriter, r *http.Request) {
 			delete(d.Annotations, "kolihub.io/hookid")
 			delete(d.Annotations, platform.AnnotationAuthToken)
 			codec := scheme.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion)
-			patchData, err := util.StrategicMergePatch(codec, original.GetObject(), d.GetObject())
+			patchData, err := util.StrategicMergePatch(codec, original, d.GetObject())
 			if err != nil {
 				msg := fmt.Sprintf("failed generating deployment patch diff, %v", err)
 				util.WriteResponseError(w, util.StatusInternalError(msg, nil))
@@ -551,8 +551,8 @@ func (h *Handler) Webhooks(w http.ResponseWriter, r *http.Request) {
 			// 	continue
 			// }
 
-			original, err := dp.DeepCopy()
-			if err != nil {
+			original := dp.DeepCopy()
+			if original == nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				fmt.Fprintf(w, "failed performing deep copy: %v", err)
 				return
@@ -585,7 +585,7 @@ func (h *Handler) Webhooks(w http.ResponseWriter, r *http.Request) {
 			dp.Annotations[platform.AnnotationBuildSource] = githubBuildSourceName
 
 			codec := scheme.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion)
-			patchData, err := util.StrategicMergePatch(codec, original.GetObject(), dp.GetObject())
+			patchData, err := util.StrategicMergePatch(codec, original, dp.GetObject())
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				fmt.Fprintf(w, "failed generating deployment patch diff: %v", err)
