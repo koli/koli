@@ -87,13 +87,7 @@ func newIngressWithRules(name, ns string, rules []v1beta1.IngressRule) *v1beta1.
 }
 
 func newIngressPath(httpIngressPath []v1beta1.HTTPIngressPath) *v1beta1.HTTPIngressRuleValue {
-	// []v1beta1.httpIngressPath{}
-	return &v1beta1.HTTPIngressRuleValue{
-		Paths: httpIngressPath,
-		// Paths: []v1beta1.HTTPIngressPath{
-		// 	{Path: "/", Backend: v1beta1.IngressBackend{ServiceName: svcName, ServicePort: intstr.FromInt(svcPort)}},
-		// },
-	}
+	return &v1beta1.HTTPIngressRuleValue{Paths: httpIngressPath}
 }
 
 func newService(name, ns string, svcPort int32) *v1.Service {
@@ -114,8 +108,8 @@ func TestIngressOnCreate(t *testing.T) {
 		svcName, svcPort = "foo-svc", int32(8000)
 		ingName, ns      = "myroute", "foo-ns"
 		h                = &Handler{
-			usrClientset: fake.NewSimpleClientset(),
-			clientset:    fake.NewSimpleClientset([]runtime.Object{newService(svcName, ns, svcPort)}...),
+			// usrClientset: fake.NewSimpleClientset(),
+			clientset: fake.NewSimpleClientset([]runtime.Object{newService(svcName, ns, svcPort)}...),
 		}
 		ing = newIngress(ingName, ns, newIngressPath([]v1beta1.HTTPIngressPath{
 			{Path: "/", Backend: v1beta1.IngressBackend{ServiceName: svcName, ServicePort: intstr.FromInt(int(svcPort))}},
@@ -141,8 +135,8 @@ func TestIngressOnCreateMutatingValues(t *testing.T) {
 		ingName, ns      = "myroute", "foo-ns"
 		svcName, svcPort = "foo-svc", int32(8000)
 		h                = &Handler{
-			usrClientset: fake.NewSimpleClientset(),
-			clientset:    fake.NewSimpleClientset([]runtime.Object{newService(svcName, ns, svcPort)}...),
+			// usrClientset: fake.NewSimpleClientset(),
+			clientset: fake.NewSimpleClientset([]runtime.Object{newService(svcName, ns, svcPort)}...),
 		}
 
 		expIng = newIngress(ingName, ns, newIngressPath([]v1beta1.HTTPIngressPath{
@@ -169,7 +163,8 @@ func TestIngressOnCreateMutatingValues(t *testing.T) {
 
 func TestIngressOnCreateWithMoreThanOneDomain(t *testing.T) {
 	var (
-		h                       = &Handler{usrClientset: fake.NewSimpleClientset()}
+		// h                       = &Handler{usrClientset: fake.NewSimpleClientset()}
+		h                       = &Handler{}
 		ingName, domainName, ns = "myroute", "acme.org", "foo-ns"
 		ing                     = newIngressWithRules(ingName, ns, []v1beta1.IngressRule{
 			{Host: domainName, IngressRuleValue: v1beta1.IngressRuleValue{}},
@@ -198,8 +193,8 @@ func TestIngressOnCreateWithMissingService(t *testing.T) {
 		ingName, ns      = "myroute", "foo-ns"
 		svcName, svcPort = "foo-svc", int32(8000)
 		h                = &Handler{
-			usrClientset: fake.NewSimpleClientset(),
-			clientset:    fake.NewSimpleClientset(newService(svcName, ns, svcPort)),
+			// usrClientset: fake.NewSimpleClientset(),
+			clientset: fake.NewSimpleClientset(newService(svcName, ns, svcPort)),
 		}
 		ing = newIngress(ingName, ns, newIngressPath([]v1beta1.HTTPIngressPath{
 			{Path: "/", Backend: v1beta1.IngressBackend{ServiceName: unknownSvc, ServicePort: intstr.FromInt(int(svcPort))}},
@@ -242,7 +237,8 @@ func TestIngressOnPatch(t *testing.T) {
 		}))
 		svc           = newService(svcName, ns, svcPort.IntVal)
 		kongClient, _ = NewKongClient(makeTestServer(t, http.StatusNoContent), "")
-		h             = &Handler{clientset: fake.NewSimpleClientset(existentIng, svc), usrClientset: fake.NewSimpleClientset(), kongClient: kongClient}
+		h             = &Handler{clientset: fake.NewSimpleClientset(existentIng, svc), kongClient: kongClient}
+		// h             = &Handler{clientset: fake.NewSimpleClientset(existentIng, svc), usrClientset: fake.NewSimpleClientset(), kongClient: kongClient}
 	)
 	ts := runIngressEndpointFakeServer(h, "/apis/extensions/v1beta1/namespaces/{namespace}/ingresses/{name}", "PATCH")
 	defer ts.Close()
@@ -261,18 +257,19 @@ func TestIngressOnPatch(t *testing.T) {
 
 	t.Logf("RESPBODY: %s", string(respBody))
 
-	fakeUsrClientset := h.usrClientset.(*fake.Clientset)
-	if len(fakeUsrClientset.Actions()) != 1 {
-		t.Errorf("GOT %d action(s), EXPECTED 1 action", len(fakeUsrClientset.Actions()))
+	fakeClientset := h.clientset.(*fake.Clientset)
+	if len(fakeClientset.Actions()) != 4 {
+		t.Errorf("GOT %d action(s), EXPECTED 4 action", len(fakeClientset.Actions()))
 	}
-	for _, action := range fakeUsrClientset.Actions() {
+	for _, action := range fakeClientset.Actions() {
 		switch tp := action.(type) {
 		case core.PatchActionImpl:
 			expPatch, _ := util.StrategicMergePatch(extensionsCodec, existentIng, expObj)
 			if !reflect.DeepEqual(tp.Patch, expPatch) {
 				t.Errorf("GOT: %s, EXPECTED: %s", string(tp.Patch), string(expPatch))
 			}
-
+		case core.GetActionImpl:
+			// no-op
 		default:
 			t.Fatalf("unexpected action %#v", tp)
 
@@ -288,7 +285,8 @@ func TestIngressOnPatchMutateAnnotations(t *testing.T) {
 			{Path: "/", Backend: v1beta1.IngressBackend{ServiceName: svcName, ServicePort: svcPort}},
 		}))
 		svc = newService(svcName, ns, svcPort.IntVal)
-		h   = &Handler{usrClientset: fake.NewSimpleClientset()}
+		h   = &Handler{}
+		// h   = &Handler{usrClientset: fake.NewSimpleClientset()}
 	)
 	ts := runIngressEndpointFakeServer(h, "/apis/extensions/v1beta1/namespaces/{namespace}/ingresses/{name}", "PATCH")
 	defer ts.Close()
@@ -306,17 +304,18 @@ func TestIngressOnPatchMutateAnnotations(t *testing.T) {
 
 	t.Logf("RESPBODY: %s", string(respBody))
 
-	fakeUsrClientset := h.usrClientset.(*fake.Clientset)
-	if len(fakeUsrClientset.Actions()) != 1 {
-		t.Errorf("GOT %d action(s), EXPECTED 1 action", len(fakeUsrClientset.Actions()))
+	fakeClientset := h.clientset.(*fake.Clientset)
+	if len(fakeClientset.Actions()) != 2 {
+		t.Errorf("GOT %d action(s), EXPECTED 1 action", len(fakeClientset.Actions()))
 	}
-	for _, action := range fakeUsrClientset.Actions() {
+	for _, action := range fakeClientset.Actions() {
 		switch tp := action.(type) {
 		case core.PatchActionImpl:
 			if string(tp.Patch) != "{}" {
 				t.Errorf("GOT: %s, EXPECTED: {}", string(tp.Patch))
 			}
-
+		case core.GetActionImpl:
+			// no-op
 		default:
 			t.Fatalf("unexpected action %#v", tp)
 
@@ -333,7 +332,8 @@ func TestIngressOnPatchMultipleRulesError(t *testing.T) {
 		}))
 		expMsg = "spec.rules cannot have more than one host, found 2 rules"
 		svc    = newService(svcName, ns, svcPort.IntVal)
-		h      = &Handler{clientset: fake.NewSimpleClientset(existentIng, svc), usrClientset: fake.NewSimpleClientset()}
+		h      = &Handler{clientset: fake.NewSimpleClientset(existentIng, svc)}
+		// h      = &Handler{clientset: fake.NewSimpleClientset(existentIng, svc), usrClientset: fake.NewSimpleClientset()}
 	)
 	ts := runIngressEndpointFakeServer(h, "/apis/extensions/v1beta1/namespaces/{namespace}/ingresses/{name}", "PATCH")
 	defer ts.Close()
@@ -360,7 +360,8 @@ func TestIngressOnPatchRemoveRulesError(t *testing.T) {
 		}))
 		expMsg = "spec.rules cannot be removed"
 		svc    = newService(svcName, ns, svcPort.IntVal)
-		h      = &Handler{clientset: fake.NewSimpleClientset(existentIng, svc), usrClientset: fake.NewSimpleClientset()}
+		h      = &Handler{clientset: fake.NewSimpleClientset(existentIng, svc)}
+		// h      = &Handler{clientset: fake.NewSimpleClientset(existentIng, svc), usrClientset: fake.NewSimpleClientset()}
 	)
 	ts := runIngressEndpointFakeServer(h, "/apis/extensions/v1beta1/namespaces/{namespace}/ingresses/{name}", "PATCH")
 	defer ts.Close()
@@ -386,7 +387,8 @@ func TestIngressOnPatchChangeHostError(t *testing.T) {
 		}))
 		expMsg = `cannot change host, from "foo.tld" to "mutate-host"`
 		svc    = newService(svcName, ns, svcPort.IntVal)
-		h      = &Handler{clientset: fake.NewSimpleClientset(existentIng, svc), usrClientset: fake.NewSimpleClientset()}
+		h      = &Handler{clientset: fake.NewSimpleClientset(existentIng, svc)}
+		// h      = &Handler{clientset: fake.NewSimpleClientset(existentIng, svc), usrClientset: fake.NewSimpleClientset()}
 	)
 	ts := runIngressEndpointFakeServer(h, "/apis/extensions/v1beta1/namespaces/{namespace}/ingresses/{name}", "PATCH")
 	defer ts.Close()
@@ -412,7 +414,8 @@ func TestIngressOnPatchNewPathWithWrongService(t *testing.T) {
 		}))
 		expMsgRgxp = `the service port "80" doesn't exists in service "foo-svc".+`
 		svc        = newService(svcName, ns, svcPort.IntVal)
-		h          = &Handler{clientset: fake.NewSimpleClientset(existentIng, svc), usrClientset: fake.NewSimpleClientset()}
+		h          = &Handler{clientset: fake.NewSimpleClientset(existentIng, svc)}
+		// h          = &Handler{clientset: fake.NewSimpleClientset(existentIng, svc), usrClientset: fake.NewSimpleClientset()}
 	)
 	ts := runIngressEndpointFakeServer(h, "/apis/extensions/v1beta1/namespaces/{namespace}/ingresses/{name}", "PATCH")
 	defer ts.Close()
@@ -438,11 +441,13 @@ func TestIngressOnDelete(t *testing.T) {
 			{Host: ingName, IngressRuleValue: v1beta1.IngressRuleValue{}},
 		})
 		existentDom = newDomain("foo-tld", ns, ingName)
-		h           = &Handler{clientset: fake.NewSimpleClientset(existentIng), usrClientset: fake.NewSimpleClientset()}
+		h           = &Handler{clientset: fake.NewSimpleClientset(existentIng)}
+		// h           = &Handler{clientset: fake.NewSimpleClientset(existentIng), usrClientset: fake.NewSimpleClientset()}
 	)
 	ts := runIngressEndpointFakeServer(h, "/apis/extensions/v1beta1/namespaces/{namespace}/ingresses/{name}", "DELETE")
 	defer ts.Close()
-	h.usrTprClient = &fakerest.RESTClient{
+
+	h.tprClient = &fakerest.RESTClient{
 		APIRegistry:          registry,
 		NegotiatedSerializer: scheme.Codecs,
 		Client: fakerest.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
@@ -475,16 +480,18 @@ func TestIngressOnDelete(t *testing.T) {
 
 	t.Logf("STATUS CODE RESPONSE: %d", resp.StatusCode)
 
-	fakeUsrClientset := h.usrClientset.(*fake.Clientset)
-	if len(fakeUsrClientset.Actions()) != 1 {
-		t.Errorf("GOT %d action(s), EXPECTED 1 action", len(fakeUsrClientset.Actions()))
+	fakeClientset := h.clientset.(*fake.Clientset)
+	if len(fakeClientset.Actions()) != 2 {
+		t.Errorf("GOT %d action(s), EXPECTED 2 action", len(fakeClientset.Actions()))
 	}
-	for _, action := range fakeUsrClientset.Actions() {
+	for _, action := range fakeClientset.Actions() {
 		switch tp := action.(type) {
 		case core.DeleteActionImpl:
 			if tp.Namespace != ns || tp.Name != ingName {
 				t.Errorf("GOT RESOURCE: %s/%s, EXPECTED: %s/%s", tp.Namespace, tp.Name, ns, ingName)
 			}
+		case core.GetActionImpl:
+			// no-op
 		default:
 			t.Fatalf("unexpected action %#v", tp)
 

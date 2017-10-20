@@ -5,7 +5,7 @@ import (
 	"net/http"
 
 	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
-	gitutil "kolihub.io/koli/pkg/git/util"
+	"kolihub.io/koli/pkg/util"
 )
 
 // Authenticate validates if the provided credentials are valid
@@ -17,7 +17,7 @@ func (h *Handler) Authenticate(w http.ResponseWriter, r *http.Request, next http
 		fmt.Fprintf(w, "Authentication required (token null)\n")
 		return
 	}
-	u, err := gitutil.DecodeUserToken(jwtTokenString, h.cnf.PlatformClientSecret, h.cnf.Auth0.PlatformPubKey)
+	u, err := util.DecodeUserToken(jwtTokenString, h.cnf.PlatformClientSecret, h.cnf.Auth0.PlatformPubKey)
 	if err != nil {
 		w.Header().Set("WWW-Authenticate", "Basic")
 		w.WriteHeader(http.StatusUnauthorized)
