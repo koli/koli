@@ -64,7 +64,7 @@ func (h *Handler) IngressOnCreate(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	resp, err := h.usrClientset.Extensions().Ingresses(namespace).Create(new.GetObject())
+	resp, err := h.clientset.Extensions().Ingresses(namespace).Create(new.GetObject())
 	switch e := err.(type) {
 	case *apierrors.StatusError:
 		glog.Infof("%s:%s - failed creating ingress [%s]", key, new.Name, e.ErrStatus.Reason)
@@ -213,7 +213,7 @@ func (h *Handler) IngressOnPatch(w http.ResponseWriter, r *http.Request) {
 	}
 
 	glog.V(4).Infof("%s, DIFF: %s", key, string(patch))
-	resp, err := h.usrClientset.Extensions().Ingresses(namespace).Patch(ingressName, types.StrategicMergePatchType, patch)
+	resp, err := h.clientset.Extensions().Ingresses(namespace).Patch(ingressName, types.StrategicMergePatchType, patch)
 	switch e := err.(type) {
 	case *apierrors.StatusError:
 		glog.Infof("%s - failed updating ingress [%s]", key, e.ErrStatus.Reason)
@@ -260,7 +260,7 @@ func (h *Handler) IngressOnDelete(w http.ResponseWriter, r *http.Request) {
 		}
 		if dom != nil {
 			glog.V(3).Infof("%s - found domain resource %#v for %s", key, dom.Name, domainName)
-			_, err := h.usrTprClient.Delete().
+			_, err := h.tprClient.Delete().
 				Resource("domains").
 				Namespace(namespace).
 				Name(dom.Name).
@@ -276,7 +276,7 @@ func (h *Handler) IngressOnDelete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	err := h.usrClientset.Extensions().Ingresses(namespace).Delete(ing.Name, &metav1.DeleteOptions{})
+	err := h.clientset.Extensions().Ingresses(namespace).Delete(ing.Name, &metav1.DeleteOptions{})
 	switch e := err.(type) {
 	case *apierrors.StatusError:
 		glog.Infof("%s -  failed mutating request [%v]", key, err)
@@ -343,7 +343,7 @@ func (h *Handler) getIngress(namespace, ingName string) (*draft.Ingress, *metav1
 
 func (h *Handler) searchPrimaryDomainByNamespace(domainName, namespace string) (obj *platform.Domain, status *metav1.Status) {
 	domList := &platform.DomainList{}
-	err := h.usrTprClient.Get().
+	err := h.tprClient.Get().
 		Resource("domains").
 		Namespace(namespace).
 		Do().

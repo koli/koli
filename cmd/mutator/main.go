@@ -4,15 +4,16 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"net/url"
-	"path"
 	sysruntime "runtime"
 
 	"github.com/golang/glog"
 	"github.com/gorilla/mux"
 	"github.com/spf13/pflag"
+	"github.com/urfave/negroni"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes"
@@ -40,6 +41,7 @@ func init() {
 	pflag.StringVar(&cfg.Serve, "serve", "", "the address to serve requests. Defaults to address ':8080' if '--cert-file' and '--key-file' is empty, otherwise ':8443'")
 	pflag.StringVar(&cfg.AllowedImages, "images", "", "Comma separated list of permitted images to run in the cluster.")
 	pflag.StringVar(&cfg.RegistryImages, "image-registry", "quay.io/koli", "Registry of allowed images")
+	pflag.StringVar(&cfg.PlatformPubKeyFile, "platform-pub-key", "", "path to jwt public key file for validating tokens.")
 	pflag.StringVar(&cfg.TLSServerConfig.CertFile, "cert-file", "", "path to public TLS certificate file")
 	pflag.StringVar(&cfg.TLSServerConfig.KeyFile, "key-file", "", "path to private TLS certificate file")
 
@@ -87,6 +89,11 @@ func main() {
 		glog.Fatalf("failed retrieving k8s client [%v]", err)
 	}
 
+	cfg.PlatformPubKey, err = ioutil.ReadFile(cfg.PlatformPubKeyFile)
+	if err != nil {
+		glog.Fatalf("failed reading pub key [%v]", err)
+	}
+
 	var tprConfig *rest.Config
 	tprConfig = config
 	tprConfig.APIPath = "/apis"
@@ -106,47 +113,41 @@ func main() {
 		glog.Fatalf("failed parsing kong admin api address [%v]", err)
 	}
 
-	r := mux.NewRouter()
 	handler := mutator.NewHandler(kubeClient, tprClient, request.NewRequest(nil, kongAdminURL), &cfg)
+	nonNamespaced := mux.NewRouter()
 
 	// Namespaces mutators
-	r.HandleFunc("/api/v1/namespaces", handler.NamespaceOnCreate).
-		Methods("POST")
-	r.HandleFunc("/api/v1/namespaces", handler.NamespaceOnList).
-		Methods("GET")
-	r.HandleFunc("/api/v1/namespaces/{name}", handler.NamespaceOnMod).
-		Methods("PUT", "PATCH")
+	nn := nonNamespaced.PathPrefix("/api/v1/namespaces").Subrouter()
+	nn.HandleFunc("", handler.NamespaceOnCreate).Methods("POST")
+	nn.HandleFunc("", handler.NamespaceOnList).Methods("GET")
+	nn.HandleFunc("/{name}", handler.NamespaceOnMod).Methods("PUT", "PATCH")
 
-	groupVersion := path.Join(platform.SchemeGroupVersion.Group, platform.SchemeGroupVersion.Version)
-
-	// TPR domains (kong) mutator
-	r.HandleFunc(fmt.Sprintf("/apis/%s/namespaces/{namespace}/domains", groupVersion), handler.DomainsOnCreate).
-		Methods("POST")
-
-	r.HandleFunc(fmt.Sprintf("/apis/%s/namespaces/{namespace}/domains/{domain}", groupVersion), handler.DomainsOnMod).
-		Methods("PUT", "PATCH", "DELETE")
-
-	// Custom resource
-	r.HandleFunc(fmt.Sprintf("/apis/%s/domains/{fqdn}", groupVersion), handler.DomainsOnHead).
-		Methods("HEAD")
+	gv := platform.SchemeGroupVersion.String()
+	namespaced := mux.NewRouter()
+	// CRD domains (kong) mutator
+	custom := namespaced.PathPrefix(fmt.Sprintf("/apis/%s/namespaces", gv)).Subrouter()
+	custom.HandleFunc("/{namespace}/domains", handler.DomainsOnCreate).Methods("POST")
+	custom.HandleFunc("/{namespace}/domains/{domain}", handler.DomainsOnMod).Methods("PUT", "PATCH", "DELETE")
+	namespaced.HandleFunc(fmt.Sprintf("/apis/%s/domains/{fqdn}", gv), handler.DomainsOnHead).Methods("HEAD")
 
 	// Deployment resources
-	r.HandleFunc("/apis/extensions/v1beta1/namespaces/{namespace}/deployments", handler.DeploymentsOnCreate).
-		Methods("POST")
-	r.HandleFunc("/apis/extensions/v1beta1/namespaces/{namespace}/deployments/{deploy}", handler.DeploymentsOnMod).
-		Methods("PUT", "PATCH")
+	ext := namespaced.PathPrefix("/apis/extensions/v1beta1/namespaces/{namespace}").Subrouter()
+	ext.HandleFunc("/deployments", handler.DeploymentsOnCreate).Methods("POST")
+	ext.HandleFunc("/deployments/{deploy}", handler.DeploymentsOnMod).Methods("PUT", "PATCH")
 
 	// Ingress resources
-	r.HandleFunc("/apis/extensions/v1beta1/namespaces/{namespace}/ingresses", handler.IngressOnCreate).
-		Methods("POST")
-	r.HandleFunc("/apis/extensions/v1beta1/namespaces/{namespace}/ingresses/{name}", handler.IngressOnPatch).
-		Methods("PUT", "PATCH")
-	r.HandleFunc("/apis/extensions/v1beta1/namespaces/{namespace}/ingresses/{name}", handler.IngressOnDelete).
-		Methods("DELETE")
+	ext.HandleFunc("/ingresses", handler.IngressOnCreate).Methods("POST")
+	ext.HandleFunc("/ingresses/{name}", handler.IngressOnPatch).Methods("PUT", "PATCH")
+	ext.HandleFunc("/ingresses/{name}", handler.IngressOnDelete).Methods("DELETE")
+
+	nonNamespaced.PathPrefix("/").Handler(negroni.New(
+		negroni.HandlerFunc(handler.Authorize),
+		negroni.Wrap(namespaced),
+	))
 
 	listenAddr, isSecure := cfg.GetServeAddress()
 	if isSecure {
-		log.Fatal(http.ListenAndServeTLS(listenAddr, cfg.TLSServerConfig.CertFile, cfg.TLSServerConfig.KeyFile, handler.Authorize(r)))
+		log.Fatal(http.ListenAndServeTLS(listenAddr, cfg.TLSServerConfig.CertFile, cfg.TLSServerConfig.KeyFile, nonNamespaced))
 	}
-	log.Fatal(http.ListenAndServe(listenAddr, handler.Authorize(r)))
+	log.Fatal(http.ListenAndServe(listenAddr, nonNamespaced))
 }

@@ -174,7 +174,7 @@ func (h *Handler) DeploymentsOnCreate(w http.ResponseWriter, r *http.Request) {
 	}
 	new.SetClusterPlan(plan.Name)
 
-	resp, err := h.usrClientset.Extensions().Deployments(params["namespace"]).Create(new.GetObject())
+	resp, err := h.clientset.Extensions().Deployments(params["namespace"]).Create(new.GetObject())
 	switch e := err.(type) {
 	case *apierrors.StatusError:
 		e.ErrStatus.APIVersion = new.APIVersion
@@ -182,9 +182,6 @@ func (h *Handler) DeploymentsOnCreate(w http.ResponseWriter, r *http.Request) {
 		glog.Infof("%s:%s - failed creating deployment [%s]", key, new.Name, e.ErrStatus.Reason)
 		util.WriteResponseError(w, &e.ErrStatus)
 	case nil:
-		// TODO: Kind and Version will be applied encoding the response
-		// resp.Kind = new.Kind
-		// resp.APIVersion = new.APIVersion
 		data, err := runtime.Encode(scheme.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion), resp)
 		if err != nil {
 			msg := fmt.Sprintf("request was mutated but failed encoding response [%v]", err)
@@ -337,7 +334,7 @@ func (h *Handler) DeploymentsOnMod(w http.ResponseWriter, r *http.Request) {
 		}
 
 		glog.V(4).Infof("%s, DIFF: %s", key, string(patch))
-		resp, err := h.usrClientset.Extensions().Deployments(params["namespace"]).Patch(new.Name, types.StrategicMergePatchType, patch)
+		resp, err := h.clientset.Extensions().Deployments(params["namespace"]).Patch(new.Name, types.StrategicMergePatchType, patch)
 		switch e := err.(type) {
 		case *apierrors.StatusError:
 			e.ErrStatus.APIVersion = resp.APIVersion

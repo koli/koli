@@ -14,7 +14,6 @@ import (
 	"k8s.io/client-go/tools/record"
 	"k8s.io/client-go/util/workqueue"
 
-	extensions "k8s.io/api/extensions/v1beta1"
 	apiextensionsv1beta1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1beta1"
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -24,24 +23,7 @@ import (
 	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 )
 
-const (
-	tprServicePlan = "plan.platform.koli.io"
-	tprAddons      = "addon.platform.koli.io"
-	tprReleases    = "release.platform.koli.io"
-)
-
 var keyFunc = cache.DeletionHandlingMetaNamespaceKeyFunc
-
-func watch3PRs(host, endpoint string, kclient kubernetes.Interface) error {
-	return wait.Poll(1*time.Second, 30*time.Second, func() (bool, error) {
-		_, err := kclient.Extensions().ThirdPartyResources().Get(host+endpoint, metav1.GetOptions{})
-		// resp, err := kclient.Core().RESTClient().Get(host + endpoint)
-		if err != nil {
-			return false, err
-		}
-		return true, nil
-	})
-}
 
 // CreatePlatformRoles initialize the needed roles for the platform
 // func CreatePlatformRoles(kclient kubernetes.Interface) {
@@ -204,79 +186,4 @@ func waitCRDReady(clientset apiextensionsclient.Interface, resourceName string) 
 		}
 		return false, nil
 	})
-}
-
-// CreatePlan3PRs generates the third party resource required for interacting with Service Plans
-func CreatePlan3PRs(host string, kclient kubernetes.Interface) error {
-	tprs := []*extensions.ThirdPartyResource{
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: tprServicePlan,
-			},
-			Versions: []extensions.APIVersion{
-				{Name: "v1"},
-			},
-			Description: "Plan resource aggregation",
-		},
-	}
-	tprClient := kclient.Extensions().ThirdPartyResources()
-	for _, tpr := range tprs {
-		if _, err := tprClient.Create(tpr); err != nil && !apierrors.IsAlreadyExists(err) {
-			return err
-		}
-		glog.Infof("third party resource '%s' provisioned", tpr.Name)
-	}
-
-	// We have to wait for the TPRs to be ready. Otherwise the initial watch may fail.
-	return watch3PRs(host, "/apis/platform.koli.io/v1/plans", kclient)
-}
-
-// CreateAddonTPRs generates the third party resource required for interacting with addons
-func CreateAddonTPRs(host string, kclient kubernetes.Interface) error {
-	tprs := []*extensions.ThirdPartyResource{
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: tprAddons,
-			},
-			Versions: []extensions.APIVersion{
-				{Name: "v1"},
-			},
-			Description: "Addon external service integration",
-		},
-	}
-	tprClient := kclient.Extensions().ThirdPartyResources()
-	for _, tpr := range tprs {
-		if _, err := tprClient.Create(tpr); err != nil && !apierrors.IsAlreadyExists(err) {
-			return err
-		}
-		glog.Infof("Third Party Resource '%s' provisioned", tpr.Name)
-	}
-
-	// We have to wait for the TPRs to be ready. Otherwise the initial watch may fail.
-	return watch3PRs(host, "/apis/platform.koli.io/v1/addons", kclient)
-}
-
-// CreateReleaseTPRs generates the third party resource required for interacting with releases
-func CreateReleaseTPRs(host string, kclient kubernetes.Interface) error {
-	tprs := []*extensions.ThirdPartyResource{
-		{
-			ObjectMeta: metav1.ObjectMeta{
-				Name: tprReleases,
-			},
-			Versions: []extensions.APIVersion{
-				{Name: "v1"},
-			},
-			Description: "Application Releases",
-		},
-	}
-	tprClient := kclient.Extensions().ThirdPartyResources()
-	for _, tpr := range tprs {
-		if _, err := tprClient.Create(tpr); err != nil && !apierrors.IsAlreadyExists(err) {
-			return err
-		}
-		glog.Infof("Third Party Resource '%s' provisioned", tpr.Name)
-	}
-
-	// We have to wait for the TPRs to be ready. Otherwise the initial watch may fail.
-	return watch3PRs(host, "/apis/platform.koli.io/v1/releases", kclient)
 }

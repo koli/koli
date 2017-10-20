@@ -545,12 +545,6 @@ func (h *Handler) Webhooks(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// jwtSystemToken, err := gitutil.GenerateNewJwtToken(h.cnf.PlatformClientSecret, nsMeta.Customer(), nsMeta.Organization(), platform.SystemTokenType)
-			// if err != nil {
-			// 	glog.Infof("%s - failed generating user token: %s", target, err)
-			// 	continue
-			// }
-
 			original := dp.DeepCopy()
 			if original == nil {
 				w.WriteHeader(http.StatusInternalServerError)

@@ -52,7 +52,7 @@ func GenerateNewJwtToken(key, customer, org string, tokenType platform.TokenType
 	claims["kolihub.io/type"] = tokenType
 
 	// always convert to UTC time
-	claims["exp"] = exp.UTC().Unix() // claims["exp"] = time.Now().UTC().Add(time.Minute * 20).Unix()
+	claims["exp"] = exp.UTC().Unix()
 	claims["iat"] = time.Now().UTC().Unix()
 	token.Claims = claims
 
@@ -178,4 +178,41 @@ func generateStatus(msg string, statusCode int32, reason metav1.StatusReason, de
 func GenAdler32Hash(text string) string {
 	adler32Int := adler32.Checksum([]byte(text))
 	return strconv.FormatUint(uint64(adler32Int), 16)
+}
+
+// DecodeUserToken decodes a jwtToken (HS256 and RS256) into a *platform.User
+func DecodeUserToken(jwtTokenString, jwtSecret string, rawPubKey []byte) (*platform.User, error) {
+	user := &platform.User{}
+	token, err := jwt.ParseWithClaims(jwtTokenString, user, func(token *jwt.Token) (interface{}, error) {
+		switch t := token.Method.(type) {
+		case *jwt.SigningMethodRSA:
+			if rawPubKey == nil {
+				return nil, fmt.Errorf("missing public key")
+			}
+			pubKey, err := jwt.ParseRSAPublicKeyFromPEM(rawPubKey)
+			if err != nil {
+				return nil, fmt.Errorf("failed parsing raw public key [%v]", err)
+			}
+			return pubKey, nil
+		case *jwt.SigningMethodHMAC:
+			return []byte(jwtSecret), nil
+		default:
+			return nil, fmt.Errorf("unknown sign method [%v]", t)
+		}
+	})
+	if err == nil && token.Valid {
+		return user, nil
+	}
+	switch t := err.(type) {
+	case *jwt.ValidationError:
+		if t.Errors&jwt.ValidationErrorMalformed != 0 {
+			return nil, fmt.Errorf("it's not a valid token")
+		} else if t.Errors&(jwt.ValidationErrorExpired|jwt.ValidationErrorNotValidYet) != 0 {
+			return nil, fmt.Errorf("the token is expired or not valid yet")
+		} else {
+			return nil, fmt.Errorf("failed decoding token [%v]", err)
+		}
+	default:
+		return nil, fmt.Errorf("unknown error, failed decoding token [%v]", err)
+	}
 }

@@ -117,7 +117,7 @@ func (h *Handler) NamespaceOnCreate(w http.ResponseWriter, r *http.Request) {
 	new.Labels[platform.LabelOrganization] = h.user.Organization
 
 	if r.Method == "POST" {
-		resp, err := h.usrClientset.Core().Namespaces().Create(new)
+		resp, err := h.clientset.Core().Namespaces().Create(new)
 		switch e := err.(type) {
 		case *apierrors.StatusError:
 			e.ErrStatus.APIVersion = new.APIVersion
@@ -177,7 +177,7 @@ func (h *Handler) NamespaceOnMod(w http.ResponseWriter, r *http.Request) {
 		new.Labels[platform.LabelCustomer] = old.Labels[platform.LabelCustomer]
 		new.Labels[platform.LabelOrganization] = old.Labels[platform.LabelOrganization]
 
-		resp, err := h.usrClientset.Core().Namespaces().Update(new)
+		resp, err := h.clientset.Core().Namespaces().Update(new)
 		switch e := err.(type) {
 		case *apierrors.StatusError:
 			e.ErrStatus.APIVersion = resp.APIVersion
@@ -262,7 +262,7 @@ func (h *Handler) NamespaceOnMod(w http.ResponseWriter, r *http.Request) {
 			util.WriteResponseError(w, util.StatusInternalError(msg, &v1.Namespace{}))
 			return
 		}
-		resp, err := h.usrClientset.Core().Namespaces().Patch(params["name"], types.MergePatchType, reqBody)
+		resp, err := h.clientset.Core().Namespaces().Patch(params["name"], types.MergePatchType, reqBody)
 		switch e := err.(type) {
 		case *apierrors.StatusError:
 			e.ErrStatus.APIVersion = resp.APIVersion
@@ -292,7 +292,7 @@ func (h *Handler) NamespaceOnMod(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) getNamespace(name string) (*v1.Namespace, *metav1.Status) {
-	obj, err := h.usrClientset.Core().Namespaces().Get(name, metav1.GetOptions{})
+	obj, err := h.clientset.Core().Namespaces().Get(name, metav1.GetOptions{})
 	if err != nil {
 		switch t := err.(type) {
 		case apierrors.APIStatus:

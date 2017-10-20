@@ -97,7 +97,7 @@ func (h *Handler) DomainsOnCreate(w http.ResponseWriter, r *http.Request) {
 
 	// an user couldn't change the status!
 	new.Status = platform.DomainStatus{}
-	resp, err := h.usrTprClient.Post().
+	resp, err := h.tprClient.Post().
 		Resource("domains").
 		Namespace(params["namespace"]).
 		Body(new).
@@ -177,7 +177,7 @@ func (h *Handler) DomainsOnMod(w http.ResponseWriter, r *http.Request) {
 		// an user couldn't change the status!
 		new.Status = old.Status
 		new.Finalizers = old.Finalizers
-		resp, err := h.usrTprClient.Put().
+		resp, err := h.tprClient.Put().
 			Resource("domains").
 			Namespace(params["namespace"]).
 			Name(params["domain"]).
@@ -288,7 +288,7 @@ func (h *Handler) DomainsOnMod(w http.ResponseWriter, r *http.Request) {
 			util.WriteResponseError(w, util.StatusInternalError(msg, &platform.Domain{}))
 			return
 		}
-		resp, err := h.usrTprClient.Patch(types.MergePatchType).
+		resp, err := h.tprClient.Patch(types.MergePatchType).
 			Resource("domains").
 			Namespace(params["namespace"]).
 			Name(params["domain"]).
@@ -320,7 +320,7 @@ func (h *Handler) DomainsOnMod(w http.ResponseWriter, r *http.Request) {
 			glog.V(3).Infof("%s -  found finalizer %s, configuring delete timestamp", key, kongFinalizer)
 			nowUTC := metav1.Now().UTC().Format(time.RFC3339)
 			reqBody := []byte(fmt.Sprintf(`{"status": {"deletionTimestamp": "%s"}}`, nowUTC))
-			resp, err := h.usrTprClient.Patch(types.MergePatchType).
+			resp, err := h.tprClient.Patch(types.MergePatchType).
 				Resource("domains").
 				Namespace(params["namespace"]).
 				Name(params["domain"]).
@@ -342,7 +342,7 @@ func (h *Handler) DomainsOnMod(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-		resp, err := h.usrTprClient.Delete().
+		resp, err := h.tprClient.Delete().
 			Resource("domains").
 			Namespace(params["namespace"]).
 			Name(params["domain"]).
@@ -508,7 +508,7 @@ func (h *Handler) validateIfParentIsValid(obj *platform.Domain) *metav1.Status {
 
 func (h *Handler) getDomainByName(namespace, name string) (*platform.Domain, *metav1.Status) {
 	obj := &platform.Domain{}
-	err := h.usrTprClient.Get().
+	err := h.tprClient.Get().
 		Resource("domains").
 		Namespace(namespace).
 		Name(name).

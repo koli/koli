@@ -137,7 +137,7 @@ func doRequest(method, url string, obj interface{}) ([]byte, *http.Response, err
 }
 func TestDeploymentOnCreate(t *testing.T) {
 	var (
-		deployName                 = "foo-app"
+		deployName, namespace      = "foo-app", "default-foo-acme"
 		planName                   = "foo-plan"
 		storagePlan                = "foo-plan-5g"
 		requestStorage             = resource.MustParse("5Gi")
@@ -160,7 +160,8 @@ func TestDeploymentOnCreate(t *testing.T) {
 			FSGroup:      func() *int64 { i := int64(2000); return &i }(),
 		}
 	)
-	h := Handler{allowedImages: []string{"busybox"}}
+	h := Handler{allowedImages: []string{"busybox"}, clientset: fake.NewSimpleClientset()}
+	h.user = &platform.User{Customer: "foo", Organization: "acme"}
 	// Fake Clients
 	responseHeader := http.Header{"Content-Type": []string{"application/json"}}
 	h.tprClient = &fakerest.RESTClient{
@@ -187,22 +188,6 @@ func TestDeploymentOnCreate(t *testing.T) {
 			return &http.Response{StatusCode: 200, Header: responseHeader, Body: objBody(pList)}, nil
 		}),
 	}
-
-	var err error
-	h.usrClientset, err = kubernetes.NewForConfig(&rest.Config{})
-	if err != nil {
-		t.Fatalf("unexpected error getting rest client: %v", err)
-	}
-
-	extensionsClient := fakerest.CreateHTTPClient(func(req *http.Request) (*http.Response, error) {
-		d := &v1beta1.Deployment{}
-		if err := json.NewDecoder(req.Body).Decode(d); err != nil {
-			t.Fatalf("failed encoding deployment request: %v", err)
-		}
-		return &http.Response{StatusCode: 201, Header: responseHeader, Body: objBody(d)}, nil
-	})
-	h.usrClientset.Extensions().RESTClient().(*rest.RESTClient).Client = extensionsClient
-
 	// Mux Fake Server
 	r := mux.NewRouter()
 	r.HandleFunc("/{namespace}", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -226,7 +211,7 @@ func TestDeploymentOnCreate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed encoding deployment: %v", err)
 	}
-	req, err := http.NewRequest("POST", ts.URL+"/default", bytes.NewBuffer(reqBody))
+	req, err := http.NewRequest("POST", ts.URL+"/"+namespace, bytes.NewBuffer(reqBody))
 	if err != nil {
 		t.Fatalf("unexpected error: %#v", err)
 	}
@@ -329,7 +314,7 @@ func TestDeploymentOnPatch(t *testing.T) {
 
 	original := newDeployment(appName, ns, expectedAnnotations, nil, nil, v1.Container{})
 	h.clientset = fake.NewSimpleClientset([]runtime.Object{original}...)
-	h.usrClientset = fake.NewSimpleClientset()
+	// h.usrClientset = fake.NewSimpleClientset()
 
 	new := newDeployment(appName, ns, nil, nil, nil, v1.Container{})
 	// Add storage and a default plan
@@ -369,12 +354,14 @@ func TestDeploymentOnPatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error merging patch: %v", err)
 	}
-	for _, action := range h.usrClientset.(*fake.Clientset).Actions() {
+	for _, action := range h.clientset.(*fake.Clientset).Actions() {
 		switch tp := action.(type) {
 		case core.PatchActionImpl:
 			if string(tp.GetPatch()) != string(expectedPatch) {
 				t.Errorf("GOT: %s, EXPECTED: %s", string(tp.GetPatch()), string(expectedPatch))
 			}
+		case core.GetActionImpl:
+			// no-op
 		default:
 			t.Errorf("unexpected type of action: %T, OBJ: %s", tp, action)
 		}
@@ -395,7 +382,7 @@ func TestDeploymentOnPatchImageError(t *testing.T) {
 	defer ts.Close()
 
 	h.clientset = fake.NewSimpleClientset(newDeployment("myapp", "default", nil, nil, nil, v1.Container{}))
-	h.usrClientset = fake.NewSimpleClientset()
+	// h.usrClientset = fake.NewSimpleClientset()
 
 	new := newDeployment("myapp", "default", nil, nil, nil, v1.Container{Image: badImage})
 	respBody, _, err := doRequest("PATCH", ts.URL+"/default/deployments/myapp", new)
@@ -430,7 +417,7 @@ func TestDeploymentOnPatchScaleError(t *testing.T) {
 	original.Spec.Replicas = func() *int32 { scaleUp := int32(3); return &scaleUp }()
 	original.Spec.Template.Spec.Volumes = []v1.Volume{{Name: "a-volume"}}
 	h.clientset = fake.NewSimpleClientset(original)
-	h.usrClientset = fake.NewSimpleClientset()
+	// h.usrClientset = fake.NewSimpleClientset()
 
 	new := &v1beta1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "myapp"}}
 	respBody, _, err := doRequest("PATCH", ts.URL+"/default/deployments/myapp", new)
@@ -476,7 +463,7 @@ func TestDeploymentOnPatchMutateContainers(t *testing.T) {
 	defer ts.Close()
 
 	h.clientset = fake.NewSimpleClientset(newDeployment("myapp", "default", nil, nil, nil, expectedContainer))
-	h.usrClientset = fake.NewSimpleClientset()
+	// h.usrClientset = fake.NewSimpleClientset()
 
 	new := newDeployment("myapp", "default", nil, nil, nil, mutateContainer)
 	_, _, err := doRequest("PATCH", ts.URL+"/default/deployments/myapp", new)
@@ -484,9 +471,9 @@ func TestDeploymentOnPatchMutateContainers(t *testing.T) {
 		t.Fatalf("unexpected error executing request: %#v", err)
 	}
 
-	fakeclientset := h.usrClientset.(*fake.Clientset)
-	if len(fakeclientset.Actions()) != 1 {
-		t.Errorf("GOT: %d action(s), EXPECTED: 1 action", len(fakeclientset.Actions()))
+	fakeclientset := h.clientset.(*fake.Clientset)
+	if len(fakeclientset.Actions()) != 2 {
+		t.Errorf("GOT: %d action(s), EXPECTED: 2 action", len(fakeclientset.Actions()))
 	}
 	for _, action := range fakeclientset.Actions() {
 		switch tp := action.(type) {
@@ -494,6 +481,8 @@ func TestDeploymentOnPatchMutateContainers(t *testing.T) {
 			if string(tp.GetPatch()) != "{}" {
 				t.Errorf("GOT: %s, EXPECTED: {}", string(tp.GetPatch()))
 			}
+		case core.GetActionImpl:
+			// no-op
 		}
 	}
 }
@@ -578,7 +567,7 @@ func TestDeploymentOnPatchAPIErrors(t *testing.T) {
 
 	for _, test := range testCases {
 		h.clientset.Extensions().RESTClient().(*rest.RESTClient).Client = test.extClient
-		h.usrClientset = h.clientset
+		// h.usrClientset = h.clientset
 		respBody, _, err := doRequest("PATCH", ts.URL+"/default/deployments/"+appName, &v1beta1.Deployment{})
 		if err != nil {
 			t.Fatalf("unexpected error executing request: %#v", err)

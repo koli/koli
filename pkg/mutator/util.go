@@ -1,7 +1,6 @@
 package mutator
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -11,8 +10,8 @@ import (
 	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 	runtimemutator "kolihub.io/koli/pkg/mutator/runtime"
 	"kolihub.io/koli/pkg/request"
+	"kolihub.io/koli/pkg/util"
 
-	jwt "github.com/dgrijalva/jwt-go"
 	"k8s.io/api/extensions/v1beta1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -29,14 +28,16 @@ var (
 
 // Config is the daemon base configuration
 type Config struct {
-	Host            string `envconfig:"KUBERNETES_SERVICE_HOST" required:"true"`
-	TLSInsecure     bool
-	TLSServerConfig rest.TLSClientConfig
-	TLSClientConfig rest.TLSClientConfig
-	Serve           string
-	AllowedImages   string
-	RegistryImages  string
-	KongAPIHost     string
+	Host               string `envconfig:"KUBERNETES_SERVICE_HOST" required:"true"`
+	TLSInsecure        bool
+	TLSServerConfig    rest.TLSClientConfig
+	TLSClientConfig    rest.TLSClientConfig
+	Serve              string
+	AllowedImages      string
+	RegistryImages     string
+	KongAPIHost        string
+	PlatformPubKeyFile string `envconfig:"PLATFORM_JWT_PUB_KEY_FILE" required:"true"`
+	PlatformPubKey     []byte
 }
 
 // GetServeAddress return the address to bind the server
@@ -66,23 +67,14 @@ func forbiddenAccessMessage(u *platform.User, customer, org string) string {
 }
 
 // decodeJwtToken decodes a jwt token into an UserMeta struct
-func decodeJwtToken(header http.Header) (*platform.User, string, error) {
+func decodeJwtToken(header http.Header, pubKey []byte) (*platform.User, string, error) {
 	// [0] = "bearer" / [1] = "<token>"{
 	authorization := strings.Split(header.Get("Authorization"), " ")
 	if len(authorization) != 2 {
 		return nil, "", fmt.Errorf("missing token or bearer in Authorization")
 	}
-	parts := strings.Split(authorization[1], ".")
-	if len(parts) != 3 {
-		return nil, "", fmt.Errorf("it's not a valid jwt token")
-	}
-	// Don't care about validating tokens, only about the token data.
-	seg, err := jwt.DecodeSegment(parts[1])
-	if err != nil {
-		return nil, "", fmt.Errorf("failed decoding segment: %s", err)
-	}
-	user := &platform.User{}
-	return user, authorization[1], json.Unmarshal(seg, user)
+	u, err := util.DecodeUserToken(authorization[1], "", pubKey)
+	return u, authorization[1], err
 }
 
 // getKubernetesUserClients returns clients to interact with the api server
@@ -100,7 +92,6 @@ func getKubernetesUserClients(mutatorCfg *Config, bearerToken string) (*kubernet
 		config.Insecure = mutatorCfg.TLSInsecure
 	}
 	config.BearerToken = bearerToken
-
 	var tprConfig *rest.Config
 	tprConfig = config
 	tprConfig.APIPath = "/apis"
