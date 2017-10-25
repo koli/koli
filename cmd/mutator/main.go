@@ -14,6 +14,9 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/spf13/pflag"
 	"github.com/urfave/negroni"
+	rbac "k8s.io/api/rbac/v1beta1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/serializer"
 	"k8s.io/client-go/kubernetes"
@@ -24,8 +27,6 @@ import (
 	"kolihub.io/koli/pkg/mutator"
 	"kolihub.io/koli/pkg/request"
 	"kolihub.io/koli/pkg/version"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func init() {
@@ -79,8 +80,10 @@ func main() {
 			glog.Fatalf("error creating client configuration [%v]", err)
 		}
 	} else {
-		config = &rest.Config{Host: cfg.Host}
-		config.TLSClientConfig = cfg.TLSClientConfig
+		config = &rest.Config{
+			Host:            cfg.Host,
+			TLSClientConfig: cfg.TLSClientConfig,
+		}
 		config.Insecure = cfg.TLSInsecure
 	}
 
@@ -111,6 +114,9 @@ func main() {
 	kongAdminURL, err := url.Parse(cfg.KongAPIHost)
 	if err != nil {
 		glog.Fatalf("failed parsing kong admin api address [%v]", err)
+	}
+	if err := enforceClusterRole(kubeClient, &mutator.DefaultClusterRole); err != nil {
+		glog.Fatalf("failed enforcing cluster role [%v]", err)
 	}
 
 	handler := mutator.NewHandler(kubeClient, tprClient, request.NewRequest(nil, kongAdminURL), &cfg)
@@ -148,7 +154,24 @@ func main() {
 
 	listenAddr, isSecure := cfg.GetServeAddress()
 	if isSecure {
-		log.Fatal(http.ListenAndServeTLS(listenAddr, cfg.TLSServerConfig.CertFile, cfg.TLSServerConfig.KeyFile, nonNamespaced))
+		log.Fatal(http.ListenAndServeTLS(
+			listenAddr,
+			cfg.TLSServerConfig.CertFile,
+			cfg.TLSServerConfig.KeyFile,
+			nonNamespaced,
+		))
 	}
 	log.Fatal(http.ListenAndServe(listenAddr, nonNamespaced))
+}
+
+func enforceClusterRole(clientset kubernetes.Interface, obj *rbac.ClusterRole) error {
+	clusterRole, err := clientset.Rbac().ClusterRoles().Get(obj.Name, metav1.GetOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+	if clusterRole != nil {
+		obj.ResourceVersion = clusterRole.ResourceVersion
+	}
+	_, err = clientset.RbacV1beta1().ClusterRoles().Update(obj)
+	return err
 }
