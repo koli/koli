@@ -162,6 +162,11 @@ func (h *Handler) NamespaceOnCreate(w http.ResponseWriter, r *http.Request) {
 		details := &metav1.StatusDetails{
 			Name:  new.Name,
 			Group: new.GroupVersionKind().Group,
+			Causes: []metav1.StatusCause{{
+				Type:    metav1.CauseTypeUnexpectedServerResponse,
+				Message: msg,
+				Field:   "metadata.name",
+			}},
 		}
 		util.WriteResponseError(w, util.StatusUnprocessableEntity(msg, new, details))
 		return
