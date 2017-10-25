@@ -21,10 +21,7 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-var (
-	// extensionsCodec = scheme.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion)
-	extensionsCodec = runtimemutator.LegacyCodec(v1beta1.SchemeGroupVersion)
-)
+var extensionsCodec = runtimemutator.LegacyCodec(v1beta1.SchemeGroupVersion)
 
 // Config is the daemon base configuration
 type Config struct {

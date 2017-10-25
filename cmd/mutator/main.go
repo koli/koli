@@ -120,6 +120,7 @@ func main() {
 	nn := nonNamespaced.PathPrefix("/api/v1/namespaces").Subrouter()
 	nn.HandleFunc("", handler.NamespaceOnCreate).Methods("POST")
 	nn.HandleFunc("", handler.NamespaceOnList).Methods("GET")
+	nn.HandleFunc("/{name}", handler.NamespaceOnGet).Methods("GET")
 	nn.HandleFunc("/{name}", handler.NamespaceOnMod).Methods("PUT", "PATCH")
 
 	gv := platform.SchemeGroupVersion.String()

@@ -21,31 +21,12 @@ func (h *Handler) Authorize(w http.ResponseWriter, r *http.Request, next http.Ha
 	if r.Method == http.MethodHead {
 		next(w, r)
 	}
-	// validate only RSA tokens
-	user, rawToken, err := decodeJwtToken(r.Header, h.config.PlatformPubKey)
-	if err != nil {
-		msg := fmt.Sprintf("failed decoding token [%s]", err)
-		glog.Infof(msg)
-		util.WriteResponseError(w, util.StatusUnauthorized(msg, &v1.Namespace{}, "v1"))
+	if errStatus := h.validateUser(r); errStatus != nil {
+		glog.Infof(errStatus.Message)
+		util.WriteResponseError(w, errStatus)
 		return
 	}
-	if !user.IsValid() {
-		msg := fmt.Sprintf("it's not a valid user")
-		glog.Infof(msg)
-		util.WriteResponseError(w, util.StatusUnauthorized(msg, &v1.Namespace{}, "v1"))
-		return
-	}
-	h.user = user
-	h.usrClientset, h.usrTprClient, err = getKubernetesUserClients(h.config, rawToken)
-	if err != nil {
-		// TODO: need to pass a generic object instead of v1.Namespace
-		msg := fmt.Sprintf("failed retrieving user k8s clients [%v]", err)
-		glog.Infof(msg)
-		util.WriteResponseError(w, util.StatusInternalError(msg, &v1.Namespace{}))
-		return
-	}
-
-	// TODO: This could be solved more cleanily: https://github.com/urfave/negroni/issues/123
+	// TODO: It could be solved more cleanly: https://github.com/urfave/negroni/issues/123
 	nsGroup := regexpNamespace.FindStringSubmatch(r.URL.Path)
 	if len(nsGroup) == 2 {
 		ns := nsGroup[1]
@@ -87,5 +68,19 @@ func (h *Handler) validateNamespace(nsMeta *draft.NamespaceMeta) *metav1.Status 
 			metav1.StatusReasonForbidden,
 		)
 	}
+	return nil
+}
+
+func (h *Handler) validateUser(r *http.Request) *metav1.Status {
+	// validate only RSA tokens
+	user, _, err := decodeJwtToken(r.Header, h.config.PlatformPubKey)
+	if err != nil {
+		msg := fmt.Sprintf("failed decoding token [%s]", err)
+		return util.StatusUnauthorized(msg, nil, metav1.StatusReasonUnauthorized)
+	}
+	if !user.IsValid() {
+		return util.StatusUnauthorized("it's not a valid user", nil, metav1.StatusReasonUnauthorized)
+	}
+	h.user = user
 	return nil
 }

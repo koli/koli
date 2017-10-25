@@ -24,6 +24,9 @@ const (
 	// NamespaceIsolationAnnotation deny traffic between pods
 	// https://kubernetes.io/docs/concepts/services-networking/networkpolicies/#configuring-namespace-isolation
 	NamespaceIsolationAnnotation = "net.beta.kubernetes.io/network-policy"
+	// NamespaceHardLimit limits how many namespaces a user could create
+	// In the future this will be associate to a Custom Resource Definition
+	NamespaceHardLimit = 2
 )
 
 func invalidNamespaceDetails(ns *v1.Namespace) *metav1.Status {
@@ -46,7 +49,11 @@ func invalidNamespaceDetails(ns *v1.Namespace) *metav1.Status {
 func (h *Handler) NamespaceOnList(w http.ResponseWriter, r *http.Request) {
 	key := fmt.Sprintf("Req-ID=%s, Resource=namespaces", r.Header.Get("X-Request-ID"))
 	glog.V(3).Infof("%s, User-Agent=%s, Method=%s", key, r.Header.Get("User-Agent"), r.Method)
-
+	if errStatus := h.validateUser(r); errStatus != nil {
+		glog.Infof(errStatus.Message)
+		util.WriteResponseError(w, errStatus)
+		return
+	}
 	selector := labels.Set{
 		platform.LabelCustomer:     h.user.Customer,
 		platform.LabelOrganization: h.user.Organization,
@@ -76,11 +83,55 @@ func (h *Handler) NamespaceOnList(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (h *Handler) NamespaceOnGet(w http.ResponseWriter, r *http.Request) {
+	params := mux.Vars(r)
+	key := fmt.Sprintf("Req-ID=%s, Resource=namespaces:%s", r.Header.Get("X-Request-ID"), params["name"])
+	glog.V(3).Infof("%s, User-Agent=%s, Method=%s", key, r.Header.Get("User-Agent"), r.Method)
+	if errStatus := h.validateUser(r); errStatus != nil {
+		glog.Infof(errStatus.Message)
+		util.WriteResponseError(w, errStatus)
+		return
+	}
+	if errStatus := h.validateNamespace(draft.NewNamespaceMetadata(params["name"])); errStatus != nil {
+		glog.V(4).Infof("%s - %s", key, errStatus.Message)
+		util.WriteResponseError(w, errStatus)
+		return
+	}
+	resp, err := h.clientset.Core().Namespaces().Get(params["name"], metav1.GetOptions{})
+	switch e := err.(type) {
+	case *apierrors.StatusError:
+		e.ErrStatus.APIVersion = resp.APIVersion
+		e.ErrStatus.Kind = "Status"
+		glog.Infof("%s - failed retrieving namespace [%s]", key, e.ErrStatus.Reason)
+		util.WriteResponseError(w, &e.ErrStatus)
+	case nil:
+		resp.Kind = "Namespace"
+		resp.APIVersion = v1.SchemeGroupVersion.Version
+		data, err := json.Marshal(resp)
+		if err != nil {
+			msg := fmt.Sprintf("failed encoding response [%v]", err)
+			util.WriteResponseError(w, util.StatusInternalError(msg, resp))
+			return
+		}
+		glog.Infof("%s - request mutate with success", key)
+		util.WriteResponseSuccess(w, data)
+	default:
+		msg := fmt.Sprintf("unknown response from server [%v, %#v]", err, resp)
+		glog.Warningf("%s - %s", key, msg)
+		util.WriteResponseError(w, util.StatusInternalError(msg, resp))
+		return
+	}
+}
+
 // NamespaceOnCreate mutates k8s request on creation
 func (h *Handler) NamespaceOnCreate(w http.ResponseWriter, r *http.Request) {
 	key := fmt.Sprintf("Req-ID=%s, Resource=namespaces", r.Header.Get("X-Request-ID"))
 	glog.V(3).Infof("%s, User-Agent=%s, Method=%s", key, r.Header.Get("User-Agent"), r.Method)
-
+	if errStatus := h.validateUser(r); errStatus != nil {
+		glog.Infof(errStatus.Message)
+		util.WriteResponseError(w, errStatus)
+		return
+	}
 	new := &v1.Namespace{}
 	if err := json.NewDecoder(r.Body).Decode(new); err != nil {
 		msg := fmt.Sprintf("failed decoding request body [%v]", err)
@@ -89,17 +140,30 @@ func (h *Handler) NamespaceOnCreate(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer r.Body.Close()
-
-	nsMeta := draft.NewNamespaceMetadata(new.Name)
-	if !nsMeta.IsValid() {
-		glog.V(4).Infof("%s - invalid namespace format", key)
-		util.WriteResponseError(w, invalidNamespaceDetails(new))
+	if errStatus := h.validateNamespace(draft.NewNamespaceMetadata(new.Name)); errStatus != nil {
+		glog.V(4).Infof("%s - %s", key, errStatus.Message)
+		util.WriteResponseError(w, errStatus)
 		return
 	}
-
-	if h.user.Customer != nsMeta.Customer() || h.user.Organization != nsMeta.Organization() {
-		msg := forbiddenAccessMessage(h.user, nsMeta.Customer(), nsMeta.Organization())
-		util.WriteResponseError(w, util.StatusUnauthorized(msg, new, metav1.StatusReasonUnauthorized))
+	selector := labels.Set{
+		platform.LabelCustomer:     h.user.Customer,
+		platform.LabelOrganization: h.user.Organization,
+	}
+	nsList, err := h.clientset.Core().Namespaces().List(metav1.ListOptions{LabelSelector: selector.String()})
+	if err != nil {
+		msg := fmt.Sprintf("failed listing namespaces [%v]", err)
+		glog.V(4).Infof("%s - %s", key, msg)
+		util.WriteResponseError(w, util.StatusBadRequest(msg, &v1.Namespace{}, metav1.StatusReasonBadRequest))
+		return
+	}
+	if len(nsList.Items) == NamespaceHardLimit {
+		msg := fmt.Sprintf("quota exceed, allowed only %d namespace(s)", NamespaceHardLimit)
+		glog.Infof("%s -  %s", key, msg)
+		details := &metav1.StatusDetails{
+			Name:  new.Name,
+			Group: new.GroupVersionKind().Group,
+		}
+		util.WriteResponseError(w, util.StatusUnprocessableEntity(msg, new, details))
 		return
 	}
 
@@ -150,6 +214,16 @@ func (h *Handler) NamespaceOnMod(w http.ResponseWriter, r *http.Request) {
 	params := mux.Vars(r)
 	key := fmt.Sprintf("Req-ID=%s, Resource=namespaces:%s", r.Header.Get("X-Request-ID"), params["name"])
 	glog.V(3).Infof("%s, User-Agent=%s, Method=%s", key, r.Header.Get("User-Agent"), r.Method)
+	if errStatus := h.validateUser(r); errStatus != nil {
+		glog.Infof(errStatus.Message)
+		util.WriteResponseError(w, errStatus)
+		return
+	}
+	if errStatus := h.validateNamespace(draft.NewNamespaceMetadata(params["name"])); errStatus != nil {
+		glog.V(4).Infof("%s - %s", key, errStatus.Message)
+		util.WriteResponseError(w, errStatus)
+		return
+	}
 	switch r.Method {
 	case "PUT":
 		new := &v1.Namespace{}
