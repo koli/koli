@@ -47,7 +47,7 @@ var (
 				},
 			},
 			{
-				APIGroups: []string{"", platform.GroupName},
+				APIGroups: []string{"extensions", platform.GroupName},
 				Resources: []string{"deployments", "releases", "replicasets"},
 				Verbs:     []string{"delete", "deletecollection"},
 			},
