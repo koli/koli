@@ -80,6 +80,7 @@ func main() {
 	r.HandleFunc("/releases/{namespace}/{deployName}/{gitSha}/{file}", gitHandler.Releases).Methods("GET")
 	r.HandleFunc("/github/orgs/{org}/repos", gitHandler.GitHubListOrgRepos).Methods("GET")
 	r.HandleFunc("/github/user/repos", gitHandler.GitHubListUserRepos).Methods("GET")
+	r.HandleFunc("/github//user/orgs", gitHandler.GitHubListUserOrgs).Methods("GET")
 	r.HandleFunc("/github/search/repos", gitHandler.GitHubSearchRepos).Methods("GET")
 	r.HandleFunc("/github/repos/{owner}/{repo}/hooks", gitHandler.GitHubAddHooks).Methods("POST")
 	r.HandleFunc("/github/repos/{owner}/{repo}/hooks", gitHandler.GitHubHooks).Methods("DELETE")
