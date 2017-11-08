@@ -137,19 +137,20 @@ func (b *BuildController) syncHandler(key string) error {
 		return nil
 	}
 
-	gitSha, err := koliutil.NewSha(release.Spec.GitRevision)
-	if err != nil {
-		// TODO: add an event informing the problem!
-		return fmt.Errorf("%s - %s", key, err)
-	}
+	gitSha, _ := koliutil.NewSha(release.Spec.HeadCommit.ID)
+	// if err != nil {
+	// 	// TODO: add an event informing the problem!
+	// 	return fmt.Errorf("%s - %s", key, err)
+	// }
 
-	info := koliutil.NewSlugBuilderInfo(
-		release.Namespace,
-		release.Spec.DeployName,
-		platform.GitReleasesPathPrefix,
-		gitSha)
+	// info := koliutil.NewSlugBuilderInfo(
+	// 	release.Namespace,
+	// 	release.Spec.DeployName,
+	// 	platform.GitReleasesPathPrefix,
+	// 	gitSha,
+	// )
 	sbPodName := fmt.Sprintf("sb-%s", release.Name)
-	pod, err := slugbuilderPod(b.config, release, gitSha, info)
+	pod, err := slugbuilderPod(b.config, release, gitSha)
 	if err != nil {
 		return fmt.Errorf("%s - failed creating slugbuild pod: %s", key, err)
 	}
@@ -169,7 +170,7 @@ func (b *BuildController) syncHandler(key string) error {
 	return nil
 }
 
-func slugbuilderPod(cfg *Config, rel *platform.Release, gitSha *koliutil.SHA, info *koliutil.SlugBuilderInfo) (*v1.Pod, error) {
+func slugbuilderPod(cfg *Config, rel *platform.Release, gitSha *koliutil.SHA) (*v1.Pod, error) {
 	gitCloneURL := rel.Spec.GitRemote
 	if !rel.IsGitHubSource() {
 		var err error
@@ -181,8 +182,8 @@ func slugbuilderPod(cfg *Config, rel *platform.Release, gitSha *koliutil.SHA, in
 	env := map[string]interface{}{
 		"GIT_CLONE_URL":   gitCloneURL,
 		"GIT_RELEASE_URL": rel.GitReleaseURL(cfg.GitReleaseHost),
-		"GIT_REVISION":    rel.Spec.GitRevision,
-		// "AUTH_TOKEN":      rel.Spec.AuthToken,
+		// "GIT_REVISION":    rel.Spec.GitRevision,
+		"GIT_BRANCH": rel.Spec.GitBranch,
 	}
 	if cfg.DebugBuild {
 		env["DEBUG"] = "TRUE"
@@ -224,17 +225,21 @@ func podResource(rel *platform.Release, gitSha *koliutil.SHA, env map[string]int
 			Name:      sbPodName,
 			Namespace: rel.Namespace,
 			Annotations: map[string]string{
-				spec.KoliPrefix("gitfullrev"):  gitSha.Full(),
+				// spec.KoliPrefix("gitfullrev"):  gitSha.Full(),
 				spec.KoliPrefix("releasename"): rel.Name,
 			},
 			Labels: map[string]string{
 				// TODO: hard-coded
-				spec.KoliPrefix("autodeploy"):    "true",
-				spec.KoliPrefix("type"):          "slugbuild",
-				spec.KoliPrefix("gitrevision"):   gitSha.Short(),
+				spec.KoliPrefix("autodeploy"): "true",
+				spec.KoliPrefix("type"):       "slugbuild",
+				// spec.KoliPrefix("gitrevision"):   gitSha.Short(),
 				spec.KoliPrefix("buildrevision"): rel.Spec.BuildRevision,
 			},
 		},
+	}
+	if gitSha != nil {
+		pod.Annotations["kolihub.io/gitfullrev"] = gitSha.Full()
+		pod.Labels[platform.AnnotationGitRevision] = gitSha.Short()
 	}
 	if rel.Labels != nil {
 		if appName, ok := rel.Labels["kolihub.io/deploy"]; ok {

@@ -591,7 +591,6 @@ func (h *Handler) Webhooks(w http.ResponseWriter, r *http.Request) {
 			dp.Annotations[platform.AnnotationBuild] = "true"
 			dp.Annotations[platform.AnnotationGitRemote] = event.Repo.GetCloneURL()
 			dp.Annotations[platform.AnnotationGitRepository] = event.Repo.GetFullName()
-			dp.Annotations[platform.AnnotationGitRevision] = event.HeadCommit.GetID()
 			// dp.Annotations[platform.AnnotationAuthToken] = jwtSystemToken
 			if identity != nil {
 				cloneURL, err := getCloneURL(event.Repo.GetCloneURL(), identity.AccessToken, event.Repo.GetFullName())
@@ -601,7 +600,13 @@ func (h *Handler) Webhooks(w http.ResponseWriter, r *http.Request) {
 				}
 				dp.Annotations[platform.AnnotationGitRemote] = cloneURL
 			}
+			dp.Annotations[platform.AnnotationGitCommitID] = event.HeadCommit.GetID()
+			// dp.Annotations[platform.AnnotationGitRevision] = event.HeadCommit.GetID()
+			dp.Annotations[platform.AnnotationGitAuthorName] = event.HeadCommit.Author.GetName()
+			dp.Annotations[platform.AnnotationGitAuthorAvatar] = event.Pusher.GetAvatarURL()
 			dp.Annotations[platform.AnnotationGitCompare] = event.GetCompare()
+			dp.Annotations[platform.AnnotationGitCommitMessage] = event.HeadCommit.GetMessage()
+			dp.Annotations[platform.AnnotationGitCommitURL] = event.HeadCommit.GetURL()
 			dp.Annotations[platform.AnnotationBuildSource] = githubBuildSourceName
 
 			codec := scheme.Codecs.LegacyCodec(v1beta1.SchemeGroupVersion)

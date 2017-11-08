@@ -184,8 +184,8 @@ func (d *DeployerController) syncHandler(key string) error {
 			return nil
 		}
 
-		if deploy.Annotations["kolihub.io/deployed-git-revision"] == release.Spec.GitRevision {
-			glog.V(2).Infof("%s - this release was already deployed [%s], skipping autodeploy", key, release.Spec.GitRevision)
+		if deploy.Annotations["kolihub.io/deployed-git-revision"] == release.Spec.HeadCommit.ID {
+			glog.V(2).Infof("%s - this release was already deployed [%s], skipping autodeploy", key, release.Spec.HeadCommit.ID)
 			return nil
 		}
 
@@ -194,8 +194,12 @@ func (d *DeployerController) syncHandler(key string) error {
 				"Failed deploying release [%s]", err)
 			return fmt.Errorf("failed deploying release [%s]", err)
 		}
+		ref := release.Spec.HeadCommit.ID
+		if len(ref) > 0 {
+			ref = ref[:7]
+		}
 		d.recorder.Eventf(release, v1.EventTypeNormal,
-			"Deployed", "Deploy '%s' updated with the new revision [%s]", release.Spec.DeployName, release.Spec.GitRevision[:7])
+			"Deployed", "Deploy '%s' updated with the new revision [%s]", release.Spec.DeployName, ref)
 	}
 
 	// turn-off build, otherwise it will trigger unwanted builds
@@ -216,7 +220,7 @@ func (d *DeployerController) deploySlug(release *platform.Release, deploy *exten
 	if dpCopy.Annotations == nil {
 		dpCopy.Annotations = make(map[string]string)
 	}
-	dpCopy.Annotations["kolihub.io/deployed-git-revision"] = release.Spec.GitRevision
+	dpCopy.Annotations["kolihub.io/deployed-git-revision"] = release.Spec.HeadCommit.ID
 	c := dpCopy.Spec.Template.Spec.Containers
 	// TODO: hard-coded
 	c[0].Ports = []v1.ContainerPort{

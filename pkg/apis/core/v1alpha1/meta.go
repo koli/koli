@@ -1,6 +1,7 @@
 package v1alpha1
 
 import (
+	"encoding/base64"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -122,7 +123,12 @@ func (r *Release) GitCloneURL() (string, error) {
 
 // GitReleaseURL constructs the URL where the release must be stored
 func (r *Release) GitReleaseURL(host string) string {
-	urlPath := filepath.Join("releases", r.Namespace, r.Spec.DeployName, r.Spec.GitRevision)
+	// urlPath := filepath.Join("releases", r.Namespace, r.Spec.DeployName, r.Spec.HeadCommit.ID)
+	ref := r.Spec.HeadCommit.ID
+	if len(ref) == 0 {
+		ref = base64.StdEncoding.EncodeToString([]byte(r.Spec.GitBranch))
+	}
+	urlPath := filepath.Join("releases", r.Namespace, r.Spec.DeployName, ref)
 	return fmt.Sprintf("%s/%s", host, urlPath)
 }
 

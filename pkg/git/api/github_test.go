@@ -413,13 +413,18 @@ func TestWebhookDeployOneApp(t *testing.T) {
 		expectedPushEvent  = newPushEvent(ownerRepo, repoName, ref, commit, cloneURL, compareURL)
 		expectedDeployMeta = metav1.ObjectMeta{
 			Annotations: map[string]string{
-				platform.AnnotationBuildRevision: "1",
-				platform.AnnotationGitCompare:    compareURL,
-				platform.AnnotationGitRemote:     cloneURL,
-				platform.AnnotationGitRepository: path.Join(ownerRepo, repoName),
-				platform.AnnotationGitRevision:   commit,
-				platform.AnnotationBuildSource:   "github",
-				platform.AnnotationBuild:         "true",
+				platform.AnnotationBuildRevision:    "1",
+				platform.AnnotationGitAuthorName:    "",
+				platform.AnnotationGitAuthorAvatar:  "",
+				platform.AnnotationGitCommitURL:     "",
+				platform.AnnotationGitCommitMessage: "",
+				platform.AnnotationGitCommitID:      commit,
+				platform.AnnotationGitCompare:       compareURL,
+				platform.AnnotationGitRemote:        cloneURL,
+				platform.AnnotationGitRepository:    path.Join(ownerRepo, repoName),
+				// platform.AnnotationGitRevision:      commit,
+				platform.AnnotationBuildSource: "github",
+				platform.AnnotationBuild:       "true",
 			},
 		}
 		// repo = "owner/repo"
