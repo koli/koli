@@ -51,6 +51,32 @@ type auth0Identity struct {
 	IsSocial    bool   `json:"isSocial"`
 }
 
+// GitHubListUserOgs list the organizations for the authenticated user.
+// GitHub API docs: https://developer.github.com/v3/orgs/#list-your-organizations
+func (h *Handler) GitHubListUserOrgs(w http.ResponseWriter, r *http.Request) {
+	gitclient, err := h.gitHubCli(h.GetUserIDSub())
+	if err != nil {
+		githubClientError(w, err)
+		return
+	}
+	qs := r.URL.Query()
+	page, perPage := parsePages(qs)
+	listOpts := &github.ListOptions{PerPage: perPage, Page: page}
+	orgs, resp, err := gitclient.Organizations.List(context.Background(), "", listOpts)
+	if err != nil {
+		msg := fmt.Sprintf("failed searching repos, %v", err)
+		util.WriteResponseError(w, util.StatusBadRequest(msg, nil, metav1.StatusReasonUnknown))
+		return
+	}
+	if resp.NextPage != 0 {
+		q := fmt.Sprintf("page=%d&per_page=%d", resp.NextPage, perPage)
+		nextPageURL := fmt.Sprintf("http://%s/%s?%s", r.Host, r.URL.Path, q)
+		w.Header().Set("Location", nextPageURL)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(orgs)
+}
+
 // GitHubSearchRepos lookup for repositores at GitHub
 func (h *Handler) GitHubSearchRepos(w http.ResponseWriter, r *http.Request) {
 	qs := r.URL.Query()
