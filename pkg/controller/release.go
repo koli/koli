@@ -9,7 +9,6 @@ import (
 	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 	"kolihub.io/koli/pkg/apis/core/v1alpha1/draft"
 	clientset "kolihub.io/koli/pkg/clientset"
-	"kolihub.io/koli/pkg/spec"
 	koliutil "kolihub.io/koli/pkg/util"
 
 	"k8s.io/api/core/v1"
@@ -25,7 +24,7 @@ import (
 )
 
 // keys required in a deployment annotation for creating a new release
-var requiredKeys = []string{"gitremote", "gitrepository", "buildrevision"}
+var requiredKeys = []string{platform.AnnotationGitRemote}
 
 // ReleaseController controller
 type ReleaseController struct {
@@ -140,51 +139,77 @@ func (r *ReleaseController) syncHandler(key string) error {
 		return fmt.Errorf("ValidateRequiredKeys [%s]", err)
 	}
 
-	gitSha, err := koliutil.NewSha(dp.Annotations[spec.KoliPrefix("gitrevision")])
-	if err != nil {
-		r.recorder.Event(dp, v1.EventTypeWarning, "InvalidRevision", err.Error())
-		return fmt.Errorf("InvalidRevision [%s]", err)
-	}
-	dpRevision := fmt.Sprintf("%s-v%s", dp.Name, dp.Annotations[spec.KoliPrefix("buildrevision")])
+	gitSha, _ := koliutil.NewSha(dp.Annotations[platform.AnnotationGitCommitID])
+	dpRevision := dp.Name
+	// dpRevision := fmt.Sprintf("%s-v%s", dp.Name, dp.Annotations[platform.AnnotationBuildRevision])
+	// if len(dpRevision) == 0 {
+	// 	// Try to find the last revision
+	// 	revisions := []int{}
+	// 	cache.ListAllByNamespace(r.releaseInf.GetIndexer(), dp.Name, labels.Everything(), func(obj interface{}) {
+	// 		rel := obj.(*platform.Release)
+	// 		rev := rel.BuildRevision()
+	// 		if rev > 0 {
+	// 			revisions = append(revisions, rel.BuildRevision())
+	// 		}
+	// 	})
+	// 	lastRevision := getLastBuildRevision(revisions)
+	// 	glog.Infof("%s - last revision [%v]", key, lastRevision)
+	// 	dpRevision = strconv.Itoa(lastRevision + 1)
+	// }
 	autoDeploy := false
-	if dp.Annotations[spec.KoliPrefix("autodeploy")] == "true" {
+	// Deploy after the build
+	if dp.Annotations[platform.AnnotationAutoDeploy] == "true" {
 		glog.V(2).Infof("%s - autodeploy turned on.", key)
-		// Deploy it after the build
 		autoDeploy = true
 	}
-	sourceType := platform.SourceType(dp.Annotations[spec.KoliPrefix("source")])
+	sourceType := platform.SourceType(dp.Annotations[platform.AnnotationBuildSource])
 	release := &platform.Release{
 		TypeMeta: metav1.TypeMeta{
 			Kind:       "Release",
-			APIVersion: spec.SchemeGroupVersion.String(),
+			APIVersion: platform.SchemeGroupVersion.String(),
 		},
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      dpRevision,
 			Namespace: dp.Namespace,
 			// Useful for filtering
-			Labels: map[string]string{
-				spec.KoliPrefix("deploy"):      dp.Name,
-				spec.KoliPrefix("gitrevision"): gitSha.Short(),
-			},
+			Labels: map[string]string{"kolihub.io/deploy": dp.Name},
 		},
 		Spec: platform.ReleaseSpec{
-			BuildRevision: dp.Annotations[spec.KoliPrefix("buildrevision")],
-			GitRemote:     dp.Annotations[spec.KoliPrefix("gitremote")],
-			GitRepository: dp.Annotations[spec.KoliPrefix("gitrepository")],
-			AuthToken:     dp.Annotations[spec.KoliPrefix("authtoken")],
-			GitRevision:   gitSha.Full(),
-			AutoDeploy:    autoDeploy,
-			DeployName:    dp.Name,
-			Build:         true, // Always build a new release!
-			Source:        sourceType,
+			// BuildRevision: dp.Annotations[platform.AnnotationBuildRevision],
+			GitRemote:     dp.Annotations[platform.AnnotationGitRemote],
+			GitBranch:     dp.Annotations[platform.AnnotationGitBranch],
+			GitRepository: dp.Annotations[platform.AnnotationGitRepository],
+			HeadCommit: platform.HeadCommit{
+				ID:        dp.Annotations[platform.AnnotationGitCommitID],
+				Author:    dp.Annotations[platform.AnnotationGitAuthorName],
+				AvatarURL: dp.Annotations[platform.AnnotationGitAuthorAvatar],
+				Compare:   dp.Annotations[platform.AnnotationGitCompare],
+				Message:   dp.Annotations[platform.AnnotationGitCommitMessage],
+				URL:       dp.Annotations[platform.AnnotationGitCommitURL],
+			},
+			// AuthToken:     dp.Annotations[spec.KoliPrefix("authtoken")],
+			// GitRevision:   gitSha.Full(),
+			AutoDeploy: autoDeploy,
+			DeployName: dp.Name,
+			Build:      true, // Always build a new release!
+			Source:     sourceType,
 		},
+	}
+	if gitSha != nil {
+		// Useful for filtering
+		release.Labels[platform.AnnotationGitRevision] = gitSha.Short()
+		// release.Spec.GitRevision = gitSha.Full()
 	}
 	_, err = r.clientset.Release(release.Namespace).Create(release)
 	if err != nil && !apierrors.IsAlreadyExists(err) {
 		return fmt.Errorf("failed creating new release: %s", err)
 	}
 	if err == nil {
-		msg := fmt.Sprintf("Created release with revision '%s' from '%s'", release.Spec.GitRevision[:7], sourceType)
+		ref := release.Spec.HeadCommit.ID
+		if len(ref) == 0 {
+			ref = release.Spec.GitBranch
+		}
+		msg := fmt.Sprintf("Created release with revision '%s' from '%s'", ref, sourceType)
 		r.recorder.Event(release, v1.EventTypeNormal, "Created", msg)
 		glog.Infof("%s - new release created '%s'", key, release.Name)
 	}
@@ -201,7 +226,7 @@ func (r *ReleaseController) syncHandler(key string) error {
 
 func validateRequiredKeys(dp *extensions.Deployment) error {
 	for _, key := range requiredKeys {
-		_, ok := dp.Annotations[spec.KoliPrefix(key)]
+		_, ok := dp.Annotations[key]
 		if !ok {
 			return fmt.Errorf("Missing required key '%s'", key)
 		}
@@ -216,4 +241,14 @@ func activateBuildPayload(activate bool) []byte {
 	}
 	payload := fmt.Sprintf(`{"metadata": {"annotations": {"%s": "%s"}}}`, platform.AnnotationBuild, build)
 	return []byte(payload)
+}
+
+func getLastBuildRevision(revisions []int) int {
+	var n int
+	for _, v := range revisions {
+		if v > n {
+			n = v
+		}
+	}
+	return n
 }

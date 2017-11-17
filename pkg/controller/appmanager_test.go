@@ -55,6 +55,7 @@ func (f *fixture) newAppController() (*AppManagerController, informers.SharedInf
 		informers.Deployments().Informer(),
 		informers.ServicePlans().Informer(f.tprClient),
 		f.client,
+		"",
 	)
 	ctrl.recorder = record.NewFakeRecorder(100)
 	for _, o := range f.objects {

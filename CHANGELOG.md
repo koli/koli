@@ -1,3 +1,11 @@
+# v0.9.0-alpha
+
+## Features
+
+- Add metadata API for storing releases [#142](https://github.com/koli/koli/issues/142)
+- Add default route (service/ingress) to deployment apps [#137](https://github.com/koli/koli/issues/137)
+- Support deploys from any git server [#142](https://github.com/koli/koli/issues/142)
+
 # v0.6.2-alpha
 
 ## Improvements

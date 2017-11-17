@@ -1,6 +1,8 @@
 package v1alpha1
 
 import (
+	"time"
+
 	jwt "github.com/dgrijalva/jwt-go"
 
 	"k8s.io/api/core/v1"
@@ -147,18 +149,31 @@ const (
 // ReleaseSpec holds specification parameters of a release
 type ReleaseSpec struct {
 	// The URL of the git remote server to download the git revision tarball
-	GitRemote     string `json:"gitRemote"`
-	GitRevision   string `json:"gitRevision"`
-	GitRepository string `json:"gitRepository"`
-	BuildRevision string `json:"buildRevision"`
-	AutoDeploy    bool   `json:"autoDeploy"`
-	ExpireAfter   int32  `json:"expireAfter"`
-	DeployName    string `json:"deployName"`
-	Build         bool   `json:"build"`
+	GitRemote string `json:"gitRemote"`
+	// DEPRECATED, in flavor of .commitInfo.ID
+	GitRevision   string     `json:"gitRevision"`
+	GitRepository string     `json:"gitRepository"`
+	GitBranch     string     `json:"gitBranch"`
+	BuildRevision string     `json:"buildRevision"`
+	AutoDeploy    bool       `json:"autoDeploy"`
+	ExpireAfter   int32      `json:"expireAfter"`
+	DeployName    string     `json:"deployName"`
+	Build         bool       `json:"build"`
+	HeadCommit    HeadCommit `json:"headCommit"`
 	// DEPRECATED, the authToken for each release is populated by a secret
 	// the lifecycle of the token is managed by a controller
 	AuthToken string     `json:"authToken"` // expirable token
 	Source    SourceType `json:"sourceType"`
+}
+
+// HeadCommit holds information about a particular commit
+type HeadCommit struct {
+	ID        string `json:"id"`
+	Author    string `json:"author"`
+	AvatarURL string `json:"avatar-url"`
+	Compare   string `json:"compare"`
+	Message   string `json:"message"`
+	URL       string `json:"url"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -168,6 +183,37 @@ type ReleaseList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Release `json:"items"`
+}
+
+// SHA is the representaton of a git sha
+type SHA struct {
+	full  string
+	short string
+}
+
+// ErrInvalidGitSha is returned by NewSha if the given raw sha is invalid for any reason.
+type ErrInvalidGitSha struct {
+	sha string
+}
+
+type GitInfo struct {
+	Name          string           `json:"name"`
+	Namespace     string           `json:"namespace"`
+	KubeRef       string           `json:"kubeRef"`
+	Lang          string           `json:"lang"`
+	GitBranch     string           `json:"gitBranch"`
+	SourceType    string           `json:"source"`
+	CreatedAt     time.Time        `json:"createdAt"`
+	FinishedAt    time.Time        `json:"finishedAt"`
+	HeadCommit    HeadCommit       `json:"headCommit"`
+	Files         map[string]int64 `json:"files"`
+	BuildDuration time.Duration    `json:"buildDuration"`
+	Status        v1.PodPhase      `json:"status"`
+}
+
+type GitInfoList struct {
+	Total int       `json:"total"`
+	Items []GitInfo `json:"items"`
 }
 
 // TokenType refers to a jwt token claim to specify the type of the token

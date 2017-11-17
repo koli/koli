@@ -92,6 +92,7 @@ type Request struct {
 	resourceName string
 	verb         string
 	timeout      time.Duration
+	query        url.Values
 
 	// This is only used for per-request timeouts, deadlines, and cancellations.
 	ctx context.Context
@@ -109,6 +110,7 @@ func NewRequest(client HTTPClient, baseURL *url.URL) *Request {
 		baseURL: baseURL,
 		Client:  client,
 		headers: http.Header{"Content-Type": []string{"application/json"}},
+		query:   make(url.Values),
 	}
 	return request
 }
@@ -165,6 +167,11 @@ func (r *Request) Resource(name string) *Request {
 
 func (r *Request) Name(resourceName string) *Request {
 	r.resourceName = resourceName
+	return r
+}
+
+func (r *Request) AddQuery(key, value string) *Request {
+	r.query.Add(key, value)
 	return r
 }
 
@@ -248,6 +255,9 @@ func (r *Request) Do() *Result {
 		r.err = fmt.Errorf("failed creating request [%v]", err)
 		return result
 	}
+	q := request.URL.Query()
+	q = r.query
+	request.URL.RawQuery = q.Encode()
 	request.Header = r.headers
 	resp, err := client.Do(request)
 	if err != nil {

@@ -26,6 +26,12 @@ const (
 	// AnnotationBuildSource it's the source of the request which triggered the build: github (webhook), local, gitstep, etc
 	AnnotationBuildSource = "kolihub.io/source"
 
+	AnnotationGitAuthorAvatar  = "kolihub.io/git-author-avatar"
+	AnnotationGitAuthorName    = "kolihub.io/git-author-name"
+	AnnotationGitCommitMessage = "kolihub.io/git-commit-message"
+	AnnotationGitCommitID      = "kolihub.io/git-commit-id"
+	AnnotationGitCommitURL     = "kolihub.io/git-commit-url"
+
 	// AnnotationGitCompare information comparing the last commit with the current one
 	// https://help.github.com/articles/comparing-commits-across-time/
 	AnnotationGitCompare = "kolihub.io/gitcompare"

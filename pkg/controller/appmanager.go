@@ -13,6 +13,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
@@ -32,24 +33,28 @@ type AppManagerController struct {
 
 	queue    *TaskQueue
 	recorder record.EventRecorder
+
+	defaultDomain string
 }
 
-// NewAppManagerController creates a ResourceAllocatorCtrl
-func NewAppManagerController(dpInf, planInf cache.SharedIndexInformer, client kubernetes.Interface) *AppManagerController {
+// NewAppManagerController creates a new AppManagerController
+func NewAppManagerController(
+	dpInf, planInf cache.SharedIndexInformer,
+	client kubernetes.Interface,
+	defaultDomain string) *AppManagerController {
 	c := &AppManagerController{
-		kclient:  client,
-		dpInf:    dpInf,
-		planInf:  planInf,
-		recorder: newRecorder(client, "app-manager-controller"),
+		kclient:       client,
+		dpInf:         dpInf,
+		planInf:       planInf,
+		recorder:      newRecorder(client, "app-manager-controller"),
+		defaultDomain: defaultDomain,
 	}
 	c.queue = NewTaskQueue(c.syncHandler)
-
 	c.dpInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.addDeployment,
 		UpdateFunc: c.updateDeployment,
 		DeleteFunc: c.deleteDeployment,
 	})
-
 	return c
 }
 
@@ -145,6 +150,9 @@ func (c *AppManagerController) syncHandler(key string) error {
 		glog.V(3).Infof("%s - it's not a valid resource", key)
 		return nil
 	}
+	if err := c.addDefaultRoute(d.GetObject()); err != nil && !apierrors.IsAlreadyExists(err) {
+		glog.Warningf("%s - failed adding default routes [%v]", key, err)
+	}
 
 	if len(d.Spec.Template.Spec.Containers) > 0 {
 		if d.Spec.Template.Spec.Containers[0].Resources.Requests == nil ||
@@ -210,4 +218,66 @@ func (c *AppManagerController) cleanBuilds(ns, appName string) error {
 		&metav1.DeleteOptions{},
 		metav1.ListOptions{LabelSelector: fmt.Sprintf("%s=%s", platform.AnnotationApp, appName)},
 	)
+}
+
+// addDefaultRoute add a service and ingress for a given deployment.
+func (c *AppManagerController) addDefaultRoute(d *v1beta1.Deployment) error {
+	if len(c.defaultDomain) == 0 || d.Labels["kolihub.io/type"] != "app" {
+		return nil
+	}
+
+	ownerRefs := []metav1.OwnerReference{{
+		APIVersion: v1beta1.SchemeGroupVersion.String(),
+		Kind:       "Deployment",
+		Controller: func(b bool) *bool { return &b }(true),
+		Name:       d.GetName(),
+		UID:        d.GetUID(),
+	}}
+	svc := &v1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace:       d.Namespace,
+			Name:            d.Name,
+			Labels:          map[string]string{"kolihub.io/type": "app"},
+			OwnerReferences: ownerRefs,
+		},
+		Spec: v1.ServiceSpec{
+			Ports: []v1.ServicePort{{
+				Name:       "http",
+				Port:       80,
+				Protocol:   "TCP",
+				TargetPort: intstr.FromInt(5000),
+			}},
+			Selector: map[string]string{
+				"kolihub.io/name": d.Name,
+				"kolihub.io/type": "app",
+			},
+		},
+	}
+	if _, err := c.kclient.Core().Services(d.Namespace).Create(svc); err != nil && !apierrors.IsAlreadyExists(err) {
+		return err
+	}
+	ing := &v1beta1.Ingress{
+		ObjectMeta: metav1.ObjectMeta{
+			Namespace: d.Namespace,
+			Name:      d.Name,
+			// Kong Ingress claim subdomains from koli-system
+			Annotations:     map[string]string{"kolihub.io/parent": platform.SystemNamespace},
+			Labels:          map[string]string{"kolihub.io/type": "app"},
+			OwnerReferences: ownerRefs,
+		},
+		Spec: v1beta1.IngressSpec{Rules: []v1beta1.IngressRule{{
+			Host: fmt.Sprintf("%s-%s.%s", d.Name, d.Namespace, c.defaultDomain),
+			IngressRuleValue: v1beta1.IngressRuleValue{HTTP: &v1beta1.HTTPIngressRuleValue{
+				Paths: []v1beta1.HTTPIngressPath{{
+					Backend: v1beta1.IngressBackend{
+						ServiceName: d.Name,
+						ServicePort: intstr.FromInt(80),
+					},
+					Path: "/",
+				}},
+			}},
+		}}},
+	}
+	_, err := c.kclient.Extensions().Ingresses(d.Namespace).Create(ing)
+	return err
 }
