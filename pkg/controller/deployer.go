@@ -1,8 +1,11 @@
 package controller
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
-	"strconv"
+	"net/url"
+	"path/filepath"
 	"time"
 
 	"github.com/golang/glog"
@@ -10,7 +13,9 @@ import (
 	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 	"kolihub.io/koli/pkg/apis/core/v1alpha1/draft"
 	clientset "kolihub.io/koli/pkg/clientset"
+	"kolihub.io/koli/pkg/request"
 	"kolihub.io/koli/pkg/spec"
+	"kolihub.io/koli/pkg/util"
 
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
@@ -18,6 +23,7 @@ import (
 
 	"k8s.io/api/core/v1"
 	extensions "k8s.io/api/extensions/v1beta1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 )
@@ -125,7 +131,8 @@ func (d *DeployerController) syncHandler(key string) error {
 	}
 
 	pod := obj.(*v1.Pod)
-	if !draft.NewNamespaceMetadata(pod.Namespace).IsValid() {
+	nsMeta := draft.NewNamespaceMetadata(pod.Namespace)
+	if !nsMeta.IsValid() {
 		glog.V(2).Infof("%s - noop, it's not a valid namespace", key)
 		return nil
 	}
@@ -157,7 +164,49 @@ func (d *DeployerController) syncHandler(key string) error {
 		return nil
 	}
 	release := releaseO.(*platform.Release)
-	if pod.Status.Phase == v1.PodSucceeded && release.Spec.AutoDeploy {
+	// turn-off build, otherwise it will trigger unwanted builds
+	defer func() {
+		patchData := []byte(`{"spec": {"build": false}}`)
+		_, err = d.clientset.Release(pod.Namespace).Patch(release.Name, types.MergePatchType, patchData)
+		if err != nil {
+			glog.Warningf("%s - failed turning off build", key)
+		}
+	}()
+
+	var gitcli *request.Request
+	info := &platform.GitInfo{}
+	// var err error
+	if pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodFailed {
+		gitcli, err = newGitAPIClient(
+			d.config.GitReleaseHost,
+			release.Spec.DeployName,
+			d.config.PlatformJWTSecret,
+			nsMeta,
+		)
+		if err != nil {
+			glog.Errorf("%s - failed retrieving git api client [%v]", key, err)
+			return nil
+		}
+		respBody, err := gitcli.Resource("seek").Get().
+			AddQuery("q", pod.Name).
+			AddQuery("in", "kubeRef").
+			Do().Raw()
+		if err != nil {
+			return fmt.Errorf("failed searching for release, %v", err)
+		}
+		infoList := &platform.GitInfoList{}
+		if err := json.Unmarshal(respBody, infoList); err != nil {
+			glog.Warningf("%s - failed deserializing releases: %v, [%v]", key, err, string(respBody))
+			return nil
+		}
+		if len(infoList.Items) == 0 {
+			glog.Infof(`%s - git api release not found`, key)
+			return nil
+		}
+		// Ignore if multiple are found for now
+		info = &infoList.Items[0]
+	}
+	if pod.Status.Phase == v1.PodSucceeded {
 		deploymentQ := &extensions.Deployment{}
 		deploymentQ.SetName(release.Spec.DeployName)
 		deploymentQ.SetNamespace(release.Namespace)
@@ -172,46 +221,54 @@ func (d *DeployerController) syncHandler(key string) error {
 			return nil
 		}
 		deploy := deploymentO.(*extensions.Deployment)
-		deployBuildRev, _ := strconv.Atoi(deploy.Annotations["kolihub.io/buildrevision"])
-		releaseBuildRev := release.BuildRevision()
-		// The release revision must be greater or equal than the current deployment and
-		// it must have distinct git revisions, otherwise it will deploy an old
-		// app version. This will prevent old pod resources (completed)
-		// trigerring unwanted deploys
-		if releaseBuildRev < deployBuildRev {
-			glog.V(2).Infof("%s - found release revision [%d] and deploy revision as [%d], skipping autodeploy",
-				key, releaseBuildRev, deployBuildRev)
-			return nil
+		glog.V(3).Infof("%s - Found a release candidate [%s]", key, info.HeadCommit.ID)
+		if isAutoDeploy(deploy, info.HeadCommit.ID) {
+			releaseURL := release.GitReleaseURL(d.config.GitReleaseHost)
+			if err := d.deploySlug(releaseURL, info.HeadCommit.ID, info.Lang, deploy); err != nil {
+				d.recorder.Eventf(release, v1.EventTypeWarning, "DeployError",
+					"Failed deploying release [%s]", err)
+				return fmt.Errorf("failed deploying release [%s]", err)
+			}
+			ref := info.HeadCommit.ID
+			if len(ref) > 7 {
+				ref = ref[:7]
+			}
+			d.recorder.Eventf(release, v1.EventTypeNormal,
+				"Deployed", "Deploy '%s' updated with the new revision [%s]", deploy.Name, ref)
 		}
-
-		if deploy.Annotations["kolihub.io/deployed-git-revision"] == release.Spec.HeadCommit.ID {
-			glog.V(2).Infof("%s - this release was already deployed [%s], skipping autodeploy", key, release.Spec.HeadCommit.ID)
-			return nil
-		}
-
-		if err := d.deploySlug(release, deploy); err != nil {
-			d.recorder.Eventf(release, v1.EventTypeWarning, "DeployError",
-				"Failed deploying release [%s]", err)
-			return fmt.Errorf("failed deploying release [%s]", err)
-		}
-		ref := release.Spec.HeadCommit.ID
-		if len(ref) > 0 {
-			ref = ref[:7]
-		}
-		d.recorder.Eventf(release, v1.EventTypeNormal,
-			"Deployed", "Deploy '%s' updated with the new revision [%s]", release.Spec.DeployName, ref)
 	}
-
-	// turn-off build, otherwise it will trigger unwanted builds
-	patchData := []byte(fmt.Sprintf(`{"metadata": {"labels": {"kolihub.io/buildstatus": "%v"}}, "spec": {"build": false}}`, pod.Status.Phase))
-	_, err = d.clientset.Release(pod.Namespace).Patch(release.Name, types.MergePatchType, patchData)
-	if err != nil {
-		return fmt.Errorf("failed patching pod status[%s] in release [%s]", pod.Status.Phase, err)
+	// Update the release in Git API
+	if pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodFailed {
+		info.Name = release.Spec.DeployName
+		info.Namespace = pod.Namespace
+		info.Status = pod.Status.Phase
+		if len(pod.Status.ContainerStatuses) > 0 {
+			terminatedState := pod.Status.ContainerStatuses[0].State.Terminated
+			if terminatedState != nil {
+				delta := terminatedState.FinishedAt.Sub(terminatedState.StartedAt.Time)
+				info.BuildDuration = delta.Round(time.Second)
+			}
+		}
+		if len(info.HeadCommit.ID) == 0 {
+			glog.Warningf("%s - Commit ID is empty, release metadata will not be updated", key)
+			return nil
+		}
+		_, err = gitcli.Reset().Put().
+			Resource("objects").
+			Name(info.HeadCommit.ID).
+			Body(info).
+			Do().Raw()
+		if err != nil {
+			return fmt.Errorf("failed updating git api release [%v]", err)
+		}
+		glog.Infof(`%s - Removing pod and release "%s"`, key, release.Name)
+		d.kclient.Core().Pods(pod.Namespace).Delete(pod.Name, &metav1.DeleteOptions{})
+		d.clientset.Release(pod.Namespace).Delete(release.Name, &metav1.DeleteOptions{})
 	}
 	return nil
 }
 
-func (d *DeployerController) deploySlug(release *platform.Release, deploy *extensions.Deployment) error {
+func (d *DeployerController) deploySlug(releaseURL, commitID, appLang string, deploy *extensions.Deployment) error {
 	dpCopy := deploy.DeepCopy()
 	if dpCopy == nil {
 		return fmt.Errorf("failed deep copying: %v", deploy)
@@ -220,7 +277,9 @@ func (d *DeployerController) deploySlug(release *platform.Release, deploy *exten
 	if dpCopy.Annotations == nil {
 		dpCopy.Annotations = make(map[string]string)
 	}
-	dpCopy.Annotations["kolihub.io/deployed-git-revision"] = release.Spec.HeadCommit.ID
+	dpCopy.Annotations["kolihub.io/deployed-git-revision"] = commitID
+	dpCopy.Labels["kolihub.io/lang"] = appLang
+	dpCopy.Spec.Selector.MatchLabels["kolihub.io/lang"] = appLang
 	c := dpCopy.Spec.Template.Spec.Containers
 	// TODO: hard-coded
 	c[0].Ports = []v1.ContainerPort{
@@ -233,7 +292,7 @@ func (d *DeployerController) deploySlug(release *platform.Release, deploy *exten
 	c[0].Args = []string{"start", "web"} // TODO: hard-coded, it must come from Procfile
 	c[0].Image = d.config.SlugRunnerImage
 	c[0].Name = dpCopy.Name
-	slugURL := release.GitReleaseURL(d.config.GitReleaseHost) + "/slug.tgz"
+	slugURL := fmt.Sprintf("%s/%s/slug.tgz", releaseURL, commitID)
 	c[0].Env = []v1.EnvVar{
 		{
 			Name:  "SLUG_URL",
@@ -261,4 +320,34 @@ func (d *DeployerController) deploySlug(release *platform.Release, deploy *exten
 		return fmt.Errorf("failed update deployment: %s", err)
 	}
 	return nil
+}
+
+func isAutoDeploy(d *extensions.Deployment, commitID string) bool {
+	return d.Annotations[platform.AnnotationAutoDeploy] == "true" &&
+		d.Annotations["kolihub.io/deployed-git-revision"] != commitID
+}
+
+func newGitAPIClient(host, deployName, jwtSecret string, nsMeta *draft.NamespaceMeta) (*request.Request, error) {
+	// Generate a system token based on the customer and organization of the namespace.
+	// The access token has limited access to the resources of the platform
+	namespace := nsMeta.KubernetesNamespace()
+	systemToken, err := util.GenerateNewJwtToken(
+		jwtSecret,
+		nsMeta.Customer(),
+		nsMeta.Organization(),
+		platform.SystemTokenType,
+		time.Now().UTC().Add(time.Minute*5), // hard-coded exp time
+	)
+	if err != nil {
+		return nil, err
+	}
+	requestURL, err := url.Parse(host)
+	if err != nil {
+		return nil, err
+	}
+	basePath := filepath.Join("releases", "v1beta1", namespace, deployName)
+	requestURL.Path = basePath
+	basicAuth := base64.StdEncoding.EncodeToString([]byte("dumb:" + systemToken))
+	return request.NewRequest(nil, requestURL).
+		SetHeader("Authorization", fmt.Sprintf("Basic %s", basicAuth)), nil
 }

@@ -1,7 +1,6 @@
 package v1alpha1
 
 import (
-	"encoding/base64"
 	"fmt"
 	"net/url"
 	"path/filepath"
@@ -124,11 +123,11 @@ func (r *Release) GitCloneURL() (string, error) {
 // GitReleaseURL constructs the URL where the release must be stored
 func (r *Release) GitReleaseURL(host string) string {
 	// urlPath := filepath.Join("releases", r.Namespace, r.Spec.DeployName, r.Spec.HeadCommit.ID)
-	ref := r.Spec.HeadCommit.ID
-	if len(ref) == 0 {
-		ref = base64.StdEncoding.EncodeToString([]byte(r.Spec.GitBranch))
-	}
-	urlPath := filepath.Join("releases", r.Namespace, r.Spec.DeployName, ref)
+	// ref := r.Spec.HeadCommit.ID
+	// if len(ref) == 0 {
+	// 	ref = base64.StdEncoding.EncodeToString([]byte(r.Spec.GitBranch))
+	// }
+	urlPath := filepath.Join("releases", "v1beta1", r.Namespace, r.Spec.DeployName, "objects")
 	return fmt.Sprintf("%s/%s", host, urlPath)
 }
 
@@ -221,4 +220,18 @@ func (p *Plan) IsDefaultType() bool {
 // IsStorageType validate if the plan is PlanTypeStorage
 func (p *Plan) IsStorageType() bool {
 	return p.Spec.Type == PlanTypeStorage
+}
+
+// AddFile add filename with size in the map
+func (i *GitInfo) AddFile(filename string, size int64) {
+	if i.Files == nil {
+		i.Files = make(map[string]int64)
+	}
+	i.Files[filename] = size
+}
+
+// GetCommitSha returns a SHA struct, nil if the commit is invalid
+func (i *GitInfo) GetCommitSha() *SHA {
+	commitSha, _ := NewSha(i.HeadCommit.ID)
+	return commitSha
 }

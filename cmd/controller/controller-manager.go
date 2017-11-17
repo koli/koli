@@ -43,6 +43,7 @@ func init() {
 	pflag.StringVar(&cfg.GitReleaseHost, "git-release-host", "http://git-release-server.koli-system", "the address where releases are stored")
 	pflag.StringVar(&cfg.ClusterName, "cluster-name", "gaia", "the name of the cluster")
 	pflag.StringVar(&cfg.PlatformJWTSecret, "platform-secret", "", "the jwt secret for creating dynamic system tokens")
+	pflag.StringVar(&cfg.DefaultDomain, "default-domain", "", "if set it will create default routes (services/ingresses) for each new deployment")
 	pflag.StringVar(&cfg.SlugBuildImage, "slugbuilder-image", "quay.io/koli/slugbuilder", "the name of the builder image")
 	pflag.StringVar(&cfg.SlugRunnerImage, "slugrunner-image", "quay.io/koli/slugrunner", "the name of the runner image")
 	pflag.BoolVar(&cfg.DebugBuild, "debug-build", false, "debug the build container")
@@ -109,6 +110,7 @@ func startControllers() error {
 		sharedInformers.Deployments().Informer(),
 		sharedInformers.ServicePlans().Informer(sysClient),
 		client,
+		cfg.DefaultDomain,
 	).Run(1, stopC)
 
 	go controller.NewReleaseController(

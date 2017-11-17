@@ -2,11 +2,36 @@ package v1alpha1
 
 import (
 	"fmt"
+	"regexp"
 
 	v1beta1 "k8s.io/api/apps/v1beta1"
 	"k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 )
+
+// this constant represents the length of a shortened git sha - 8 characters long
+const shortShaIdx = 8
+
+var shaRegex = regexp.MustCompile(`^[\da-f]{40}$`)
+
+// NewSha creates a raw string to a SHA. Returns ErrInvalidGitSha if the sha was invalid.
+func NewSha(rawSha string) (*SHA, error) {
+	if !shaRegex.MatchString(rawSha) {
+		return nil, ErrInvalidGitSha{sha: rawSha}
+	}
+	return &SHA{full: rawSha, short: rawSha[0:shortShaIdx]}, nil
+}
+
+// Full returns the full git sha.
+func (s SHA) Full() string { return s.full }
+
+// Short returns the first 8 characters of the sha.
+func (s SHA) Short() string { return s.short }
+
+// Error is the error interface implementation.
+func (e ErrInvalidGitSha) Error() string {
+	return fmt.Sprintf("Git sha %s was invalid", e.sha)
+}
 
 // StatefulSetDeepCopy creates a deep-copy from a StatefulSet
 // https://github.com/kubernetes/kubernetes/blob/master/docs/devel/controllers.md

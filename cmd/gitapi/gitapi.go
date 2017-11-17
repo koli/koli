@@ -6,8 +6,12 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"runtime"
+	"time"
 
+	"github.com/boltdb/bolt"
 	"github.com/golang/glog"
 	"github.com/gorilla/mux"
 	"github.com/spf13/pflag"
@@ -73,11 +77,41 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed retrieving kubernetes clientset [%v]", err)
 	}
-	// TODO: Validate required configuration
-	gitHandler := gitapi.NewHandler(&cfg, kubeClient)
+
+	dbPath := filepath.Join(cfg.GitHome, "bolt")
+	os.MkdirAll(dbPath, 0750)
+	db, err := bolt.Open(filepath.Join(dbPath, "releases.db"), 0600, &bolt.Options{Timeout: time.Second * 10})
+	if err != nil {
+		log.Fatalf(err.Error())
+	}
+	gitHandler := gitapi.NewHandler(&cfg, kubeClient, db)
 	r := mux.NewRouter().PathPrefix("/").Subrouter().StrictSlash(true)
-	r.HandleFunc("/releases/{namespace}/{deployName}/{gitSha}", gitHandler.Releases).Methods("POST")
-	r.HandleFunc("/releases/{namespace}/{deployName}/{gitSha}/{file}", gitHandler.Releases).Methods("GET")
+	// v1beta1 releases
+	// Metadata API
+	r.HandleFunc(
+		"/releases/v1beta1/{namespace}/{deployName}/objects/{gitSha}",
+		gitHandler.V1beta1Releases,
+	).Methods("GET", "PUT")
+	r.HandleFunc(
+		"/releases/v1beta1/{namespace}/{deployName}/objects",
+		gitHandler.V1beta1ListReleases,
+	).Methods("GET", "POST")
+	r.HandleFunc(
+		"/releases/v1beta1/{namespace}/{deployName}/seek",
+		gitHandler.V1beta1SeekReleases,
+	).Methods("GET")
+	// Download/Upload files
+	r.HandleFunc(
+		"/releases/v1beta1/{namespace}/{deployName}/objects/{gitSha}/{file}",
+		gitHandler.V1beta1DownloadFile,
+	).Methods("GET")
+	r.HandleFunc(
+		"/releases/v1beta1/{namespace}/{deployName}/objects/{gitSha}",
+		gitHandler.V1beta1UploadRelease,
+	).Methods("POST")
+
+	// r.HandleFunc("/releases/{namespace}/{deployName}/{gitSha}", gitHandler.Releases).Methods("POST")
+	// r.HandleFunc("/releases/{namespace}/{deployName}/{gitSha}/{file}", gitHandler.Releases).Methods("GET")
 	r.HandleFunc("/github/orgs/{org}/repos", gitHandler.GitHubListOrgRepos).Methods("GET")
 	r.HandleFunc("/github/user/repos", gitHandler.GitHubListUserRepos).Methods("GET")
 	r.HandleFunc("/github/user/orgs", gitHandler.GitHubListUserOrgs).Methods("GET")

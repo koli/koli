@@ -90,7 +90,7 @@ func String(s string) *string { return &s }
 func TestGitHubSearchRepos(t *testing.T) {
 	var (
 		router                   = mux.NewRouter()
-		gitHandler               = NewHandler(&conf.Config{}, nil)
+		gitHandler               = NewHandler(&conf.Config{}, nil, nil)
 		expectedRepoSearchResult = &github.RepositoriesSearchResult{
 			Total:             Int(2),
 			IncompleteResults: Bool(false),
@@ -103,7 +103,7 @@ func TestGitHubSearchRepos(t *testing.T) {
 	router.HandleFunc("/search/repositories", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(expectedRepoSearchResult)
 	})).Methods("GET")
-	requestURL, ts := runHttpTestServer(router, &gitHandler, nil)
+	requestURL, ts := runHttpTestServer(router, gitHandler, nil)
 	defer ts.Close()
 
 	result := &github.RepositoriesSearchResult{}
@@ -122,7 +122,7 @@ func TestGitHubSearchRepos(t *testing.T) {
 func TestGitHubListOrgRepos(t *testing.T) {
 	var (
 		router         = mux.NewRouter()
-		gitHandler     = NewHandler(&conf.Config{}, nil)
+		gitHandler     = NewHandler(&conf.Config{}, nil, nil)
 		orgName        = "kolihub"
 		expectedResult = []github.Repository{
 			{ID: Int(1)}, {ID: Int(2)},
@@ -134,7 +134,7 @@ func TestGitHubListOrgRepos(t *testing.T) {
 	router.HandleFunc(fmt.Sprintf("/orgs/%s/repos", orgName), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(expectedResult)
 	})).Methods("GET")
-	requestURL, ts := runHttpTestServer(router, &gitHandler, nil)
+	requestURL, ts := runHttpTestServer(router, gitHandler, nil)
 	defer ts.Close()
 
 	result := []github.Repository{}
@@ -152,7 +152,7 @@ func TestGitHubListOrgRepos(t *testing.T) {
 func TestGitHubListBranches(t *testing.T) {
 	var (
 		router         = mux.NewRouter()
-		gitHandler     = NewHandler(&conf.Config{}, nil)
+		gitHandler     = NewHandler(&conf.Config{}, nil, nil)
 		expectedResult = []github.Branch{
 			{Name: String("master"), Commit: &github.RepositoryCommit{SHA: String("a57781")}},
 			{Name: String("development"), Commit: &github.RepositoryCommit{SHA: String("4c4aea")}},
@@ -165,7 +165,7 @@ func TestGitHubListBranches(t *testing.T) {
 	router.HandleFunc(fmt.Sprintf("/repos/%s/branches", repo), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(expectedResult)
 	})).Methods("GET")
-	requestURL, ts := runHttpTestServer(router, &gitHandler, nil)
+	requestURL, ts := runHttpTestServer(router, gitHandler, nil)
 	defer ts.Close()
 
 	result := []github.Branch{}
@@ -202,7 +202,7 @@ func TestGitHubAddHooks(t *testing.T) {
 		}
 		client           = fake.NewSimpleClientset(runtime.Object(expectedDeploy))
 		router           = mux.NewRouter()
-		gitHandler       = NewHandler(&conf.Config{GitAPIHostname: "https://gitapi.kolihub.io"}, nil)
+		gitHandler       = NewHandler(&conf.Config{GitAPIHostname: "https://gitapi.kolihub.io"}, nil, nil)
 		existentHookList = []github.Hook{{ID: Int(1)}, {ID: Int(2)}}
 		// https://developer.github.com/v3/repos/hooks/#create-a-hook
 		expectedHook = &github.Hook{
@@ -235,7 +235,7 @@ func TestGitHubAddHooks(t *testing.T) {
 		}
 
 	})).Methods("POST", "GET")
-	requestURL, ts := runHttpTestServer(router, &gitHandler, client)
+	requestURL, ts := runHttpTestServer(router, gitHandler, client)
 	defer ts.Close()
 
 	gitHandler.user = &platform.User{Sub: userID}
@@ -278,7 +278,7 @@ func TestGetGitHubHook(t *testing.T) {
 		gitOwner, gitRepo = "foo-owner", "foo-repo"
 		hookID            = 3
 		router            = mux.NewRouter()
-		gitHandler        = NewHandler(&conf.Config{}, nil)
+		gitHandler        = NewHandler(&conf.Config{}, nil, nil)
 		expectedHook      = &github.Hook{ID: &hookID, Active: Bool(true)}
 		// repo = "owner/repo"
 	)
@@ -291,7 +291,7 @@ func TestGetGitHubHook(t *testing.T) {
 		getHook := &github.Hook{ID: &hookID, Active: Bool(true)}
 		json.NewEncoder(w).Encode(getHook)
 	})).Methods("GET")
-	requestURL, ts := runHttpTestServer(router, &gitHandler, nil)
+	requestURL, ts := runHttpTestServer(router, gitHandler, nil)
 	defer ts.Close()
 
 	got := &github.Hook{}
@@ -326,7 +326,7 @@ func TestRemoveExistentAssociationHookFromDeployment(t *testing.T) {
 			},
 		})
 		router     = mux.NewRouter()
-		gitHandler = NewHandler(&conf.Config{}, nil)
+		gitHandler = NewHandler(&conf.Config{}, nil, nil)
 		// expectedHook = &github.Hook{ID: &hookID, Active: Bool(true)}
 		client = fake.NewSimpleClientset([]runtime.Object{
 			expectedDeploy.GetObject(),
@@ -345,7 +345,7 @@ func TestRemoveExistentAssociationHookFromDeployment(t *testing.T) {
 	// 	}
 	// 	w.WriteHeader(http.StatusNoContent)
 	// })).Methods("DELETE")
-	requestURL, ts := runHttpTestServer(router, &gitHandler, client)
+	requestURL, ts := runHttpTestServer(router, gitHandler, client)
 	defer ts.Close()
 
 	data := map[string]string{"namespace": targetNs, "deploy": targetDeploy}
@@ -395,7 +395,7 @@ func TestWebhookDeployOneApp(t *testing.T) {
 		compareURL               = "https://api.github.com/repos/acme/foo/compare/{base}...{head}"
 		labelRef                 = map[string]string{"kolihub.io/gitowner": ownerRepo, "kolihub.io/gitrepo": repoName}
 		router                   = mux.NewRouter()
-		gitHandler               = NewHandler(&conf.Config{}, nil)
+		gitHandler               = NewHandler(&conf.Config{}, nil, nil)
 		// expectedHook = &github.Hook{ID: &hookID, Active: Bool(true)}
 		client = fake.NewSimpleClientset([]runtime.Object{
 			&v1beta1.Deployment{
@@ -434,7 +434,7 @@ func TestWebhookDeployOneApp(t *testing.T) {
 		gitHandler.Webhooks(w, r)
 	})).Methods("POST", "GET")
 
-	requestURL, ts := runHttpTestServer(router, &gitHandler, client)
+	requestURL, ts := runHttpTestServer(router, gitHandler, client)
 	defer ts.Close()
 	gitHandler.clientset = client
 

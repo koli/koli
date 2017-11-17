@@ -12,6 +12,7 @@ type Config struct {
 	SlugRunnerImage   string
 	PlatformJWTSecret string
 	ClusterName       string
+	DefaultDomain     string
 	DebugBuild        bool
 }
 

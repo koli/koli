@@ -1,6 +1,8 @@
 package v1alpha1
 
 import (
+	"time"
+
 	jwt "github.com/dgrijalva/jwt-go"
 
 	"k8s.io/api/core/v1"
@@ -181,6 +183,37 @@ type ReleaseList struct {
 	metav1.TypeMeta `json:",inline"`
 	metav1.ListMeta `json:"metadata,omitempty"`
 	Items           []Release `json:"items"`
+}
+
+// SHA is the representaton of a git sha
+type SHA struct {
+	full  string
+	short string
+}
+
+// ErrInvalidGitSha is returned by NewSha if the given raw sha is invalid for any reason.
+type ErrInvalidGitSha struct {
+	sha string
+}
+
+type GitInfo struct {
+	Name          string           `json:"name"`
+	Namespace     string           `json:"namespace"`
+	KubeRef       string           `json:"kubeRef"`
+	Lang          string           `json:"lang"`
+	GitBranch     string           `json:"gitBranch"`
+	SourceType    string           `json:"source"`
+	CreatedAt     time.Time        `json:"createdAt"`
+	FinishedAt    time.Time        `json:"finishedAt"`
+	HeadCommit    HeadCommit       `json:"headCommit"`
+	Files         map[string]int64 `json:"files"`
+	BuildDuration time.Duration    `json:"buildDuration"`
+	Status        v1.PodPhase      `json:"status"`
+}
+
+type GitInfoList struct {
+	Total int       `json:"total"`
+	Items []GitInfo `json:"items"`
 }
 
 // TokenType refers to a jwt token claim to specify the type of the token

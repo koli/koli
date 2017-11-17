@@ -5,10 +5,10 @@ import (
 	"time"
 
 	"github.com/golang/glog"
+	"github.com/pborman/uuid"
 	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 	"kolihub.io/koli/pkg/apis/core/v1alpha1/draft"
 	clientset "kolihub.io/koli/pkg/clientset"
-	"kolihub.io/koli/pkg/spec"
 	koliutil "kolihub.io/koli/pkg/util"
 
 	"k8s.io/api/core/v1"
@@ -138,30 +138,16 @@ func (b *BuildController) syncHandler(key string) error {
 	}
 
 	gitSha, _ := koliutil.NewSha(release.Spec.HeadCommit.ID)
-	// if err != nil {
-	// 	// TODO: add an event informing the problem!
-	// 	return fmt.Errorf("%s - %s", key, err)
-	// }
-
-	// info := koliutil.NewSlugBuilderInfo(
-	// 	release.Namespace,
-	// 	release.Spec.DeployName,
-	// 	platform.GitReleasesPathPrefix,
-	// 	gitSha,
-	// )
-	sbPodName := fmt.Sprintf("sb-%s", release.Name)
-	pod, err := slugbuilderPod(b.config, release, gitSha)
+	podName := fmt.Sprintf("sb-%s-%s", release.Spec.DeployName, uuid.NewRandom().String()[:8])
+	pod, err := slugbuilderPod(podName, b.config, release, gitSha)
 	if err != nil {
 		return fmt.Errorf("%s - failed creating slugbuild pod: %s", key, err)
 	}
-	_, err = b.kclient.Core().Pods(release.Namespace).Create(pod)
-	if err != nil {
-		// TODO: add an event informing the problem!
-		// TODO: requeue with backoff, got an error
+	if _, err := b.kclient.Core().Pods(release.Namespace).Create(pod); err != nil {
 		return fmt.Errorf("%s - failed creating the slubuild pod: %s", key, err)
 	}
 
-	glog.Infof("%s - build started for '%s'", key, sbPodName)
+	glog.Infof("%s - build started for '%s'", key, podName)
 	// a build has started for this release, disable it!
 	_, err = b.clientset.Release(release.Namespace).Patch(release.Name, types.MergePatchType, []byte(`{"spec": {"build": false}}`))
 	if err != nil {
@@ -170,25 +156,19 @@ func (b *BuildController) syncHandler(key string) error {
 	return nil
 }
 
-func slugbuilderPod(cfg *Config, rel *platform.Release, gitSha *koliutil.SHA) (*v1.Pod, error) {
+func slugbuilderPod(podName string, cfg *Config, rel *platform.Release, gitSha *koliutil.SHA) (*v1.Pod, error) {
 	gitCloneURL := rel.Spec.GitRemote
-	if !rel.IsGitHubSource() {
-		var err error
-		gitCloneURL, err = rel.GitCloneURL()
-		if err != nil {
-			return nil, err
-		}
-	}
 	env := map[string]interface{}{
 		"GIT_CLONE_URL":   gitCloneURL,
 		"GIT_RELEASE_URL": rel.GitReleaseURL(cfg.GitReleaseHost),
-		// "GIT_REVISION":    rel.Spec.GitRevision,
-		"GIT_BRANCH": rel.Spec.GitBranch,
+		"POD_NAME":        podName,
+		"GIT_BRANCH":      rel.Spec.GitBranch,
+		"GIT_SOURCE":      rel.Spec.Source,
 	}
 	if cfg.DebugBuild {
 		env["DEBUG"] = "TRUE"
 	}
-	pod := podResource(rel, gitSha, env)
+	pod := podResource(podName, rel, gitSha, env)
 
 	// Slugbuilder
 	pod.Spec.Containers[0].Image = cfg.SlugBuildImage
@@ -210,8 +190,7 @@ func slugbuilderPod(cfg *Config, rel *platform.Release, gitSha *koliutil.SHA) (*
 	return &pod, nil
 }
 
-func podResource(rel *platform.Release, gitSha *koliutil.SHA, env map[string]interface{}) v1.Pod {
-	sbPodName := fmt.Sprintf("sb-%s", rel.Name)
+func podResource(podName string, rel *platform.Release, gitSha *koliutil.SHA, env map[string]interface{}) v1.Pod {
 	pod := v1.Pod{
 		Spec: v1.PodSpec{
 			RestartPolicy: v1.RestartPolicyNever,
@@ -222,18 +201,13 @@ func podResource(rel *platform.Release, gitSha *koliutil.SHA, env map[string]int
 			},
 		},
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      sbPodName,
-			Namespace: rel.Namespace,
-			Annotations: map[string]string{
-				// spec.KoliPrefix("gitfullrev"):  gitSha.Full(),
-				spec.KoliPrefix("releasename"): rel.Name,
-			},
+			Name:        podName,
+			Namespace:   rel.Namespace,
+			Annotations: map[string]string{"kolihub.io/releasename": rel.Name},
 			Labels: map[string]string{
 				// TODO: hard-coded
-				spec.KoliPrefix("autodeploy"): "true",
-				spec.KoliPrefix("type"):       "slugbuild",
-				// spec.KoliPrefix("gitrevision"):   gitSha.Short(),
-				spec.KoliPrefix("buildrevision"): rel.Spec.BuildRevision,
+				platform.AnnotationAutoDeploy: "true",
+				"kolihub.io/type":             "slugbuild",
 			},
 		},
 	}

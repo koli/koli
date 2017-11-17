@@ -2,7 +2,6 @@ package controller
 
 import (
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/golang/glog"
@@ -13,7 +12,6 @@ import (
 	koliutil "kolihub.io/koli/pkg/util"
 
 	"k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
@@ -26,7 +24,7 @@ import (
 )
 
 // keys required in a deployment annotation for creating a new release
-var requiredKeys = []string{platform.AnnotationGitRemote, platform.AnnotationGitRepository}
+var requiredKeys = []string{platform.AnnotationGitRemote}
 
 // ReleaseController controller
 type ReleaseController struct {
@@ -142,23 +140,23 @@ func (r *ReleaseController) syncHandler(key string) error {
 	}
 
 	gitSha, _ := koliutil.NewSha(dp.Annotations[platform.AnnotationGitCommitID])
-	dpRevision := fmt.Sprintf("%s-v%s", dp.Name, dp.Annotations[platform.AnnotationBuildRevision])
-	if len(dpRevision) == 0 {
-		// Try to find the last revision
-		revisions := []int{}
-		cache.ListAllByNamespace(r.releaseInf.GetIndexer(), dp.Name, labels.Everything(), func(obj interface{}) {
-			rel := obj.(*platform.Release)
-			rev := rel.BuildRevision()
-			if rev > 0 {
-				revisions = append(revisions, rel.BuildRevision())
-			}
-		})
-		lastRevision := getLastBuildRevision(revisions)
-		glog.Infof("%s - last revision [%v]", key, lastRevision)
-		dpRevision = strconv.Itoa(lastRevision + 1)
-	}
+	dpRevision := dp.Name
+	// dpRevision := fmt.Sprintf("%s-v%s", dp.Name, dp.Annotations[platform.AnnotationBuildRevision])
+	// if len(dpRevision) == 0 {
+	// 	// Try to find the last revision
+	// 	revisions := []int{}
+	// 	cache.ListAllByNamespace(r.releaseInf.GetIndexer(), dp.Name, labels.Everything(), func(obj interface{}) {
+	// 		rel := obj.(*platform.Release)
+	// 		rev := rel.BuildRevision()
+	// 		if rev > 0 {
+	// 			revisions = append(revisions, rel.BuildRevision())
+	// 		}
+	// 	})
+	// 	lastRevision := getLastBuildRevision(revisions)
+	// 	glog.Infof("%s - last revision [%v]", key, lastRevision)
+	// 	dpRevision = strconv.Itoa(lastRevision + 1)
+	// }
 	autoDeploy := false
-
 	// Deploy after the build
 	if dp.Annotations[platform.AnnotationAutoDeploy] == "true" {
 		glog.V(2).Infof("%s - autodeploy turned on.", key)
@@ -177,7 +175,7 @@ func (r *ReleaseController) syncHandler(key string) error {
 			Labels: map[string]string{"kolihub.io/deploy": dp.Name},
 		},
 		Spec: platform.ReleaseSpec{
-			BuildRevision: dp.Annotations[platform.AnnotationBuildRevision],
+			// BuildRevision: dp.Annotations[platform.AnnotationBuildRevision],
 			GitRemote:     dp.Annotations[platform.AnnotationGitRemote],
 			GitBranch:     dp.Annotations[platform.AnnotationGitBranch],
 			GitRepository: dp.Annotations[platform.AnnotationGitRepository],
