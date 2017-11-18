@@ -279,6 +279,7 @@ func (d *DeployerController) deploySlug(releaseURL, commitID, appLang string, de
 	}
 	dpCopy.Annotations["kolihub.io/deployed-git-revision"] = commitID
 	dpCopy.Labels["kolihub.io/lang"] = appLang
+	dpCopy.Spec.Template.Labels["kolihub.io/lang"] = appLang
 	dpCopy.Spec.Selector.MatchLabels["kolihub.io/lang"] = appLang
 	c := dpCopy.Spec.Template.Spec.Containers
 	// TODO: hard-coded
