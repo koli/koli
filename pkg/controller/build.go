@@ -159,11 +159,13 @@ func (b *BuildController) syncHandler(key string) error {
 func slugbuilderPod(podName string, cfg *Config, rel *platform.Release, gitSha *koliutil.SHA) (*v1.Pod, error) {
 	gitCloneURL := rel.Spec.GitRemote
 	env := map[string]interface{}{
-		"GIT_CLONE_URL":   gitCloneURL,
-		"GIT_RELEASE_URL": rel.GitReleaseURL(cfg.GitReleaseHost),
-		"POD_NAME":        podName,
-		"GIT_BRANCH":      rel.Spec.GitBranch,
-		"GIT_SOURCE":      rel.Spec.Source,
+		"GIT_CLONE_URL":     gitCloneURL,
+		"GIT_RELEASE_URL":   rel.GitReleaseURL(cfg.GitReleaseHost),
+		"POD_NAME":          podName,
+		"GIT_BRANCH":        rel.Spec.GitBranch,
+		"GIT_SOURCE":        rel.Spec.Source,
+		"GIT_AUTHOR_AVATAR": rel.Spec.HeadCommit.AvatarURL,
+		"GIT_COMPARE":       rel.Spec.HeadCommit.Compare,
 	}
 	if cfg.DebugBuild {
 		env["DEBUG"] = "TRUE"

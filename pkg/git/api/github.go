@@ -603,7 +603,7 @@ func (h *Handler) Webhooks(w http.ResponseWriter, r *http.Request) {
 			dp.Annotations[platform.AnnotationGitCommitID] = event.HeadCommit.GetID()
 			// dp.Annotations[platform.AnnotationGitRevision] = event.HeadCommit.GetID()
 			dp.Annotations[platform.AnnotationGitAuthorName] = event.HeadCommit.Author.GetName()
-			dp.Annotations[platform.AnnotationGitAuthorAvatar] = event.Pusher.GetAvatarURL()
+			dp.Annotations[platform.AnnotationGitAuthorAvatar] = event.Sender.GetAvatarURL()
 			dp.Annotations[platform.AnnotationGitCompare] = event.GetCompare()
 			dp.Annotations[platform.AnnotationGitCommitMessage] = event.HeadCommit.GetMessage()
 			dp.Annotations[platform.AnnotationGitCommitURL] = event.HeadCommit.GetURL()
