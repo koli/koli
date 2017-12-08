@@ -113,9 +113,6 @@ func (b *BuildController) syncHandler(key string) error {
 	if err != nil {
 		return err
 	}
-	if err != nil {
-		return err
-	}
 	if !exists {
 		glog.V(3).Infof("%s - release doesn't exists, skip ...", key)
 		return nil
@@ -166,6 +163,7 @@ func slugbuilderPod(podName string, cfg *Config, rel *platform.Release, gitSha *
 		"GIT_SOURCE":        rel.Spec.Source,
 		"GIT_AUTHOR_AVATAR": rel.Spec.HeadCommit.AvatarURL,
 		"GIT_COMPARE":       rel.Spec.HeadCommit.Compare,
+		"GIT_COMMIT_URL":    rel.Spec.HeadCommit.URL,
 	}
 	if cfg.DebugBuild {
 		env["DEBUG"] = "TRUE"
