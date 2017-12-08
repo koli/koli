@@ -27,8 +27,9 @@ const (
 
 var (
 	immutableAnnotations = []string{
-		platform.AnnotationBuildSource, platform.AnnotationGitCompare,
-		platform.AnnotationGitHubSecretHook, platform.AnnotationGitHubUser,
+		platform.AnnotationGitCompare,
+		platform.AnnotationGitHubSecretHook,
+		platform.AnnotationGitHubUser,
 		platform.AnnotationSetupStorage,
 	}
 )

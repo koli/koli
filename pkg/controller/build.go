@@ -113,9 +113,6 @@ func (b *BuildController) syncHandler(key string) error {
 	if err != nil {
 		return err
 	}
-	if err != nil {
-		return err
-	}
 	if !exists {
 		glog.V(3).Infof("%s - release doesn't exists, skip ...", key)
 		return nil
@@ -159,11 +156,14 @@ func (b *BuildController) syncHandler(key string) error {
 func slugbuilderPod(podName string, cfg *Config, rel *platform.Release, gitSha *koliutil.SHA) (*v1.Pod, error) {
 	gitCloneURL := rel.Spec.GitRemote
 	env := map[string]interface{}{
-		"GIT_CLONE_URL":   gitCloneURL,
-		"GIT_RELEASE_URL": rel.GitReleaseURL(cfg.GitReleaseHost),
-		"POD_NAME":        podName,
-		"GIT_BRANCH":      rel.Spec.GitBranch,
-		"GIT_SOURCE":      rel.Spec.Source,
+		"GIT_CLONE_URL":     gitCloneURL,
+		"GIT_RELEASE_URL":   rel.GitReleaseURL(cfg.GitReleaseHost),
+		"POD_NAME":          podName,
+		"GIT_BRANCH":        rel.Spec.GitBranch,
+		"GIT_SOURCE":        rel.Spec.Source,
+		"GIT_AUTHOR_AVATAR": rel.Spec.HeadCommit.AvatarURL,
+		"GIT_COMPARE":       rel.Spec.HeadCommit.Compare,
+		"GIT_COMMIT_URL":    rel.Spec.HeadCommit.URL,
 	}
 	if cfg.DebugBuild {
 		env["DEBUG"] = "TRUE"

@@ -289,7 +289,9 @@ func (h *Handler) V1beta1Releases(w http.ResponseWriter, r *http.Request) {
 			if len(requestBody.Name) > 0 {
 				old.Name = requestBody.Name
 			}
-
+			if len(requestBody.Lang) > 0 {
+				old.Lang = requestBody.Lang
+			}
 			if requestBody.Files != nil {
 				for filename, size := range requestBody.Files {
 					if _, ok := old.Files[filename]; !ok {
