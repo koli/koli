@@ -35,6 +35,8 @@ type Config struct {
 	KongAPIHost        string
 	PlatformPubKeyFile string `envconfig:"PLATFORM_JWT_PUB_KEY_FILE" required:"true"`
 	PlatformPubKey     []byte
+	HealthzBindAddress string
+	HealthzPort        int32
 }
 
 // GetServeAddress return the address to bind the server

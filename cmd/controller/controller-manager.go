@@ -15,6 +15,7 @@ import (
 	"kolihub.io/koli/pkg/controller"
 	"kolihub.io/koli/pkg/controller/informers"
 	_ "kolihub.io/koli/pkg/controller/install"
+	"kolihub.io/koli/pkg/util/healthz"
 	koliversion "kolihub.io/koli/pkg/version"
 
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -47,6 +48,8 @@ func init() {
 	pflag.StringVar(&cfg.SlugBuildImage, "slugbuilder-image", "quay.io/koli/slugbuilder", "the name of the builder image")
 	pflag.StringVar(&cfg.SlugRunnerImage, "slugrunner-image", "quay.io/koli/slugrunner", "the name of the runner image")
 	pflag.BoolVar(&cfg.DebugBuild, "debug-build", false, "debug the build container")
+	pflag.StringVar(&cfg.HealthzBindAddress, "healthz-bind-address", "0.0.0.0", "The IP address for the healthz server to serve on. (set to 0.0.0.0 for all interfaces)")
+	pflag.Int32Var(&cfg.HealthzPort, "healthz-port", 20251, "The port of the localhost healthz endpoint (set to 0 to disable)")
 
 	pflag.BoolVar(&showVersion, "version", false, "print version information and quit")
 	pflag.BoolVar(&cfg.TLSInsecure, "tls-insecure", false, "don't verify API server's CA certificate.")
@@ -146,6 +149,7 @@ func startControllers() error {
 	).Run(1, stopC)
 
 	sharedInformers.Start(stopC)
+	healthz.ListenAndServe(cfg.HealthzBindAddress, cfg.HealthzPort)
 	select {} // block forever
 }
 

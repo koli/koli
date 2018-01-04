@@ -26,6 +26,7 @@ import (
 	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 	"kolihub.io/koli/pkg/mutator"
 	"kolihub.io/koli/pkg/request"
+	"kolihub.io/koli/pkg/util/healthz"
 	"kolihub.io/koli/pkg/version"
 )
 
@@ -51,6 +52,8 @@ func init() {
 	pflag.StringVar(&cfg.TLSClientConfig.CertFile, "client-cert", "", "path to public TLS client certificate file")
 
 	flag.StringVar(&cfg.KongAPIHost, "kong-api-host", "http://kong-admin:8000", "the address of Kong admin api")
+	pflag.StringVar(&cfg.HealthzBindAddress, "healthz-bind-address", "0.0.0.0", "The IP address for the healthz server to serve on. (set to 0.0.0.0 for all interfaces)")
+	pflag.Int32Var(&cfg.HealthzPort, "healthz-port", 20251, "The port of the localhost healthz endpoint (set to 0 to disable)")
 
 	pflag.BoolVar(&showVersion, "version", false, "print version information and quit")
 	pflag.BoolVar(&cfg.TLSInsecure, "tls-insecure", false, "don't verify API server's CA certificate")
@@ -152,6 +155,7 @@ func main() {
 		negroni.Wrap(namespaced),
 	))
 
+	healthz.ListenAndServe(cfg.HealthzBindAddress, cfg.HealthzPort)
 	listenAddr, isSecure := cfg.GetServeAddress()
 	if isSecure {
 		log.Fatal(http.ListenAndServeTLS(

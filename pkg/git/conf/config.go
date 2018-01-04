@@ -29,7 +29,9 @@ type Config struct {
 	TLSInsecure                 bool
 	TLSConfig                   rest.TLSClientConfig
 	// Not Implemented yet
-	GitHubHookSecret string `envconfig:"GITHUB_HOOK_SECRET"`
+	GitHubHookSecret   string `envconfig:"GITHUB_HOOK_SECRET"`
+	HealthzBindAddress string
+	HealthzPort        int32
 }
 
 // CleanerPollSleepDuration returns c.CleanerPollSleepDurationSec as a time.Duration.
