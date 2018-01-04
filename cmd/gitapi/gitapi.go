@@ -19,6 +19,7 @@ import (
 	gitapi "kolihub.io/koli/pkg/git/api"
 	"kolihub.io/koli/pkg/git/conf"
 	gitutil "kolihub.io/koli/pkg/git/util"
+	"kolihub.io/koli/pkg/util/healthz"
 	"kolihub.io/koli/pkg/version"
 )
 
@@ -50,6 +51,8 @@ func init() {
 	pflag.StringVar(&cfg.GitHubHookSecret, "github-hook-secret", "notimplementedyet", "hook secret for validating webhooks from github.")
 	pflag.StringVar(&cfg.GitAPIHostname, "gitapi-host", "", "git api host routable DNS name.")
 	pflag.StringVar(&cfg.GitHome, "git-home", "/home/git", "git releases path.")
+	pflag.StringVar(&cfg.HealthzBindAddress, "healthz-bind-address", "0.0.0.0", "The IP address for the healthz server to serve on. (set to 0.0.0.0 for all interfaces)")
+	pflag.Int32Var(&cfg.HealthzPort, "healthz-port", 20251, "The port of the localhost healthz endpoint (set to 0 to disable)")
 
 	pflag.BoolVar(&showVersion, "version", false, "print version information and quit.")
 	pflag.BoolVar(&cfg.TLSInsecure, "tls-insecure", false, "don't verify API server's CA certificate.")
@@ -128,5 +131,6 @@ func main() {
 		negroni.HandlerFunc(gitHandler.Authenticate),
 		negroni.Wrap(r),
 	))
+	healthz.ListenAndServe(cfg.HealthzBindAddress, cfg.HealthzPort)
 	log.Fatal(http.ListenAndServe(":8001", webhook))
 }

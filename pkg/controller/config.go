@@ -14,6 +14,9 @@ type Config struct {
 	ClusterName       string
 	DefaultDomain     string
 	DebugBuild        bool
+
+	HealthzBindAddress string
+	HealthzPort        int32
 }
 
 // IsValidStorageType check if it's valid storage type
