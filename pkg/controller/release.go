@@ -46,7 +46,7 @@ func NewReleaseController(releaseInf, dpInf cache.SharedIndexInformer, sysClient
 		dpInf:      dpInf,
 		recorder:   newRecorder(kclient, "apps-controller"),
 	}
-	r.queue = NewTaskQueue(r.syncHandler)
+	r.queue = NewTaskQueue("release", r.syncHandler)
 	r.dpInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    r.addDeployment,
 		UpdateFunc: r.updateDeployment,

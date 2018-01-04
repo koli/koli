@@ -26,7 +26,7 @@ import (
 	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
 	"kolihub.io/koli/pkg/mutator"
 	"kolihub.io/koli/pkg/request"
-	"kolihub.io/koli/pkg/util/healthz"
+	"kolihub.io/koli/pkg/util/monitoring"
 	"kolihub.io/koli/pkg/version"
 )
 
@@ -155,7 +155,7 @@ func main() {
 		negroni.Wrap(namespaced),
 	))
 
-	healthz.ListenAndServe(cfg.HealthzBindAddress, cfg.HealthzPort)
+	monitoring.ListenAndServeAll(cfg.HealthzBindAddress, cfg.HealthzPort)
 	listenAddr, isSecure := cfg.GetServeAddress()
 	if isSecure {
 		log.Fatal(http.ListenAndServeTLS(

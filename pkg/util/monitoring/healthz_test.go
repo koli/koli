@@ -1,4 +1,4 @@
-package healthz
+package monitoring
 
 import (
 	"errors"

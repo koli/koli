@@ -15,7 +15,7 @@ import (
 	"kolihub.io/koli/pkg/controller"
 	"kolihub.io/koli/pkg/controller/informers"
 	_ "kolihub.io/koli/pkg/controller/install"
-	"kolihub.io/koli/pkg/util/healthz"
+	"kolihub.io/koli/pkg/util/monitoring"
 	koliversion "kolihub.io/koli/pkg/version"
 
 	apiextensionsclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -149,7 +149,7 @@ func startControllers() error {
 	).Run(1, stopC)
 
 	sharedInformers.Start(stopC)
-	healthz.ListenAndServe(cfg.HealthzBindAddress, cfg.HealthzPort)
+	monitoring.ListenAndServeAll(cfg.HealthzBindAddress, cfg.HealthzPort)
 	select {} // block forever
 }
 

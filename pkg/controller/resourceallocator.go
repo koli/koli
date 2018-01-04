@@ -46,7 +46,7 @@ func NewResourceAllocatorCtrl(dpInf, spInf cache.SharedIndexInformer,
 		spInf:     spInf,
 		recorder:  newRecorder(client, "allocator-controller"),
 	}
-	c.queue = NewTaskQueue(c.syncHandler)
+	c.queue = NewTaskQueue("resource_alloc", c.syncHandler)
 	c.dpInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.addDeployment,
 		UpdateFunc: c.updateDeployment,

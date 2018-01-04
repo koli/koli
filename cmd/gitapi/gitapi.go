@@ -19,7 +19,7 @@ import (
 	gitapi "kolihub.io/koli/pkg/git/api"
 	"kolihub.io/koli/pkg/git/conf"
 	gitutil "kolihub.io/koli/pkg/git/util"
-	"kolihub.io/koli/pkg/util/healthz"
+	"kolihub.io/koli/pkg/util/monitoring"
 	"kolihub.io/koli/pkg/version"
 )
 
@@ -131,6 +131,6 @@ func main() {
 		negroni.HandlerFunc(gitHandler.Authenticate),
 		negroni.Wrap(r),
 	))
-	healthz.ListenAndServe(cfg.HealthzBindAddress, cfg.HealthzPort)
+	monitoring.ListenAndServeAll(cfg.HealthzBindAddress, cfg.HealthzPort)
 	log.Fatal(http.ListenAndServe(":8001", webhook))
 }

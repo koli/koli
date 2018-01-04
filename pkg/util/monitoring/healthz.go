@@ -1,17 +1,13 @@
-package healthz
+package monitoring
 
 import (
 	"bytes"
 	"fmt"
-	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/golang/glog"
-	"k8s.io/apimachinery/pkg/util/wait"
 )
 
 // HealthzChecker is a named healthz checker.
@@ -144,16 +140,4 @@ func checkerNames(checks ...HealthzChecker) []string {
 		return checkerNames
 	}
 	return nil
-}
-
-func ListenAndServe(bindAddress string, port int32) {
-	if port > 0 {
-		DefaultHealthz()
-		go wait.Until(func() {
-			err := http.ListenAndServe(net.JoinHostPort(bindAddress, strconv.Itoa(int(port))), nil)
-			if err != nil {
-				glog.Errorf("Starting health server failed: %v", err)
-			}
-		}, 5*time.Second, wait.NeverStop)
-	}
 }

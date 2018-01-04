@@ -45,7 +45,7 @@ func NewSecretController(nsInf, skInf cache.SharedIndexInformer, client kubernet
 		recorder:  newRecorder(client, "secret-controller"),
 		jwtSecret: jwtSecret,
 	}
-	c.queue = NewTaskQueue(c.syncHandler)
+	c.queue = NewTaskQueue("secrets", c.syncHandler)
 	c.nsInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.addNamespace,
 		UpdateFunc: c.updateNamespace,

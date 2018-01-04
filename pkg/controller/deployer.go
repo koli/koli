@@ -61,7 +61,7 @@ func NewDeployerController(
 		config:    config,
 		recorder:  newRecorder(kclient, "apps-controller"),
 	}
-	d.queue = NewTaskQueue(d.syncHandler)
+	d.queue = NewTaskQueue("deployer", d.syncHandler)
 
 	d.podInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    d.addPod,
@@ -166,6 +166,7 @@ func (d *DeployerController) syncHandler(key string) error {
 	release := releaseO.(*platform.Release)
 	// turn-off build, otherwise it will trigger unwanted builds
 	defer func() {
+		incrementBuildStatusMetric(pod.Status.Phase)
 		patchData := []byte(`{"spec": {"build": false}}`)
 		_, err = d.clientset.Release(pod.Namespace).Patch(release.Name, types.MergePatchType, patchData)
 		if err != nil {
@@ -229,6 +230,7 @@ func (d *DeployerController) syncHandler(key string) error {
 					"Failed deploying release [%s]", err)
 				return fmt.Errorf("failed deploying release [%s]", err)
 			}
+			buildsDeployed.Inc()
 			ref := info.HeadCommit.ID
 			if len(ref) > 7 {
 				ref = ref[:7]
@@ -351,4 +353,13 @@ func newGitAPIClient(host, deployName, jwtSecret string, nsMeta *draft.Namespace
 	basicAuth := base64.StdEncoding.EncodeToString([]byte("dumb:" + systemToken))
 	return request.NewRequest(nil, requestURL).
 		SetHeader("Authorization", fmt.Sprintf("Basic %s", basicAuth)), nil
+}
+
+func incrementBuildStatusMetric(phase v1.PodPhase) {
+	switch phase {
+	case v1.PodSucceeded:
+		buildsCompleted.Inc()
+	case v1.PodFailed:
+		buildsCompleted.Inc()
+	}
 }
