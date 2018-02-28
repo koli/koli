@@ -177,6 +177,8 @@ func (d *DeployerController) syncHandler(key string) error {
 	info := &platform.GitInfo{}
 	// var err error
 	if pod.Status.Phase == v1.PodSucceeded || pod.Status.Phase == v1.PodFailed {
+		// TODO: log the response of /dev/termination-log to events!
+		// Ref: https://github.com/koli/koli/issues/149
 		gitcli, err = newGitAPIClient(
 			d.config.GitReleaseHost,
 			release.Spec.DeployName,
