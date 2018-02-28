@@ -46,7 +46,7 @@ func NewNamespaceController(nsInf, spInf cache.SharedIndexInformer,
 		spInf:     spInf,
 		recorder:  newRecorder(kclient, "namespace-controller"),
 	}
-	nc.queue = NewTaskQueue(nc.syncHandler)
+	nc.queue = NewTaskQueue("namespace", nc.syncHandler)
 	nc.nsInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    nc.addNamespace,
 		UpdateFunc: nc.updateNamespace,

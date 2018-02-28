@@ -46,7 +46,7 @@ func NewBuildController(
 		recorder:   newRecorder(kclient, "apps-controller"),
 		config:     config,
 	}
-	b.queue = NewTaskQueue(b.syncHandler)
+	b.queue = NewTaskQueue("builder", b.syncHandler)
 
 	b.releaseInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    b.addRelease,

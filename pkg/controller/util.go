@@ -21,6 +21,9 @@ import (
 	v1core "k8s.io/client-go/kubernetes/typed/core/v1"
 
 	platform "kolihub.io/koli/pkg/apis/core/v1alpha1"
+
+	// Sets the workqueue DefaultMetricsFactory to produce prometheus metrics
+	_ "kolihub.io/koli/pkg/controller/prometheus"
 )
 
 var keyFunc = cache.DeletionHandlingMetaNamespaceKeyFunc
@@ -108,9 +111,13 @@ func (t *TaskQueue) shutdown() {
 
 // NewTaskQueue creates a new task queue with the given sync function.
 // The sync function is called for every element inserted into the queue.
-func NewTaskQueue(syncFn func(string) error) *TaskQueue {
+func NewTaskQueue(queueName string, syncFn func(string) error) *TaskQueue {
+	rateLimitQueue := workqueue.NewNamedRateLimitingQueue(
+		workqueue.DefaultControllerRateLimiter(),
+		queueName,
+	)
 	return &TaskQueue{
-		queue:      workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter()),
+		queue:      rateLimitQueue,
 		sync:       syncFn,
 		workerDone: make(chan struct{}),
 	}

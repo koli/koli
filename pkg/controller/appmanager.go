@@ -49,7 +49,7 @@ func NewAppManagerController(
 		recorder:      newRecorder(client, "app-manager-controller"),
 		defaultDomain: defaultDomain,
 	}
-	c.queue = NewTaskQueue(c.syncHandler)
+	c.queue = NewTaskQueue("app_manager", c.syncHandler)
 	c.dpInf.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    c.addDeployment,
 		UpdateFunc: c.updateDeployment,
@@ -180,9 +180,14 @@ func (c *AppManagerController) syncHandler(key string) error {
 	}
 	_, err = c.kclient.Core().PersistentVolumeClaims(d.Namespace).Create(newPVC(d, plan))
 	if err != nil && !apierrors.IsAlreadyExists(err) {
+		pvcFailed.Inc()
 		msg := fmt.Sprintf(`Failed creating PVC [%v]`, err)
 		c.recorder.Event(d, v1.EventTypeWarning, "ProvisionError", msg)
 		return fmt.Errorf(msg)
+	}
+
+	if err == nil {
+		pvcCreated.Inc()
 	}
 
 	glog.Infof(`%s - PVC "d-%s" created with "%s"`, key, d.Name, plan.Spec.Storage.String())
