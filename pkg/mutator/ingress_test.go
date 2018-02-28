@@ -1,7 +1,9 @@
 package mutator
 
 import (
+	"bytes"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -33,7 +35,7 @@ func makeTestServer(t *testing.T, statusCode int) clientFunc {
 		return &http.Response{
 			Header:     http.Header{"Content-Type": []string{"application/json"}},
 			StatusCode: statusCode,
-			Body:       req.Body,
+			Body:       ioutil.NopCloser(bytes.NewReader([]byte(``))),
 		}, nil
 	})
 }
