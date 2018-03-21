@@ -4,6 +4,8 @@
 
 ---
 
+[![Join the chat at https://gitter.im/koli/koli](https://badges.gitter.im/koli/koli.svg)](https://gitter.im/koli/koli?utm_source=badge&utm_medium=badge&utm_campaign=pr-badge&utm_content=badge)
+
 Koli it's a Plataform as Service (PaaS) built on top of Kubernetes, providing tools
 that enables easy management and deployment of applications.
 
