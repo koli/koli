@@ -292,6 +292,12 @@ func (h *Handler) V1beta1Releases(w http.ResponseWriter, r *http.Request) {
 			if len(requestBody.Lang) > 0 {
 				old.Lang = requestBody.Lang
 			}
+			if len(requestBody.KubeRef) > 0 {
+				old.KubeRef = requestBody.KubeRef
+			}
+			if len(requestBody.SourceType) > 0 {
+				old.SourceType = requestBody.SourceType
+			}
 			if requestBody.Files != nil {
 				for filename, size := range requestBody.Files {
 					if _, ok := old.Files[filename]; !ok {
