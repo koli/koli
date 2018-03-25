@@ -284,6 +284,7 @@ func (h *Handler) V1beta1Releases(w http.ResponseWriter, r *http.Request) {
 				old.BuildDuration = 0
 				old.Lang = ""
 				old.Status = ""
+				old.CreatedAt = time.Now().UTC()
 			}
 			if (int64(requestBody.BuildDuration)) > 0 {
 				old.BuildDuration = requestBody.BuildDuration
