@@ -277,6 +277,14 @@ func (h *Handler) V1beta1Releases(w http.ResponseWriter, r *http.Request) {
 			if err := json.Unmarshal(b.Get(key), old); err != nil {
 				return fmt.Errorf("failed deserializing object [%v]", err)
 			}
+			if len(requestBody.KubeRef) > 0 {
+				old.KubeRef = requestBody.KubeRef
+				// Reset when kubeRef changes
+				// Indicating a "rebuild"
+				old.BuildDuration = 0
+				old.Lang = ""
+				old.Status = ""
+			}
 			if (int64(requestBody.BuildDuration)) > 0 {
 				old.BuildDuration = requestBody.BuildDuration
 			}
@@ -291,14 +299,6 @@ func (h *Handler) V1beta1Releases(w http.ResponseWriter, r *http.Request) {
 			}
 			if len(requestBody.Lang) > 0 {
 				old.Lang = requestBody.Lang
-			}
-			if len(requestBody.KubeRef) > 0 {
-				old.KubeRef = requestBody.KubeRef
-				// Reset when kubeRef changes
-				// Indicating a "rebuild"
-				old.BuildDuration = 0
-				old.Lang = ""
-				old.Status = ""
 			}
 			if len(requestBody.SourceType) > 0 {
 				old.SourceType = requestBody.SourceType
