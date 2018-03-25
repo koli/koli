@@ -294,6 +294,11 @@ func (h *Handler) V1beta1Releases(w http.ResponseWriter, r *http.Request) {
 			}
 			if len(requestBody.KubeRef) > 0 {
 				old.KubeRef = requestBody.KubeRef
+				// Reset when kubeRef changes
+				// Indicating a "rebuild"
+				old.BuildDuration = 0
+				old.Lang = ""
+				old.Status = ""
 			}
 			if len(requestBody.SourceType) > 0 {
 				old.SourceType = requestBody.SourceType
